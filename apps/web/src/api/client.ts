@@ -7,6 +7,9 @@ import type {
   ApiErrorDto,
   HealthDto,
   InstallProviderResultDto,
+  SignInAnswerRequest,
+  SignInStateDto,
+  StartSignInRequest,
 } from "@clawdesk/shared";
 
 export class ApiError extends Error {
@@ -44,5 +47,11 @@ export const api = {
     catalog: (agentId: string) => request<AiCatalogDto>(`/api/ai/catalog?${q(agentId)}`),
     install: (pluginId: string) => post<InstallProviderResultDto>(`/api/ai/providers/${encodeURIComponent(pluginId)}/install`),
     activate: (body: ActivateApiKeyRequest) => post<ActivateResultDto>("/api/ai/activate", body),
+    signIn: {
+      start: (body: StartSignInRequest) => post<SignInStateDto>("/api/ai/signin", body),
+      get: (sessionId: string) => request<SignInStateDto>(`/api/ai/signin/${encodeURIComponent(sessionId)}`),
+      answer: (sessionId: string, body: SignInAnswerRequest) => post<SignInStateDto>(`/api/ai/signin/${encodeURIComponent(sessionId)}/answer`, body),
+      cancel: (sessionId: string) => request<void>(`/api/ai/signin/${encodeURIComponent(sessionId)}`, { method: "DELETE" }),
+    },
   },
 };

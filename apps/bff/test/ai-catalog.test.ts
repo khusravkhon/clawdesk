@@ -12,7 +12,10 @@ const detect: DetectResult = {
     { id: "lmstudio", brandId: "lmstudio", groupLabel: "LM Studio", label: "LM Studio" },
     { id: "minimax-cn-api", brandId: "minimax", groupLabel: "MiniMax", label: "MiniMax CN" },
   ],
-  authOptions: [{ id: "openai", brandId: "openai", label: "ChatGPT Login", kind: "oauth", featured: true }],
+  authOptions: [
+    { id: "openai", brandId: "openai", label: "ChatGPT Login", kind: "oauth", featured: true },
+    { id: "github-copilot", brandId: "github-copilot", groupLabel: "Copilot", label: "GitHub Copilot", kind: "device-code", featured: false },
+  ],
 };
 const plugins: PluginEntry[] = [
   { id: "deepseek", name: "OpenClaw DeepSeek Provider", packageName: "@openclaw/deepseek-provider", origin: "official", installed: false },
@@ -47,10 +50,14 @@ describe("buildCatalog", () => {
 
   it("puts popular providers first in a fixed order", () => {
     expect(catalog.providers.map((p) => p.id).slice(0, 4)).toEqual(["anthropic", "openai", "deepseek", "qwen"]);
-    expect(catalog.providers.at(-1)?.id).toBe("minimax");
+    expect(catalog.providers.map((p) => p.id).slice(-2)).toEqual(["minimax", "github-copilot"]);
   });
 
-  it("passes sign-in options through", () => {
-    expect(catalog.signIn).toEqual([{ id: "openai", providerId: "openai", label: "ChatGPT Login", hint: null, kind: "oauth" }]);
+  it("passes sign-in options through and gives sign-in-only brands a card", () => {
+    expect(catalog.signIn).toEqual([
+      { id: "openai", providerId: "openai", label: "ChatGPT Login", hint: null, kind: "oauth" },
+      { id: "github-copilot", providerId: "github-copilot", label: "GitHub Copilot", hint: null, kind: "device-code" },
+    ]);
+    expect(byId["github-copilot"]).toMatchObject({ label: "Copilot", methods: [], installPluginId: null });
   });
 });

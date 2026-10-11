@@ -6,7 +6,16 @@ import type { AiCatalogDto, AiConnectMethod, AiProvider, AiSignInOption } from "
 export type DetectResult = {
   candidates: { kind: string; label: string; modelRef: string; recommended: boolean }[];
   manualProviders: { id: string; brandId?: string; groupLabel?: string; label: string; hint?: string; website?: string }[];
-  authOptions?: { id: string; brandId?: string; label: string; hint?: string; kind: "oauth" | "device-code"; featured: boolean }[];
+  authOptions?: {
+    id: string;
+    brandId?: string;
+    groupLabel?: string;
+    label: string;
+    hint?: string;
+    website?: string;
+    kind: "oauth" | "device-code";
+    featured: boolean;
+  }[];
   configuredModel?: string;
   setupComplete: boolean;
 };
@@ -68,11 +77,17 @@ export function buildCatalog(agentId: string, detect: DetectResult, plugins: Plu
 
   const signIn: AiSignInOption[] = (detect.authOptions ?? []).map((o) => ({
     id: o.id,
-    providerId: o.brandId ?? null,
+    providerId: o.brandId ?? o.id,
     label: o.label,
     hint: o.hint ?? null,
     kind: o.kind,
   }));
+
+  // Brands reachable only by subscription sign-in (e.g. GitHub Copilot) still get a card.
+  for (const option of detect.authOptions ?? []) {
+    const id = option.brandId ?? option.id;
+    if (!providers.has(id)) providers.set(id, newProvider(id, option.groupLabel ?? option.label, option.website ?? null, null));
+  }
 
   return {
     agentId,

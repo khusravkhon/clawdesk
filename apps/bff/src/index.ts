@@ -1,4 +1,5 @@
 import { AiSetupService } from "./ai-setup/ai-setup-service.js";
+import { SignInSessionManager } from "./ai-setup/signin-sessions.js";
 import { buildApp } from "./app.js";
 import { loadConfig } from "./config.js";
 import { openDb } from "./db/client.js";
@@ -11,7 +12,8 @@ const logger = createLogger(config.logLevel);
 const { db, close: closeDb } = openDb(config.dbPath);
 const gateway = createGatewayService(config, logger);
 const aiSetup = new AiSetupService(gateway, logger.child({ component: "ai-setup" }));
-const app = await buildApp({ logger, gateway, db, aiSetup, webDist: config.webDist });
+const signIn = new SignInSessionManager(gateway, logger.child({ component: "signin" }));
+const app = await buildApp({ logger, gateway, db, aiSetup, signIn, webDist: config.webDist });
 
 gateway.start();
 await app.listen({ host: config.host, port: config.port });

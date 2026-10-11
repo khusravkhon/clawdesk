@@ -19,6 +19,8 @@
     "activate-probe": "tsx --conditions=source src/scripts/activate-probe.ts",
     "plugins-probe": "tsx --conditions=source src/scripts/plugins-probe.ts",
     "provider-install-probe": "tsx --conditions=source src/scripts/provider-install-probe.ts",
+    "signin-probe": "tsx --conditions=source src/scripts/signin-probe.ts",
+    "rpc": "tsx --conditions=source src/scripts/rpc.ts",
     "db:generate": "drizzle-kit generate"
   },
   "dependencies": {

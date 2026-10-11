@@ -1,6 +1,10 @@
 {
-  "app": { "title": "ClawDesk" },
-  "nav": { "status": "Status" },
+  "app": {
+    "title": "ClawDesk"
+  },
+  "nav": {
+    "status": "Status"
+  },
   "status": {
     "title": "System status",
     "refresh": "Refresh",
@@ -23,7 +27,9 @@
       "disconnected": "connection lost"
     }
   },
-  "common": { "retry": "Retry" },
+  "common": {
+    "retry": "Retry"
+  },
   "setupAi": {
     "title": "Connect an AI for your main assistant",
     "lead": "Choose which AI powers your main assistant and paste a key or subscription token. Junior agents can get their own access later.",
@@ -32,7 +38,6 @@
   "ai": {
     "loadFailed": "Could not load the AI list",
     "moreProviders": "More providers ({n})",
-    "subscriptionSoon": "Sign in with a subscription, no key (coming soon):",
     "chooseOther": "Choose another AI",
     "installExplain": "{name} support has to be installed on the server once. The agent server will restart; this takes up to a minute.",
     "install": "Install {name} support",
@@ -51,7 +56,32 @@
       "unavailable": "This way of connecting is not available on the server right now.",
       "format": "The key has the wrong format.",
       "unknown": "Could not connect: {error}"
-    }
+    },
+    "subscriptionTitle": "Or sign in with a subscription, no key:",
+    "modeKey": "API key",
+    "modeSignIn": "Subscription sign-in"
   },
-  "lang": { "ru": "Русский", "en": "English", "tg": "Тоҷикӣ" }
+  "signIn": {
+    "deviceSteps": "Open the sign-in page in your own browser, sign in and enter this code:",
+    "copy": "Copy",
+    "copied": "Code copied",
+    "openPage": "Open sign-in page",
+    "expires": "The code is valid for {n} min.",
+    "oauthSteps": "Open the sign-in page and sign in. At the end your browser opens a localhost address and shows an error — that is expected. Copy that whole address from the address bar and paste it below.",
+    "onlyYou": "Continue only if you started this sign-in yourself. If someone else sent you this code or link, cancel.",
+    "pastePlaceholder": "Paste the address from the address bar (http://localhost:…)",
+    "submit": "Submit",
+    "yes": "Yes",
+    "no": "No",
+    "working": "Waiting…",
+    "done": "Subscription connected",
+    "doneModel": "Model: {model}",
+    "details": "Details from the server",
+    "cancel": "Cancel"
+  },
+  "lang": {
+    "ru": "Русский",
+    "en": "English",
+    "tg": "Тоҷикӣ"
+  }
 }

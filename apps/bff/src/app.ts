@@ -7,6 +7,7 @@ import type { Logger } from "pino";
 import { ZodError } from "zod";
 import type { ApiErrorDto } from "@clawdesk/shared";
 import type { AiSetupService } from "./ai-setup/ai-setup-service.js";
+import type { SignInSessionManager } from "./ai-setup/signin-sessions.js";
 import type { Db } from "./db/client.js";
 import { GatewayUnavailableError, type GatewayService } from "./gateway/gateway-service.js";
 import { registerAgentRoutes } from "./routes/agents.js";
@@ -18,6 +19,7 @@ export type AppDeps = {
   gateway: GatewayService;
   db: Db;
   aiSetup: AiSetupService;
+  signIn: SignInSessionManager;
   webDist: string | undefined;
 };
 

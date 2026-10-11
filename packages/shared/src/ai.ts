@@ -72,6 +72,48 @@ export const ActivateResultDto = z.object({
 });
 export type ActivateResultDto = z.infer<typeof ActivateResultDto>;
 
+// --- Subscription sign-in (OAuth / device code), driven step by step by the Gateway ---
+
+export const StartSignInRequest = z.object({
+  agentId: AgentId,
+  /** Id from AiCatalogDto.signIn, e.g. "openai-device-code", "github-copilot". */
+  authChoice: z.string().min(1).max(100),
+});
+export type StartSignInRequest = z.infer<typeof StartSignInRequest>;
+
+/** What the person has to do right now. Only Gateway-issued links/codes, never secrets. */
+export const SignInPromptDto = z.object({
+  stepId: z.string(),
+  kind: z.enum(["text", "confirm", "select"]),
+  message: z.string().nullable(),
+  sensitive: z.boolean(),
+  options: z.array(z.object({ value: z.unknown(), label: z.string() })),
+});
+export type SignInPromptDto = z.infer<typeof SignInPromptDto>;
+
+export const SignInStateDto = z.object({
+  sessionId: z.string(),
+  agentId: z.string(),
+  status: z.enum(["running", "waiting_for_user", "done", "error", "cancelled"]),
+  /** Latest progress line from the Gateway ("Waiting for device authorization…"). */
+  progress: z.string().nullable(),
+  /** Link to open in the person's own browser. */
+  url: z.string().nullable(),
+  deviceCode: z.object({ code: z.string(), expiresInMinutes: z.number().nullable() }).nullable(),
+  /** Informational text the Gateway showed with the link or code. */
+  note: z.string().nullable(),
+  prompt: SignInPromptDto.nullable(),
+  modelRef: z.string().nullable(),
+  error: z.string().nullable(),
+});
+export type SignInStateDto = z.infer<typeof SignInStateDto>;
+
+export const SignInAnswerRequest = z.object({
+  stepId: z.string(),
+  value: z.unknown(),
+});
+export type SignInAnswerRequest = z.infer<typeof SignInAnswerRequest>;
+
 export const InstallProviderResultDto = z.object({
   ok: z.literal(true),
   pluginId: z.string(),

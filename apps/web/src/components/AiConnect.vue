@@ -1,11 +1,13 @@
 <script setup lang="ts">
-// Connects an AI model to ONE agent (prop agentId). Used by the first-run
-// window for the main agent and, later, by the junior-agent builder.
-import type { ActivateResultDto, AiCatalogDto, AiProvider } from "@clawdesk/shared";
-import { NA, NAlert, NButton, NCollapse, NCollapseItem, NGrid, NGi, NInput, NRadio, NRadioGroup, NSpace, NSpin, NTag, NText } from "naive-ui";
+// Connects an AI model to ONE agent (prop agentId): by API key / token, or by
+// subscription sign-in. Used by the first-run window (main agent) and by the
+// junior-agent builder (each agent may get its own access).
+import type { ActivateResultDto, AiCatalogDto, AiProvider, AiSignInOption } from "@clawdesk/shared";
+import { NA, NAlert, NButton, NCollapse, NCollapseItem, NGrid, NGi, NInput, NRadio, NRadioButton, NRadioGroup, NSpace, NSpin, NText } from "naive-ui";
 import { computed, onMounted, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import { api, ApiError } from "../api/client";
+import SignInFlow from "./SignInFlow.vue";
 
 const props = defineProps<{ agentId: string }>();
 const emit = defineEmits<{ connected: [result: ActivateResultDto] }>();
@@ -15,6 +17,8 @@ const catalog = ref<AiCatalogDto | null>(null);
 const loading = ref(false);
 const loadError = ref<string | null>(null);
 const selectedId = ref<string | null>(null);
+const mode = ref<"key" | "signin">("key");
+const signInOption = ref<AiSignInOption | null>(null);
 const authChoice = ref<string | null>(null);
 const apiKey = ref("");
 const installing = ref(false);
@@ -25,6 +29,7 @@ const actionError = ref<string | null>(null);
 const popular = computed(() => catalog.value?.providers.filter((p) => p.popular) ?? []);
 const others = computed(() => catalog.value?.providers.filter((p) => !p.popular) ?? []);
 const provider = computed<AiProvider | null>(() => catalog.value?.providers.find((p) => p.id === selectedId.value) ?? null);
+const providerSignIn = computed(() => catalog.value?.signIn.filter((s) => s.providerId === selectedId.value) ?? []);
 const method = computed(() => provider.value?.methods.find((m) => m.authChoice === authChoice.value) ?? null);
 const needsInstall = computed(() => !!provider.value?.installPluginId && provider.value.methods.length === 0);
 
@@ -40,11 +45,19 @@ async function load(): Promise<void> {
   }
 }
 
-function select(id: string): void {
+function select(id: string, option: AiSignInOption | null = null): void {
   selectedId.value = id;
+  signInOption.value = option;
   result.value = null;
   actionError.value = null;
   apiKey.value = "";
+  const p = catalog.value?.providers.find((x) => x.id === id);
+  mode.value = option || !p?.methods.length && !p?.installPluginId ? "signin" : "key";
+}
+
+function back(): void {
+  selectedId.value = null;
+  signInOption.value = null;
 }
 
 // Default to the first way of connecting whenever the provider (or its methods after install) changes.
@@ -85,6 +98,10 @@ async function activate(): Promise<void> {
   }
 }
 
+function onSignedIn(modelRef: string | null): void {
+  emit("connected", { ok: true, status: "ok", modelRef, latencyMs: null, error: null });
+}
+
 function failureText(res: ActivateResultDto): string {
   const known = ["auth", "billing", "rate_limit", "timeout", "unavailable", "format"];
   return known.includes(res.status) ? t(`ai.fail.${res.status}`) : t("ai.fail.unknown", { error: res.error ?? res.status });
@@ -104,7 +121,7 @@ onMounted(load);
       <n-button size="small" @click="load">{{ t("common.retry") }}</n-button>
     </n-alert>
 
-    <!-- Step 1: pick a provider -->
+    <!-- Step 1: pick a provider (or a subscription sign-in directly) -->
     <template v-else-if="catalog && !provider">
       <n-grid cols="2 s:3 m:4" responsive="screen" :x-gap="12" :y-gap="12">
         <n-gi v-for="p in popular" :key="p.id">
@@ -124,19 +141,42 @@ onMounted(load);
       </n-collapse>
 
       <div v-if="catalog.signIn.length" class="mt">
-        <n-text depth="3">{{ t("ai.subscriptionSoon") }}</n-text>
+        <n-text depth="3">{{ t("ai.subscriptionTitle") }}</n-text>
         <n-space size="small" class="mt-s">
-          <n-tag v-for="s in catalog.signIn" :key="s.id" size="small" :bordered="false">{{ s.label }}</n-tag>
+          <n-button v-for="s in catalog.signIn" :key="s.id" size="small" secondary @click="select(s.providerId ?? s.id, s)">{{ s.label }}</n-button>
         </n-space>
       </div>
     </template>
 
     <!-- Step 2: connect the chosen provider -->
     <template v-else-if="provider">
-      <n-button text @click="selectedId = null">← {{ t("ai.chooseOther") }}</n-button>
+      <n-button text @click="back">← {{ t("ai.chooseOther") }}</n-button>
       <h2 class="provider-title">{{ provider.label }}</h2>
 
-      <template v-if="needsInstall">
+      <n-radio-group v-if="providerSignIn.length && (provider.methods.length || provider.installPluginId)" v-model:value="mode" class="block">
+        <n-radio-button value="key">{{ t("ai.modeKey") }}</n-radio-button>
+        <n-radio-button value="signin">{{ t("ai.modeSignIn") }}</n-radio-button>
+      </n-radio-group>
+
+      <!-- subscription sign-in -->
+      <template v-if="mode === 'signin'">
+        <SignInFlow
+          v-if="signInOption"
+          :key="signInOption.id"
+          :agent-id="agentId"
+          :option="signInOption"
+          @connected="onSignedIn"
+          @cancel="signInOption = null"
+        />
+        <n-space v-else vertical>
+          <n-button v-for="s in providerSignIn" :key="s.id" @click="signInOption = s">
+            {{ s.label }}<n-text v-if="s.hint" depth="3">&nbsp;— {{ s.hint }}</n-text>
+          </n-button>
+        </n-space>
+      </template>
+
+      <!-- API key / token -->
+      <template v-else-if="needsInstall">
         <p>{{ t("ai.installExplain", { name: provider.label }) }}</p>
         <n-button type="primary" :loading="installing" @click="install">{{ t("ai.install", { name: provider.label }) }}</n-button>
       </template>
@@ -167,12 +207,13 @@ onMounted(load);
         <n-button type="primary" :loading="activating" :disabled="apiKey.trim().length < 8 || !authChoice" @click="activate">
           {{ t("ai.checkAndConnect") }}
         </n-button>
+
+        <n-alert v-if="result?.ok" type="success" class="mt" :title="t('ai.connected')">
+          {{ t("ai.connectedDetail", { model: result.modelRef ?? "—", ms: result.latencyMs ?? "—" }) }}
+        </n-alert>
+        <n-alert v-else-if="result" type="error" class="mt">{{ failureText(result) }}</n-alert>
       </template>
 
-      <n-alert v-if="result?.ok" type="success" class="mt" :title="t('ai.connected')">
-        {{ t("ai.connectedDetail", { model: result.modelRef ?? "—", ms: result.latencyMs ?? "—" }) }}
-      </n-alert>
-      <n-alert v-else-if="result" type="error" class="mt">{{ failureText(result) }}</n-alert>
       <n-alert v-if="actionError" type="error" class="mt">{{ actionError }}</n-alert>
     </template>
   </n-spin>
