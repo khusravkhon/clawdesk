@@ -27,7 +27,8 @@ const max = Number(flagValue("max") ?? 12);
 const { gateway, done } = await connectForScript();
 let sessionId: string | undefined;
 try {
-  let res = await gateway.request<WizardResult>("wizard.start", { mode: "local", flow });
+  const channel = flagValue("channel");
+  let res = await gateway.request<WizardResult>("wizard.start", { mode: "local", flow, ...(channel ? { channel } : {}) });
   sessionId = res.sessionId;
   for (let i = 0; i < max && !res.done && res.step; i++) {
     const step = res.step;

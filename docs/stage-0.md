@@ -10,7 +10,7 @@
 - [~] Цепочка `agents.create` → `agents.files.set` → `config.patch` → `cron.add` → `chat.send` с откатом — без модели пройдена (`spike --no-chat`), `chat.send` ждёт ключ модели
 - [x] Есть ли RPC для логина модели и OAuth плагинов — `rpc-inventory --wizard`, `wizard-walk --more` (модель — да; OAuth плагинов — проверить на этапе «Источники»)
 - [x] Cron срабатывает после рестарта Gateway без сообщений — `cron-test --create` / `--check`
-- [ ] Агент с sandbox и одной смонтированной папкой читает её, а чужую нет
+- [x] Агент с sandbox видит и пишет только свою папку, чужую — нет (доп. папки-источники через `docker.binds` — на экране «Источники»)
 
 ## Что уже выяснено из пакетов 2026.8.1 (до живого запуска)
 
@@ -174,6 +174,22 @@ authChoice }` → шаги забираются `wizard.next { sessionId, answer
   sandboxing), OpenClaw не подставляет образ сам.
 - Безопасность: сокет Docker в контейнере Gateway = права root на хосте у Gateway. Это штатный путь OpenClaw
   (`OPENCLAW_SANDBOX=1` в их `setup.sh`), но в документации установки об этом надо сказать прямо.
+
+**Песочница — включена и проверена вживую.**
+- Свой образ Gateway: `deploy/gateway.Dockerfile` = `ghcr.io/openclaw/openclaw:2026.8.1` + Docker CLI из `docker:29-cli`;
+  сокет хоста смонтирован в Gateway, `group_add: DOCKER_GID` (на Docker Desktop это 0, `init.sh` определяет сам).
+- Состояние OpenClaw перенесено из named volume в `/var/lib/clawdesk/openclaw`, смонтировано **по тому же пути**
+  в Gateway (требование DooD: пути workspace в конфиге должны резолвиться и в Gateway, и в демоне Docker).
+- Образ песочницы `openclaw-sandbox:bookworm-slim` собирается из `deploy/sandbox.Dockerfile` (uid 1000 = node).
+- Панель при `CLAWDESK_SANDBOX=on` пишет младшему `sandbox: { mode: "all", scope: "agent", workspaceAccess: "rw" }`.
+- `openclaw sandbox explain --agent dietitian`: `runtime: sandboxed`, смонтирован только
+  `/var/lib/clawdesk/openclaw/workspace/dietitian -> /workspace rw`.
+- Контейнер создаётся при первом же ходе агента (даже до вызова модели). Изнутри: пользователь `sandbox`,
+  видна и доступна на запись только своя папка, папок главного/других агентов нет, сокета Docker нет,
+  `NetworkMode=none`, корень read-only, `CapDrop=ALL`, не privileged.
+- Безопасность: сокет Docker у Gateway = права root на хосте. Это штатный путь OpenClaw; песочницам сокет не даётся.
+- Docker Desktop (Windows/macOS): `/var/lib/clawdesk` живёт внутри VM Docker Desktop — сброс Docker Desktop
+  к заводским настройкам удалит данные. На сервере Linux это обычная папка хоста (её и бэкапим).
 
 **Сеть.** Pull 2 ГБ образа с ghcr.io рвался (`TLS handshake timeout`, `unexpected EOF`) — в `init.sh` добавлены
 ретраи и `OPENCLAW_IMAGE=openclaw/openclaw` (официальное зеркало Docker Hub) как запасной путь.

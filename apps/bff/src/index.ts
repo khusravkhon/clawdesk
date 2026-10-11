@@ -1,3 +1,4 @@
+import fs from "node:fs";
 import { AiSetupService } from "./ai-setup/ai-setup-service.js";
 import { SignInSessionManager } from "./ai-setup/signin-sessions.js";
 import { buildApp } from "./app.js";
@@ -6,11 +7,13 @@ import { openDb } from "./db/client.js";
 import { createLogger } from "./lib/logger.js";
 import { createGatewayService } from "./runtime.js";
 
+// Host development reads apps/bff/.env (written by init.sh --dev); containers get real env vars.
+if (process.env.NODE_ENV !== "production" && fs.existsSync(".env")) process.loadEnvFile(".env");
 const config = loadConfig();
 const logger = createLogger(config.logLevel);
 
 const { db, close: closeDb } = openDb(config.dbPath);
-const gateway = createGatewayService(config, logger);
+const gateway = createGatewayService(config, logger, { retryPairing: true });
 const aiSetup = new AiSetupService(gateway, logger.child({ component: "ai-setup" }));
 const signIn = new SignInSessionManager(gateway, logger.child({ component: "signin" }));
 const app = await buildApp({ logger, gateway, db, aiSetup, signIn, sandboxEnabled: config.sandboxEnabled, webDist: config.webDist });

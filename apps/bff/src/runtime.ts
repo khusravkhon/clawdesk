@@ -6,7 +6,7 @@ import { DeviceTokenStore } from "./gateway/token-store.js";
 import { PANEL_VERSION } from "./version.js";
 
 /** Builds the gateway connection the same way for the server and for CLI spikes. */
-export function createGatewayService(config: AppConfig, logger: Logger): GatewayService {
+export function createGatewayService(config: AppConfig, logger: Logger, opts: { retryPairing?: boolean } = {}): GatewayService {
   const identity = loadOrCreateDeviceIdentity(config.dataDir);
   const tokens = new DeviceTokenStore(config.dataDir);
   return new GatewayService({
@@ -16,5 +16,6 @@ export function createGatewayService(config: AppConfig, logger: Logger): Gateway
     tokens,
     clientVersion: PANEL_VERSION,
     logger: logger.child({ component: "gateway" }),
+    ...(opts.retryPairing ? { retryPairingEveryMs: 10_000 } : {}),
   });
 }

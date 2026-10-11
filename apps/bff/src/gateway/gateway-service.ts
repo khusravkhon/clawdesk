@@ -25,6 +25,8 @@ export type GatewayServiceOptions = {
   tokens: DeviceTokenStore;
   clientVersion: string;
   logger: Logger;
+  /** Long-running server only: re-try a paused, unapproved connection so an approval takes effect without a restart. */
+  retryPairingEveryMs?: number;
 };
 
 type EventListener = (event: EventFrame) => void;
@@ -41,6 +43,7 @@ export class GatewayService {
   #hello: HelloOk | null = null;
   /** Incremented on every hello-ok; lets callers wait for a reconnect after a Gateway restart. */
   #generation = 0;
+  #retryTimer: NodeJS.Timeout | undefined;
   #status: GatewayStatusDto = {
     state: "idle",
     serverVersion: null,
@@ -117,6 +120,10 @@ export class GatewayService {
         this.#setStatus({ state, lastError: this.#redact(info.reason) });
         // The client will not retry on its own; waiting longer cannot succeed.
         this.#rejectWaiters(new Error(`gateway connection paused (${state})${this.#status.hint ? `: ${this.#status.hint}` : ""}`));
+        if (state === "pairing_required" && this.#opts.retryPairingEveryMs) {
+          clearTimeout(this.#retryTimer);
+          this.#retryTimer = setTimeout(() => void this.#reconnectFresh(), this.#opts.retryPairingEveryMs);
+        }
       },
       onClose: (code, reason) => {
         if (this.#client && this.#status.state === "connected") {
@@ -139,12 +146,22 @@ export class GatewayService {
   }
 
   async stop(): Promise<void> {
+    clearTimeout(this.#retryTimer);
     const client = this.#client;
     this.#client = null;
     // Set before closing so onClose does not report an intentional stop as a lost connection.
     this.#setStatus({ state: "idle" });
     if (client) await client.stopAndWait({ timeoutMs: 2_000 });
     this.#rejectWaiters(new Error("gateway service stopped"));
+  }
+
+  /** Replaces a paused client with a new one (keeps the pairing hint visible meanwhile). */
+  async #reconnectFresh(): Promise<void> {
+    const client = this.#client;
+    if (!client) return;
+    this.#client = null;
+    await client.stopAndWait({ timeoutMs: 2_000 }).catch(() => undefined);
+    this.start();
   }
 
   /** Resolves once hello-ok has been received; rejects on timeout or terminal auth failure. */
