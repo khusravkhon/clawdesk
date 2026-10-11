@@ -98,13 +98,13 @@ export class GatewayService {
       onConnectError: (error) => this.#onConnectError(error),
       onReconnectPaused: (info) => {
         logger.warn({ code: info.code, detailCode: info.detailCode }, "gateway reconnect paused");
-        this.#setStatus({
-          state: info.detailCode === "PAIRING_REQUIRED" ? "pairing_required" : "auth_failed",
-          lastError: this.#redact(info.reason),
-        });
+        const state = info.detailCode === "PAIRING_REQUIRED" ? "pairing_required" : "auth_failed";
+        this.#setStatus({ state, lastError: this.#redact(info.reason) });
+        // The client will not retry on its own; waiting longer cannot succeed.
+        this.#rejectWaiters(new Error(`gateway connection paused (${state})${this.#status.hint ? `: ${this.#status.hint}` : ""}`));
       },
       onClose: (code, reason) => {
-        if (this.#status.state === "connected") {
+        if (this.#client && this.#status.state === "connected") {
           logger.warn({ code, reason: this.#redact(reason) }, "gateway connection closed; reconnecting");
           this.#setStatus({ state: "disconnected" });
         }
@@ -126,9 +126,10 @@ export class GatewayService {
   async stop(): Promise<void> {
     const client = this.#client;
     this.#client = null;
+    // Set before closing so onClose does not report an intentional stop as a lost connection.
+    this.#setStatus({ state: "idle" });
     if (client) await client.stopAndWait({ timeoutMs: 2_000 });
     this.#rejectWaiters(new Error("gateway service stopped"));
-    this.#setStatus({ state: "idle" });
   }
 
   /** Resolves once hello-ok has been received; rejects on timeout or terminal auth failure. */

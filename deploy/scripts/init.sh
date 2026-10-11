@@ -38,7 +38,17 @@ else
 fi
 
 step "Pulling OpenClaw image"
-"${COMPOSE[@]}" pull gateway
+pulled=0
+for attempt in 1 2 3; do
+  if "${COMPOSE[@]}" pull --quiet gateway; then pulled=1; break; fi
+  echo "pull failed (attempt $attempt/3), retrying in 5s…"
+  sleep 5
+done
+if [[ $pulled == 0 ]]; then
+  echo "Could not pull the OpenClaw image. If ghcr.io is slow or blocked, set in deploy/.env:"
+  echo "  OPENCLAW_IMAGE=openclaw/openclaw"
+  exit 1
+fi
 
 step "Onboarding OpenClaw (only if not configured yet)"
 if "${COMPOSE[@]}" run -T --rm --no-deps --entrypoint sh gateway -c 'test -f /home/node/.openclaw/openclaw.json'; then

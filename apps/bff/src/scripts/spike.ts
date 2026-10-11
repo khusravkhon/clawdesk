@@ -64,8 +64,8 @@ try {
         for (const name of WORKSPACE_FILES) {
           await gateway.request("agents.files.set", { agentId: ctx.agentId, name, content: files[name] });
         }
-        const back = await gateway.request<{ content?: string }>("agents.files.get", { agentId: ctx.agentId, name: "SOUL.md" });
-        if (!back.content?.includes("диетолог")) throw new Error(`SOUL.md read-back mismatch: ${short(back, 200)}`);
+        const back = await gateway.request<{ file: { content?: string; missing: boolean } }>("agents.files.get", { agentId: ctx.agentId, name: "SOUL.md" });
+        if (back.file.content !== files["SOUL.md"]) throw new Error(`SOUL.md read-back mismatch: ${short(back.file, 300)}`);
         console.log(`✓ agents.files.set ${WORKSPACE_FILES.join(", ")} (read-back ok)`);
       }),
     },

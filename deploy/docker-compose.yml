@@ -18,7 +18,8 @@ services:
   gateway:
     <<: *hardening
     # Pinned: upgrading OpenClaw is a separate, tested change (see docs/architecture.md, decision 5).
-    image: ghcr.io/openclaw/openclaw:${OPENCLAW_VERSION:-2026.8.1}
+    # OPENCLAW_IMAGE=openclaw/openclaw selects the official Docker Hub mirror of the same release.
+    image: ${OPENCLAW_IMAGE:-ghcr.io/openclaw/openclaw}:${OPENCLAW_VERSION:-2026.8.1}
     env_file:
       - path: .env
         required: false
