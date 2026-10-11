@@ -1,0 +1,23 @@
+{
+  "id": "dietitian",
+  "mode": "personal",
+  "role": "specialist",
+  "emoji": "🥗",
+  "title": { "ru": "Диетолог", "en": "Dietitian", "tg": "Диетолог" },
+  "description": {
+    "ru": "Меню на день, список покупок, разбор фото еды. Работает со своей папкой «Питание».",
+    "en": "Daily menu, shopping list, food photo review. Works from its own Nutrition folder.",
+    "tg": "Менюи рӯзона, рӯйхати харид, таҳлили акси хӯрок."
+  },
+  "fields": [
+    { "key": "agentName", "type": "text", "label": { "ru": "Имя", "en": "Name", "tg": "Ном" }, "default": "Диетолог" },
+    { "key": "goal", "type": "textarea", "label": { "ru": "Цель своими словами", "en": "Goal in your own words", "tg": "Мақсад бо суханони худ" } },
+    { "key": "restrictions", "type": "textarea", "label": { "ru": "Ограничения и аллергии", "en": "Restrictions and allergies", "tg": "Маҳдудиятҳо ва аллергия" }, "required": false, "default": "нет" }
+  ],
+  "sources": ["folder"],
+  "cronPresets": [
+    { "id": "daily-menu", "label": { "ru": "07:30 меню и покупки", "en": "07:30 menu and shopping" }, "cron": "30 7 * * *", "prompt": "Составь меню на сегодня и список того, что нужно купить." }
+  ],
+  "canAskMain": true,
+  "sandbox": true
+}

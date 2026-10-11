@@ -1,0 +1,27 @@
+{
+  "name": "@clawdesk/web",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vue-tsc --noEmit && vite build",
+    "preview": "vite preview",
+    "typecheck": "vue-tsc --noEmit"
+  },
+  "dependencies": {
+    "@clawdesk/shared": "workspace:*",
+    "naive-ui": "2.45.3",
+    "pinia": "4.0.3",
+    "vue": "3.5.43",
+    "vue-i18n": "11.4.14",
+    "vue-router": "5.4.0"
+  },
+  "devDependencies": {
+    "@types/node": "24.19.2",
+    "@vitejs/plugin-vue": "6.0.10",
+    "typescript": "6.0.3",
+    "vite": "8.3.4",
+    "vue-tsc": "3.3.13"
+  }
+}

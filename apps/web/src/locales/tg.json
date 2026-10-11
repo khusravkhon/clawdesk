@@ -1,0 +1,27 @@
+{
+  "app": { "title": "ClawDesk" },
+  "nav": { "status": "Ҳолат" },
+  "status": {
+    "title": "Ҳолати система",
+    "refresh": "Навсозӣ",
+    "panel": "Панел",
+    "gateway": "Gateway-и OpenClaw",
+    "version": "Версия",
+    "protocol": "Протокол",
+    "scopes": "Ҳуқуқҳо",
+    "agents": "Агентҳо",
+    "noAgents": "Ҳоло агент нест",
+    "default": "пешфарз",
+    "notInPanel": "берун аз панел сохта шудааст",
+    "unreachable": "Панел ҷавоб намедиҳад. Санҷед, ки BFF кор мекунад.",
+    "state": {
+      "idle": "оғоз нашудааст",
+      "connecting": "пайваст шуда истодааст…",
+      "connected": "пайваст аст",
+      "pairing_required": "интизори тасдиқи дастгоҳ",
+      "auth_failed": "хатои воридшавӣ",
+      "disconnected": "пайваст канда шуд"
+    }
+  },
+  "lang": { "ru": "Русский", "en": "English", "tg": "Тоҷикӣ" }
+}

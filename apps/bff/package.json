@@ -1,0 +1,38 @@
+﻿{
+  "name": "@clawdesk/bff",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "main": "dist/index.js",
+  "scripts": {
+    "dev": "tsx watch --conditions=source src/index.ts",
+    "build": "tsc -p tsconfig.build.json",
+    "start": "node dist/index.js",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run",
+    "spike": "tsx --conditions=source src/scripts/spike.ts",
+    "rpc-inventory": "tsx --conditions=source src/scripts/rpc-inventory.ts",
+    "cron-test": "tsx --conditions=source src/scripts/cron-restart-test.ts",
+    "db:generate": "drizzle-kit generate"
+  },
+  "dependencies": {
+    "@clawdesk/shared": "workspace:*",
+    "@clawdesk/templates": "workspace:*",
+    "@fastify/static": "10.1.6",
+    "@openclaw/gateway-client": "2026.8.1",
+    "@openclaw/gateway-protocol": "2026.8.1",
+    "better-sqlite3": "12.11.1",
+    "drizzle-orm": "0.45.4",
+    "fastify": "5.12.5",
+    "pino": "10.4.0",
+    "zod": "4.6.5"
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "9.6.0",
+    "@types/node": "24.19.2",
+    "drizzle-kit": "0.31.11",
+    "tsx": "4.23.15",
+    "typescript": "6.0.3",
+    "vitest": "5.0.3"
+  }
+}

@@ -1,0 +1,27 @@
+{
+  "app": { "title": "ClawDesk" },
+  "nav": { "status": "Status" },
+  "status": {
+    "title": "System status",
+    "refresh": "Refresh",
+    "panel": "Panel",
+    "gateway": "OpenClaw Gateway",
+    "version": "Version",
+    "protocol": "Protocol",
+    "scopes": "Scopes",
+    "agents": "Agents",
+    "noAgents": "No agents yet",
+    "default": "default",
+    "notInPanel": "created outside the panel",
+    "unreachable": "The panel is not responding. Check that the BFF is running.",
+    "state": {
+      "idle": "not started",
+      "connecting": "connecting…",
+      "connected": "connected",
+      "pairing_required": "waiting for device approval",
+      "auth_failed": "sign-in failed",
+      "disconnected": "connection lost"
+    }
+  },
+  "lang": { "ru": "Русский", "en": "English", "tg": "Тоҷикӣ" }
+}

@@ -1,0 +1,20 @@
+{
+  "name": "clawdesk",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Self-hosted panel for OpenClaw: main agent, junior agents, Telegram — no terminal required.",
+  "license": "MIT",
+  "type": "module",
+  "packageManager": "pnpm@10.24.0",
+  "engines": {
+    "node": ">=22.19.0"
+  },
+  "scripts": {
+    "dev:bff": "pnpm --filter @clawdesk/bff dev",
+    "dev:web": "pnpm --filter @clawdesk/web dev",
+    "build": "pnpm -r build",
+    "typecheck": "pnpm -r typecheck",
+    "test": "pnpm -r test",
+    "spike": "pnpm --filter @clawdesk/bff spike"
+  }
+}

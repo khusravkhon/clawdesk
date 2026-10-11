@@ -1,0 +1,16 @@
+# Development overlay: run the BFF and spike scripts on the host (pnpm dev:bff)
+# against the containerized Gateway.
+#
+#   docker compose -f deploy/docker-compose.yml -f deploy/docker-compose.dev.yml up -d gateway
+#
+# The Gateway binds to the container's LAN interface and is published on host
+# loopback only. A host process is not "local" to the Gateway (it arrives via the
+# Docker bridge), so its device must be approved once:
+#   docker compose -f deploy/docker-compose.yml exec gateway node dist/index.js devices list
+#   docker compose -f deploy/docker-compose.yml exec gateway node dist/index.js devices approve <requestId>
+
+services:
+  gateway:
+    command: ["node", "dist/index.js", "gateway", "--bind", "lan", "--port", "18789"]
+    ports:
+      - "127.0.0.1:${GATEWAY_DEV_PORT:-18789}:18789"

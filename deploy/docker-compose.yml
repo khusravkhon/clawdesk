@@ -1,0 +1,76 @@
+# ClawDesk: OpenClaw Gateway + panel (BFF serving the web UI).
+#
+# The panel shares the gateway's network namespace, so it reaches the Gateway on
+# 127.0.0.1:18789 (silent local device pairing) while the Gateway itself never
+# listens outside loopback. Only the panel port is published.
+#
+# First start: deploy/scripts/init.sh (creates .env, onboards OpenClaw, starts the stack).
+
+name: clawdesk
+
+x-hardening: &hardening
+  cap_drop: [NET_RAW, NET_ADMIN]
+  security_opt: ["no-new-privileges:true"]
+  init: true
+  restart: unless-stopped
+
+services:
+  gateway:
+    <<: *hardening
+    # Pinned: upgrading OpenClaw is a separate, tested change (see docs/architecture.md, decision 5).
+    image: ghcr.io/openclaw/openclaw:${OPENCLAW_VERSION:-2026.8.1}
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      HOME: /home/node
+      OPENCLAW_HOME: /home/node
+      OPENCLAW_STATE_DIR: /home/node/.openclaw
+      OPENCLAW_CONFIG_PATH: /home/node/.openclaw/openclaw.json
+      OPENCLAW_CONFIG_DIR: /home/node/.openclaw
+      OPENCLAW_WORKSPACE_DIR: /home/node/.openclaw/workspace
+      OPENCLAW_GATEWAY_TOKEN: ${OPENCLAW_GATEWAY_TOKEN:?run deploy/scripts/init.sh to create .env}
+      OPENCLAW_DISABLE_BONJOUR: "1"
+      TZ: ${CLAWDESK_TZ:-UTC}
+    volumes:
+      - openclaw-state:/home/node/.openclaw
+      - openclaw-auth-secrets:/home/node/.config/openclaw
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    command: ["node", "dist/index.js", "gateway", "--bind", "${GATEWAY_BIND:-loopback}", "--port", "18789"]
+    ports:
+      # Published here because the panel lives in this network namespace.
+      - "${PANEL_BIND:-127.0.0.1}:${PANEL_PORT:-8080}:8080"
+    healthcheck:
+      test: ["CMD", "node", "dist/docker-healthcheck.js"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+  panel:
+    <<: *hardening
+    build:
+      context: ..
+      dockerfile: deploy/panel.Dockerfile
+    image: ghcr.io/khusravkhon/clawdesk-panel:${CLAWDESK_VERSION:-dev}
+    network_mode: "service:gateway"
+    environment:
+      NODE_ENV: production
+      HOST: 0.0.0.0
+      PORT: "8080"
+      GATEWAY_URL: ws://127.0.0.1:18789
+      OPENCLAW_GATEWAY_TOKEN: ${OPENCLAW_GATEWAY_TOKEN}
+      DATA_DIR: /data
+      WEB_DIST: /app/web
+      LOG_LEVEL: ${PANEL_LOG_LEVEL:-info}
+    volumes:
+      - panel-data:/data
+    depends_on:
+      gateway:
+        condition: service_healthy
+
+volumes:
+  openclaw-state:
+  openclaw-auth-secrets:
+  panel-data:

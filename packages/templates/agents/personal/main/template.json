@@ -1,0 +1,26 @@
+{
+  "id": "main",
+  "mode": "personal",
+  "role": "main",
+  "emoji": "🧭",
+  "title": { "ru": "Главный ассистент", "en": "Main assistant", "tg": "Ёрдамчии асосӣ" },
+  "description": {
+    "ru": "Знает о вас всё нужное, ведёт дела и план, отвечает младшим агентам короткими выжимками.",
+    "en": "Knows what matters about you, runs your tasks and plan, answers junior agents with short summaries.",
+    "tg": "Корҳо ва нақшаи шуморо пеш мебарад, ба агентҳои хурд ҷавобҳои кӯтоҳ медиҳад."
+  },
+  "fields": [
+    { "key": "agentName", "type": "text", "label": { "ru": "Имя ассистента", "en": "Assistant name", "tg": "Номи ёрдамчӣ" }, "default": "Ассистент" },
+    { "key": "character", "type": "textarea", "label": { "ru": "Характер и стиль общения", "en": "Personality and tone", "tg": "Хислат ва услуби муошират" }, "default": "Дружелюбный, конкретный, без воды." },
+    { "key": "aboutUser", "type": "textarea", "label": { "ru": "Что обо мне знать", "en": "What to know about me", "tg": "Дар бораи ман чӣ донистан лозим" } },
+    { "key": "summaryMaxLines", "type": "text", "label": { "ru": "Длина ответа младшим (строк)", "en": "Max lines in replies to juniors", "tg": "Дарозии ҷавоб ба агентҳои хурд (сатр)" }, "default": "10" }
+  ],
+  "sources": ["notion", "gmail", "gdrive", "folder"],
+  "cronPresets": [
+    { "id": "morning-plan", "label": { "ru": "08:00 план на день", "en": "08:00 plan for the day" }, "cron": "0 8 * * *", "prompt": "Составь план на сегодня по моим делам, календарю и заметкам. Коротко, списком." },
+    { "id": "evening-checkin", "label": { "ru": "20:00 чек-ин", "en": "20:00 check-in" }, "cron": "0 20 * * *", "prompt": "Спроси, что удалось сделать сегодня, и отметь незакрытые дела на завтра." },
+    { "id": "weekly-adapt", "label": { "ru": "Пн 09:00 адаптация плана", "en": "Mon 09:00 plan review" }, "cron": "0 9 * * 1", "prompt": "Подведи итоги прошлой недели и предложи, что поменять в плане на эту." }
+  ],
+  "canAskMain": false,
+  "sandbox": false
+}

@@ -1,0 +1,27 @@
+{
+  "app": { "title": "ClawDesk" },
+  "nav": { "status": "Состояние" },
+  "status": {
+    "title": "Состояние системы",
+    "refresh": "Обновить",
+    "panel": "Панель",
+    "gateway": "Gateway OpenClaw",
+    "version": "Версия",
+    "protocol": "Протокол",
+    "scopes": "Права",
+    "agents": "Агенты",
+    "noAgents": "Агентов пока нет",
+    "default": "по умолчанию",
+    "notInPanel": "создан вне панели",
+    "unreachable": "Панель не отвечает. Проверьте, что BFF запущен.",
+    "state": {
+      "idle": "не запущен",
+      "connecting": "подключается…",
+      "connected": "подключён",
+      "pairing_required": "ждёт одобрения устройства",
+      "auth_failed": "ошибка входа",
+      "disconnected": "соединение потеряно"
+    }
+  },
+  "lang": { "ru": "Русский", "en": "English", "tg": "Тоҷикӣ" }
+}
