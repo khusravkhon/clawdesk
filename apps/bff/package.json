@@ -14,6 +14,7 @@
     "rpc-inventory": "tsx --conditions=source src/scripts/rpc-inventory.ts",
     "cron-test": "tsx --conditions=source src/scripts/cron-restart-test.ts",
     "wizard-walk": "tsx --conditions=source src/scripts/wizard-walk.ts",
+    "tool-invoke": "tsx --conditions=source src/scripts/tool-invoke.ts",
     "db:generate": "drizzle-kit generate"
   },
   "dependencies": {

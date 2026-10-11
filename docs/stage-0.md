@@ -113,5 +113,19 @@ Ollama, LM Studio, vLLM, Custom OpenAI/Anthropic-совместимый) и «Sk
 14:12:52Z, никаких сообщений → запуск в 14:15:41Z (срок 14:15:39Z). Прогон упал с 401 (модели нет), что и ожидалось:
 планировщик проснулся сам. Heartbeat по умолчанию включать не нужно.
 
+**Sandbox — подготовка (проверка ждёт модель).**
+- Файловые и exec-инструменты (`read`, `write`, `exec`…) есть в `tools.effective`, но `tools.invoke` отвечает
+  `Tool not available: read`: они работают только внутри хода агента. Поэтому «агент читает свою папку, а чужую нет»
+  проверяется только с подключённой моделью.
+- В официальном образе нет Docker CLI → нужен свой образ Gateway: `FROM ghcr.io/openclaw/openclaw:2026.8.1` +
+  `COPY --from=docker:cli /usr/local/bin/docker`.
+- Docker Desktop: сокет внутри контейнера `root:root 660` → `group_add: ["0"]`; на Linux — GID группы docker.
+  `init.sh` будет определять GID пробным контейнером.
+- Bind-пути внутри VM Docker Desktop (`/var/lib/...`) работают, создаются от root → нужен `chown 1000:1000`.
+- Песочница для образа `openclaw-sandbox:bookworm-slim` собирается из `debian:bookworm-slim` (Dockerfile в доке
+  sandboxing), OpenClaw не подставляет образ сам.
+- Безопасность: сокет Docker в контейнере Gateway = права root на хосте у Gateway. Это штатный путь OpenClaw
+  (`OPENCLAW_SANDBOX=1` в их `setup.sh`), но в документации установки об этом надо сказать прямо.
+
 **Сеть.** Pull 2 ГБ образа с ghcr.io рвался (`TLS handshake timeout`, `unexpected EOF`) — в `init.sh` добавлены
 ретраи и `OPENCLAW_IMAGE=openclaw/openclaw` (официальное зеркало Docker Hub) как запасной путь.
