@@ -38,7 +38,7 @@ function status(gateway: GatewayService): string {
 }
 
 export function short(value: unknown, max = 600): string {
-  const text = typeof value === "string" ? value : JSON.stringify(value, null, 2);
+  const text = typeof value === "string" ? value : (JSON.stringify(value, null, 2) ?? String(value));
   return text.length > max ? `${text.slice(0, max)}… (${text.length} chars)` : text;
 }
 

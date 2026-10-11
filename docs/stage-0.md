@@ -96,6 +96,28 @@ Ollama, LM Studio, vLLM, Custom OpenAI/Anthropic-совместимый) и «Sk
 Осторожно: одновременно открыт только один мастер (`setup is already in progress`), `wizard.status` требует
 `sessionId` — BFF должен хранить id своей сессии и отменять её при уходе пользователя.
 
+**Подключение модели к конкретному агенту (главному и каждому младшему) — работает через RPC.**
+Продуктовое правило: ключи только через интерфейс — первое окно подключает ИИ главному агенту, конструктор
+младшего агента подключает ИИ этому агенту (свой ключ / подписка, либо «как у главного»).
+- `openclaw.setup.detect { agentId }` (~4 с, read-only): `candidates` (уже готовые), `manualProviders` — способы
+  по ключу для **установленных** провайдер-плагинов (`openai-api-key`, `apiKey`/`setup-token` Anthropic,
+  `gemini-api-key`, `minimax-*`…, с `groupLabel`, `hint`, иконкой и сайтом), `authOptions` — вход по подписке
+  (`oauth` / `device-code`: ChatGPT, OpenRouter, xAI, Copilot, MiniMax), `prepareOptions` — локальные (LM Studio, Ollama).
+- `openclaw.setup.activate { agentId, kind: "api-key", authChoice, apiKey }` **сначала проверяет ключ живым запросом
+  к провайдеру и только потом сохраняет**: с неверным ключом — `{ ok: false, status: "auth" }`, у агента не появилось
+  ни профиля, ни модели, главный не затронут. Gateway сам маскирует ключ в ошибке (`****0000`).
+- Ключ агента хранится в его собственном хранилище (`agents/<id>/agent/openclaw-agent.sqlite`). Агент без своего
+  профиля читает общий (read-through) — это и есть вариант «использовать доступ главного».
+- **DeepSeek, Qwen, Kimi/Moonshot, GLM (zai), Volcengine, Qianfan, Tencent, StepFun, Xiaomi — отдельные
+  официальные плагины, по умолчанию не установлены** (`activate` → `That key-based provider is not available`).
+  Встроены: anthropic, openai, xai, minimax, ollama и др.
+- `plugins.install { source: "official", pluginId }` ставит **последнюю** версию → `incompatible_plugin_api`
+  (нужен 2026.10.1). Рабочий путь: `{ source: "clawhub", packageName: "@openclaw/<id>-provider", version: "2026.8.1" }`
+  → ответ `PLUGIN_CAPABILITY_CONSENT_REQUIRED` с `reviewToken` → повтор с `acknowledgeCapabilities: { reviewToken }`
+  → установлено, `restartRequired: true` → `gateway.restart.request` → переподключение ~3 с → провайдер появляется в
+  `detect` (`deepseek-api-key`). **Версия плагина всегда = версия OpenClaw.**
+- Скрипты: `setup-probe`, `activate-probe`, `plugins-probe`, `provider-install-probe` (только фальшивые ключи).
+
 **Цепочка создания агента — работает** (`spike --no-chat`, ~730 мс):
 `agents.create` 243 мс → `agents.files.set` ×3 с проверкой чтения 80 мс → `config.patch` 341 мс → `cron.add` 62 мс.
 Откат проверен вживую: при сбое шага файлов агент удалён (`agents.delete`).

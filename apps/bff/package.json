@@ -15,6 +15,10 @@
     "cron-test": "tsx --conditions=source src/scripts/cron-restart-test.ts",
     "wizard-walk": "tsx --conditions=source src/scripts/wizard-walk.ts",
     "tool-invoke": "tsx --conditions=source src/scripts/tool-invoke.ts",
+    "setup-probe": "tsx --conditions=source src/scripts/setup-probe.ts",
+    "activate-probe": "tsx --conditions=source src/scripts/activate-probe.ts",
+    "plugins-probe": "tsx --conditions=source src/scripts/plugins-probe.ts",
+    "provider-install-probe": "tsx --conditions=source src/scripts/provider-install-probe.ts",
     "db:generate": "drizzle-kit generate"
   },
   "dependencies": {
