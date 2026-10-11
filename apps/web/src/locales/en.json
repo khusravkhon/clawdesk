@@ -60,7 +60,16 @@
     },
     "subscriptionTitle": "Or sign in with a subscription, no key:",
     "modeKey": "API key",
-    "modeSignIn": "Subscription sign-in"
+    "modeSignIn": "Subscription sign-in",
+    "keySteps": {
+      "google": "Google AI Studio opens → click \"Create API key\" → pick (or create) a project → copy the key (starts with AIza…). Note: a Google AI Pro subscription does not pay for the API; the key has its own free tier and billing.",
+      "openai": "Click \"Create new secret key\" and copy it (starts with sk-…); it is shown once. ChatGPT Plus does not pay for the API — use subscription sign-in for that.",
+      "anthropic": "Click \"Create Key\" and copy it (starts with sk-ant-…). Connect a Claude Pro/Max subscription with a setup-token.",
+      "deepseek": "Click \"Create new API key\" and copy it. Your DeepSeek balance must be topped up.",
+      "moonshot": "Under API Keys click \"Create API Key\" and copy it.",
+      "zai": "Click \"Add new API key\" and copy it.",
+      "openrouter": "Click \"Create Key\" and copy it (starts with sk-or-…)."
+    }
   },
   "signIn": {
     "deviceSteps": "Open the sign-in page in your own browser, sign in and enter this code:",

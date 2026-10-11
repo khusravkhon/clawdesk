@@ -11,7 +11,7 @@ import SignInFlow from "./SignInFlow.vue";
 
 const props = defineProps<{ agentId: string }>();
 const emit = defineEmits<{ connected: [result: ActivateResultDto] }>();
-const { t } = useI18n();
+const { t, te } = useI18n();
 
 const catalog = ref<AiCatalogDto | null>(null);
 const loading = ref(false);
@@ -202,6 +202,7 @@ onMounted(load);
         <p v-if="provider.website" class="hint">
           <n-a :href="provider.website" target="_blank" rel="noopener noreferrer">{{ t("ai.whereKey", { name: provider.label }) }}</n-a>
         </p>
+        <p v-if="te(`ai.keySteps.${provider.id}`)" class="hint">{{ t(`ai.keySteps.${provider.id}`) }}</p>
         <p class="hint">{{ t("ai.privacy") }}</p>
 
         <n-button type="primary" :loading="activating" :disabled="apiKey.trim().length < 8 || !authChoice" @click="activate">

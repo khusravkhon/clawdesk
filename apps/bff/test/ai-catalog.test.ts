@@ -11,6 +11,7 @@ const detect: DetectResult = {
     { id: "setup-token", brandId: "anthropic", groupLabel: "Anthropic", label: "Anthropic setup-token" },
     { id: "lmstudio", brandId: "lmstudio", groupLabel: "LM Studio", label: "LM Studio" },
     { id: "minimax-cn-api", brandId: "minimax", groupLabel: "MiniMax", label: "MiniMax CN" },
+    { id: "gemini-api-key", brandId: "google", groupLabel: "Google", label: "Gemini API key", website: "https://ai.google.dev/" },
   ],
   authOptions: [
     { id: "openai", brandId: "openai", label: "ChatGPT Login", kind: "oauth", featured: true },
@@ -42,6 +43,11 @@ describe("buildCatalog", () => {
     expect(byId.qwen?.installPluginId).toBe("qwen");
     expect(byId.evil).toBeUndefined();
     expect(byId["diagnostics-otel"]).toBeUndefined();
+  });
+
+  it("links straight to the API key page, not the provider home page", () => {
+    expect(byId.google?.website).toBe("https://aistudio.google.com/apikey");
+    expect(byId.openai?.website).toBe("https://platform.openai.com/api-keys");
   });
 
   it("drops methods that need more than a pasted key", () => {

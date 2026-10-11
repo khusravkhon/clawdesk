@@ -32,15 +32,18 @@ export type PluginEntry = {
 /** Shown first, in this order; everything else follows alphabetically. */
 const POPULAR = ["anthropic", "openai", "deepseek", "qwen", "moonshot", "kimi", "zai", "google", "minimax", "xai", "openrouter"];
 
-/** Where a person gets a key, when the Gateway does not say. Root consoles only. */
+/**
+ * The exact page where a person creates an API key. Preferred over the Gateway's
+ * provider website, which is usually a product home page (a person lands in a
+ * playground and does not find the key).
+ */
 const KEY_PAGES: Record<string, string> = {
-  anthropic: "https://console.anthropic.com/",
+  anthropic: "https://console.anthropic.com/settings/keys",
   openai: "https://platform.openai.com/api-keys",
-  deepseek: "https://platform.deepseek.com/",
-  google: "https://aistudio.google.com/",
-  moonshot: "https://platform.moonshot.ai/",
-  zai: "https://z.ai/",
-  minimax: "https://www.minimax.io/",
+  google: "https://aistudio.google.com/apikey",
+  deepseek: "https://platform.deepseek.com/api_keys",
+  moonshot: "https://platform.moonshot.ai/console/api-keys",
+  zai: "https://z.ai/manage-apikey/apikey-list",
   xai: "https://console.x.ai/",
   openrouter: "https://openrouter.ai/keys",
 };
@@ -99,7 +102,7 @@ export function buildCatalog(agentId: string, detect: DetectResult, plugins: Plu
 }
 
 function newProvider(id: string, label: string, website: string | null, installPluginId: string | null): AiProvider {
-  return { id, label, website: website ?? KEY_PAGES[id] ?? null, popular: POPULAR.includes(id), installPluginId, methods: [] };
+  return { id, label, website: KEY_PAGES[id] ?? website ?? null, popular: POPULAR.includes(id), installPluginId, methods: [] };
 }
 
 function toMethod(manual: DetectResult["manualProviders"][number]): AiConnectMethod {
