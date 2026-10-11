@@ -8,6 +8,7 @@ import type {
   ApproveTelegramResultDto,
   CreateAgentRequest,
   CreateAgentResultDto,
+  FreeModelsStatusDto,
   HealthDto,
   InstallProviderResultDto,
   SignInAnswerRequest,
@@ -57,6 +58,11 @@ export const api = {
     pairing: () => request<TelegramPairingRequestDto[]>("/api/telegram/pairing"),
     approve: (requestId: string, accountId: string) => post<ApproveTelegramResultDto>("/api/telegram/pairing/approve", { requestId, accountId }),
     test: (text: string) => post<void>("/api/telegram/test", { text }),
+  },
+  freeModels: {
+    status: () => request<FreeModelsStatusDto>("/api/free-models"),
+    addKey: (platform: string, key: string) => post<FreeModelsStatusDto>("/api/free-models/keys", { platform, key }),
+    removeKeys: (platform: string) => request<FreeModelsStatusDto>(`/api/free-models/keys/${encodeURIComponent(platform)}`, { method: "DELETE" }),
   },
   templates: (mode: string) => request<TemplateDto[]>(`/api/templates?mode=${encodeURIComponent(mode)}&role=specialist`),
   ai: {

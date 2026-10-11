@@ -46,6 +46,11 @@ env_set() {
   else echo "$1=$2" >> .env; fi
 }
 
+if [[ -z "$(env_get FREELLMAPI_ENCRYPTION_KEY)" ]]; then
+  env_set FREELLMAPI_ENCRYPTION_KEY "$(random_token)"
+  echo "generated FREELLMAPI_ENCRYPTION_KEY"
+fi
+
 step "Detecting Docker socket group (for agent sandboxes)"
 # The Gateway starts sandbox containers through the host socket; it needs the socket's group.
 DOCKER_GID="$(docker run --rm -v /var/run/docker.sock:/var/run/docker.sock debian:bookworm-slim stat -c %g /var/run/docker.sock)"
@@ -84,7 +89,7 @@ fi
 
 if [[ $DEV == 1 ]]; then
   step "Starting gateway (dev: 127.0.0.1:18789)"
-  "${COMPOSE[@]}" up -d gateway
+  "${COMPOSE[@]}" up -d gateway freellmapi
   bff_env="$DEPLOY_DIR/../apps/bff/.env"
   if [[ ! -f "$bff_env" ]]; then
     {
@@ -93,6 +98,7 @@ if [[ $DEV == 1 ]]; then
       echo "DATA_DIR=./data"
       echo "LOG_LEVEL=info"
       echo "CLAWDESK_SANDBOX=on"
+      echo "FREELLMAPI_URL=http://127.0.0.1:3001"
     } > "$bff_env"
     chmod 600 "$bff_env"
     echo "wrote apps/bff/.env for host development"

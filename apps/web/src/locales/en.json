@@ -101,7 +101,8 @@
     "confirmDelete": "Delete agent \"{name}\" with its files and schedules?",
     "deleted": "Agent \"{name}\" deleted",
     "noSandboxTitle": "Sandbox not set up yet",
-    "noSandbox": "The server does not run the Docker sandbox for junior agents yet, so they run without isolation. Do not give them dangerous tools until the sandbox is on."
+    "noSandbox": "The server does not run the Docker sandbox for junior agents yet, so they run without isolation. Do not give them dangerous tools until the sandbox is on.",
+    "freeModels": "Free models"
   },
   "builder": {
     "title": "New agent",
@@ -133,7 +134,10 @@
     "rolledBack": "Nothing was left behind: all steps were undone.",
     "deliverToTelegram": "Send schedule results to me in Telegram",
     "telegramLater": "Connect Telegram to get results in a chat.",
-    "createdDetailTelegram": "Schedules: {n}. Results will arrive in your Telegram."
+    "createdDetailTelegram": "Schedules: {n}. Results will arrive in your Telegram.",
+    "aiFree": "Free models (experimental)",
+    "aiFreeHint": "lower quality, for simple tasks",
+    "aiFreeSetup": "Set up free models"
   },
   "telegram": {
     "stepBot": "Bot",
@@ -167,6 +171,26 @@
       "no_owner": "Approve yourself first: message the bot and press \"It's me\".",
       "invalid_request": "This does not look like a bot token. It looks like 123456789:AA…"
     }
+  },
+  "free": {
+    "title": "Free models (experimental)",
+    "lead": "For junior agents in personal-assistant mode. Paste free keys from providers — the server pools their free limits and switches when one runs out. The main assistant always uses your main AI.",
+    "warnTitle": "Good to know",
+    "warn1": "Lower, varying quality: these are not top models, and limits run out by evening (reset at 00:00 UTC).",
+    "warn2": "Fine for simple tasks: reminders, ideas, summaries. Give important agents their own key.",
+    "warn3": "Personal use only. Each provider's free-tier terms apply.",
+    "ready": "Ready: pick free models when you create a junior agent.",
+    "recommended": "Recommended (free, no card)",
+    "startWithGoogle": "Start with Google AI Studio — it has the largest free limits. Agents need models with token headroom: some free tiers allow less than one agent request.",
+    "keyAdded": "keys: {n}",
+    "getKey": "Get a free key",
+    "keyPlaceholder": "Paste key",
+    "add": "Add",
+    "remove": "Remove keys",
+    "removeConfirm": "Remove {name} keys?",
+    "added": "{name} key added",
+    "others": "Other providers ({n})",
+    "othersHint": "These may need a card, Chinese ID verification or special conditions — check the provider's site."
   },
   "lang": {
     "ru": "Русский",

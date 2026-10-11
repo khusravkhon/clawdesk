@@ -206,5 +206,17 @@ authChoice }` → шаги забираются `wizard.next { sessionId, answer
 - Не проверено вживую (нужен настоящий бот): применение конфига канала, приход заявки на парование, доставка.
 - Следующий шаг: группа с темами — тема на агента (`channels.telegram.groups.<chat>.topics.<topic>.agentId`).
 
+**Бесплатные модели (FreeLLMAPI) — только для младших агентов в личном режиме.**
+- Сервис `ghcr.io/tashfeenahmed/freellmapi:v0.13.7` (закреплён) живёт в сетевом namespace Gateway и слушает только
+  loopback. Пользователь ничего не ставит: приложения FreeLLMAPI для телефона/ПК не нужны, агенты работают на сервере.
+- Панель сама создаёт единственную учётку FreeLLMAPI (`POST /api/auth/setup`, со случайным паролем в
+  `data/freellmapi/account.json` 0600; с loopback код настройки не нужен), добавляет ключи (`POST /api/keys`),
+  берёт общий ключ (`GET /api/settings/api-key`) → защищённый секрет Gateway → `models.providers.freellmapi`
+  (`baseUrl http://127.0.0.1:3001/v1`, `api: openai-completions`, модель `auto`). Агент получает `freellmapi/auto`.
+- Проверено вживую: агент → OpenClaw → FreeLLMAPI → Groq (фальшивый ключ → 401, ключ помечен невалидным).
+- **Ограничение:** запрос агента OpenClaw ≈10 тыс. токенов (инструкции + инструменты); бесплатные модели с лимитом
+  8 тыс. токенов/мин FreeLLMAPI пропускает. Нужны провайдеры с запасом (Google AI Studio, Cerebras, Mistral).
+- Не показывается для главного агента (первое окно) и для шаблонов режима «Проекты компании»; BFF это проверяет.
+
 **Сеть.** Pull 2 ГБ образа с ghcr.io рвался (`TLS handshake timeout`, `unexpected EOF`) — в `init.sh` добавлены
 ретраи и `OPENCLAW_IMAGE=openclaw/openclaw` (официальное зеркало Docker Hub) как запасной путь.

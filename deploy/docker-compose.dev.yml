@@ -14,3 +14,12 @@ services:
     command: ["node", "dist/index.js", "gateway", "--bind", "lan", "--port", "18789"]
     ports:
       - "127.0.0.1:${GATEWAY_DEV_PORT:-18789}:18789"
+      # FreeLLMAPI for the host BFF (lives in this namespace).
+      - "127.0.0.1:${FREELLMAPI_DEV_PORT:-3001}:3001"
+
+  freellmapi:
+    # Must listen beyond loopback so the published port reaches it. A host caller is not
+    # "local" to FreeLLMAPI, so its first-account setup needs the code from its logs
+    # (FREELLMAPI_SETUP_CODE in apps/bff/.env).
+    environment:
+      HOST: 0.0.0.0

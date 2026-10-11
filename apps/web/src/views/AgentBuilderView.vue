@@ -42,7 +42,8 @@ const template = ref<TemplateDto | null>(null);
 const values = reactive<Record<string, string>>({});
 const canAskMain = ref(true);
 const schedules = ref<ScheduleRow[]>([]);
-const aiMode = ref<"inherit" | "own">("inherit");
+const aiMode = ref<"inherit" | "own" | "free">("inherit");
+const freeReady = ref(false);
 const mainModel = ref<string | null>(null);
 const mainConnected = ref(false);
 const sandboxEnabled = ref(true);
@@ -65,6 +66,7 @@ async function load(): Promise<void> {
     sandboxEnabled.value = agents.sandboxEnabled;
     mainConnected.value = ai.connected;
     if (!ai.connected) aiMode.value = "own";
+    freeReady.value = (await api.freeModels.status().catch(() => null))?.ready ?? false;
     const tg = await api.telegram.status().catch(() => null);
     telegramReady.value = !!tg?.connected && !!tg.owner;
     deliverToTelegram.value = telegramReady.value;
@@ -239,6 +241,12 @@ onMounted(load);
               <n-text depth="3"> — {{ mainConnected ? (mainModel ?? "") : t("builder.mainNotConnected") }}</n-text>
             </n-radio>
             <n-radio value="own">{{ t("builder.aiOwn") }}</n-radio>
+            <!-- Free models: personal-mode juniors only (never the main agent or company teams). -->
+            <n-radio v-if="template?.mode === 'personal'" value="free" :disabled="!freeReady">
+              {{ t("builder.aiFree") }}
+              <n-text depth="3"> — {{ freeReady ? t("builder.aiFreeHint") : "" }}</n-text>
+              <router-link v-if="!freeReady" to="/free-models" target="_blank">{{ t("builder.aiFreeSetup") }}</router-link>
+            </n-radio>
           </n-space>
         </n-radio-group>
         <n-alert v-if="!sandboxEnabled" type="warning" :show-icon="false" class="block">{{ t("agents.noSandbox") }}</n-alert>

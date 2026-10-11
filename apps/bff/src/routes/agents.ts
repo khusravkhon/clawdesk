@@ -8,6 +8,7 @@ import type { GatewayService } from "../gateway/gateway-service.js";
 import { CreateAgentError, createJuniorAgent, deleteJuniorAgent } from "../provision/create-agent.js";
 import { SagaError } from "../provision/saga.js";
 import type { TelegramService } from "../telegram/telegram-service.js";
+import type { FreeModelsService } from "../free-models/free-models-service.js";
 
 type GatewayAgentSummary = {
   id: string;
@@ -19,7 +20,14 @@ type AgentsListResult = { defaultId: string; agents: GatewayAgentSummary[] };
 
 const AgentParams = z.object({ agentId: z.string().regex(/^[a-z0-9][a-z0-9-]{0,63}$/) });
 
-export type AgentRouteDeps = { gateway: GatewayService; db: Db; logger: Logger; sandboxEnabled: boolean; telegram: TelegramService };
+export type AgentRouteDeps = {
+  gateway: GatewayService;
+  db: Db;
+  logger: Logger;
+  sandboxEnabled: boolean;
+  telegram: TelegramService;
+  freeModels: FreeModelsService;
+};
 
 export function registerAgentRoutes(app: FastifyInstance, deps: AgentRouteDeps): void {
   // OpenClaw is the source of truth for which agents exist; our rows add role/parent.
@@ -48,6 +56,10 @@ export function registerAgentRoutes(app: FastifyInstance, deps: AgentRouteDeps):
 
   app.post("/api/agents", async (request, reply): Promise<CreateAgentResultDto | ApiErrorDto> => {
     const body = CreateAgentRequest.parse(request.body);
+    if (body.ai === "free" && !(await deps.freeModels.status()).ready) {
+      reply.status(400);
+      return { error: "free_models_not_ready", message: "add at least one free provider key first" };
+    }
     try {
       const result = await createJuniorAgent({ ...deps, telegramDelivery: deps.telegram.ownerDelivery() }, body);
       reply.status(201);

@@ -17,6 +17,10 @@ const Env = z.object({
   WEB_DIST: z.string().optional(),
   /** "on" once the gateway can run Docker sandboxes (decision 2); until then junior agents run unsandboxed and the UI says so. */
   CLAWDESK_SANDBOX: z.enum(["on", "off"]).default("off"),
+  /** Bundled FreeLLMAPI ("free models" for junior agents); unset disables the feature. */
+  FREELLMAPI_URL: z.string().url().optional(),
+  /** Host development only: FreeLLMAPI first-run code from its logs (the BFF is not on its loopback). */
+  FREELLMAPI_SETUP_CODE: z.string().optional(),
 });
 
 export type AppConfig = {
@@ -29,6 +33,7 @@ export type AppConfig = {
   dbPath: string;
   webDist: string | undefined;
   sandboxEnabled: boolean;
+  freeModels: { baseUrl: string | undefined; setupCode: string | undefined };
 };
 
 export function loadConfig(source: NodeJS.ProcessEnv = process.env): AppConfig {
@@ -44,5 +49,6 @@ export function loadConfig(source: NodeJS.ProcessEnv = process.env): AppConfig {
     dbPath: path.join(dataDir, "panel.sqlite"),
     webDist: env.WEB_DIST ? path.resolve(env.WEB_DIST) : undefined,
     sandboxEnabled: env.CLAWDESK_SANDBOX === "on",
+    freeModels: { baseUrl: env.FREELLMAPI_URL?.replace(/\/$/, ""), setupCode: env.FREELLMAPI_SETUP_CODE || undefined },
   };
 }

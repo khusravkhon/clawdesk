@@ -48,7 +48,10 @@ onMounted(load);
   <n-space vertical size="large">
     <n-space justify="space-between" align="center">
       <h1 class="title">{{ t("agents.title") }}</h1>
-      <n-button type="primary" @click="$router.push('/agents/new')">{{ t("agents.create") }}</n-button>
+      <n-space>
+        <n-button quaternary @click="$router.push('/free-models')">{{ t("agents.freeModels") }}</n-button>
+        <n-button type="primary" @click="$router.push('/agents/new')">{{ t("agents.create") }}</n-button>
+      </n-space>
     </n-space>
 
     <n-alert v-if="error" type="error">{{ error }}</n-alert>

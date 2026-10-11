@@ -85,12 +85,33 @@ services:
       WEB_DIST: /app/web
       LOG_LEVEL: ${PANEL_LOG_LEVEL:-info}
       CLAWDESK_SANDBOX: ${CLAWDESK_SANDBOX:-on}
+      FREELLMAPI_URL: http://127.0.0.1:3001
     volumes:
       - panel-data:/data
     depends_on:
       gateway:
         condition: service_healthy
 
+  # Optional "free models" for junior agents (personal mode only): FreeLLMAPI pools
+  # providers' free tiers behind one OpenAI-compatible endpoint. It shares the
+  # gateway's network namespace and listens on loopback only; the panel manages
+  # its account and keys, OpenClaw reaches it as provider "freellmapi".
+  freellmapi:
+    <<: *hardening
+    image: ghcr.io/tashfeenahmed/freellmapi:${FREELLMAPI_VERSION:-v0.13.7}
+    network_mode: "service:gateway"
+    environment:
+      NODE_ENV: production
+      HOST: ${FREELLMAPI_HOST:-127.0.0.1}
+      PORT: "3001"
+      ENCRYPTION_KEY: ${FREELLMAPI_ENCRYPTION_KEY:?run deploy/scripts/init.sh to create .env}
+    volumes:
+      - freellmapi-data:/app/server/data
+    depends_on:
+      gateway:
+        condition: service_healthy
+
 volumes:
+  freellmapi-data:
   openclaw-auth-secrets:
   panel-data:

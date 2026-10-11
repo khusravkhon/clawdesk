@@ -13,6 +13,8 @@ import { GatewayUnavailableError, type GatewayService } from "./gateway/gateway-
 import { registerAgentRoutes } from "./routes/agents.js";
 import { registerAiRoutes } from "./routes/ai.js";
 import { registerHealthRoutes } from "./routes/health.js";
+import type { FreeModelsService } from "./free-models/free-models-service.js";
+import { registerFreeModelRoutes } from "./routes/free-models.js";
 import { registerTelegramRoutes } from "./routes/telegram.js";
 import { registerTemplateRoutes } from "./routes/templates.js";
 import type { TelegramService } from "./telegram/telegram-service.js";
@@ -25,6 +27,7 @@ export type AppDeps = {
   signIn: SignInSessionManager;
   sandboxEnabled: boolean;
   telegram: TelegramService;
+  freeModels: FreeModelsService;
   webDist: string | undefined;
 };
 
@@ -52,6 +55,7 @@ export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
   registerAiRoutes(app, deps);
   registerTemplateRoutes(app);
   registerTelegramRoutes(app, deps);
+  registerFreeModelRoutes(app, deps);
 
   if (deps.webDist && fs.existsSync(path.join(deps.webDist, "index.html"))) {
     await app.register(fastifyStatic, { root: deps.webDist, wildcard: false });

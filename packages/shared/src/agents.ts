@@ -47,8 +47,11 @@ export const CreateAgentRequest = z.object({
   /** Values for the template fields (agentName, goal, …). */
   values: z.record(z.string(), z.string().max(8000)),
   canAskMain: z.boolean(),
-  /** inherit: use the main agent's model and credentials; own: connect a key/subscription right after creation. */
-  ai: z.enum(["inherit", "own"]),
+  /**
+   * inherit: the main agent's model and credentials; own: connect a key/subscription right after
+   * creation; free: pooled free models (personal mode only, never the main agent).
+   */
+  ai: z.enum(["inherit", "own", "free"]),
   schedules: z.array(ScheduleInput).max(10),
   /** IANA timezone for schedules, from the person's browser. */
   timezone: z.string().min(1).max(64),

@@ -1,4 +1,4 @@
-import type { CreateAgentRequest, CreateAgentResultDto } from "@clawdesk/shared";
+import { FREE_MODEL_REF, type CreateAgentRequest, type CreateAgentResultDto } from "@clawdesk/shared";
 import { loadTemplate, renderTemplateFiles, WORKSPACE_FILES, type LoadedTemplate } from "@clawdesk/templates";
 import { eq } from "drizzle-orm";
 import type { Logger } from "pino";
@@ -52,7 +52,9 @@ export async function createJuniorAgent(deps: CreateAgentDeps, req: CreateAgentR
   const list = await gateway.request<AgentsList>("agents.list", {});
   const agentId = uniqueSlug(slugBase(template, displayName), new Set(list.agents.map((a) => a.id)));
   const mainModel = list.agents.find((a) => a.id === "main")?.model?.primary ?? null;
-  const model = req.ai === "inherit" ? mainModel : null;
+  // Free models only for personal-mode juniors; company teams and the main agent never get them.
+  if (req.ai === "free" && template.mode !== "personal") throw new CreateAgentError("invalid_values", "free models are only available for personal assistants");
+  const model = req.ai === "inherit" ? mainModel : req.ai === "free" ? FREE_MODEL_REF : null;
   const sandboxApplied = deps.sandboxEnabled && template.sandbox;
   const cronJobIds: string[] = [];
   const delivery = req.deliverToTelegram && deps.telegramDelivery ? deps.telegramDelivery : null;

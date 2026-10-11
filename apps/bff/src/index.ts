@@ -7,6 +7,7 @@ import { openDb } from "./db/client.js";
 import { createLogger } from "./lib/logger.js";
 import { createGatewayService } from "./runtime.js";
 import { TelegramService } from "./telegram/telegram-service.js";
+import { FreeModelsService } from "./free-models/free-models-service.js";
 
 // Host development reads apps/bff/.env (written by init.sh --dev); containers get real env vars.
 if (process.env.NODE_ENV !== "production" && fs.existsSync(".env")) process.loadEnvFile(".env");
@@ -18,7 +19,8 @@ const gateway = createGatewayService(config, logger, { retryPairing: true });
 const aiSetup = new AiSetupService(gateway, logger.child({ component: "ai-setup" }));
 const signIn = new SignInSessionManager(gateway, logger.child({ component: "signin" }));
 const telegram = new TelegramService(gateway, db, logger.child({ component: "telegram" }));
-const app = await buildApp({ logger, gateway, db, aiSetup, signIn, telegram, sandboxEnabled: config.sandboxEnabled, webDist: config.webDist });
+const freeModels = new FreeModelsService(gateway, logger.child({ component: "free-models" }), { ...config.freeModels, dataDir: config.dataDir });
+const app = await buildApp({ logger, gateway, db, aiSetup, signIn, telegram, freeModels, sandboxEnabled: config.sandboxEnabled, webDist: config.webDist });
 
 gateway.start();
 await app.listen({ host: config.host, port: config.port });
