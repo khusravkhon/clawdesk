@@ -4,7 +4,14 @@ import { listTemplates, loadTemplate, renderTemplateFiles, renderTemplateText } 
 describe("templates", () => {
   it("every bundled template parses and renders with its defaults plus required fields", () => {
     const templates = listTemplates();
-    expect(templates.map((t) => `${t.mode}/${t.id}`).sort()).toEqual(["personal/dietitian", "personal/main"]);
+    expect(templates.map((t) => `${t.mode}/${t.id}`).sort()).toEqual([
+      "personal/custom",
+      "personal/dietitian",
+      "personal/finance",
+      "personal/main",
+      "personal/trainer",
+      "personal/youtube",
+    ]);
     for (const template of templates) {
       const required = Object.fromEntries(template.fields.filter((f) => f.required && f.default === undefined).map((f) => [f.key, `value-${f.key}`]));
       const files = renderTemplateFiles(template, required);

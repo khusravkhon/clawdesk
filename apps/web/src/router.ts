@@ -4,7 +4,9 @@ import { api } from "./api/client";
 export const router = createRouter({
   history: createWebHistory(),
   routes: [
-    { path: "/", redirect: "/status" },
+    { path: "/", redirect: "/agents" },
+    { path: "/agents", name: "agents", component: () => import("./views/AgentsView.vue") },
+    { path: "/agents/new", name: "agent-new", component: () => import("./views/AgentBuilderView.vue") },
     { path: "/setup/ai", name: "setup-ai", component: () => import("./views/SetupAiView.vue") },
     { path: "/status", name: "status", component: () => import("./views/StatusView.vue") },
   ],
@@ -19,8 +21,18 @@ export function markAiConnected(): void {
   aiConnected = true;
 }
 
+/** Dev builds only: lets screens be checked before a real model key is connected. */
+function devSkipsAiGuard(): boolean {
+  if (!import.meta.env.DEV) return false;
+  try {
+    return localStorage.getItem("clawdesk.dev.skipAiGuard") === "1";
+  } catch {
+    return false;
+  }
+}
+
 router.beforeEach(async (to) => {
-  if (to.name === "setup-ai" || aiConnected === true) return true;
+  if (to.name === "setup-ai" || aiConnected === true || devSkipsAiGuard()) return true;
   if (aiConnected === null) {
     try {
       aiConnected = (await api.ai.status("main")).connected;

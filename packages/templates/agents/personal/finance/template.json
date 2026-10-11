@@ -1,0 +1,23 @@
+{
+  "id": "finance",
+  "mode": "personal",
+  "role": "specialist",
+  "emoji": "💰",
+  "title": { "ru": "Финансы", "en": "Finance", "tg": "Молия" },
+  "description": {
+    "ru": "Запоминает траты из чата и подводит итог недели. Без доступа к банку.",
+    "en": "Remembers spending from chat and sums up the week. No bank access.",
+    "tg": "Хароҷотро аз чат дар хотир нигоҳ медорад ва ҳафтаро ҷамъбаст мекунад."
+  },
+  "fields": [
+    { "key": "agentName", "type": "text", "label": { "ru": "Имя", "en": "Name", "tg": "Ном" }, "default": "Финансы" },
+    { "key": "currency", "type": "text", "label": { "ru": "Основная валюта", "en": "Main currency", "tg": "Асъори асосӣ" }, "default": "TJS" },
+    { "key": "goal", "type": "textarea", "label": { "ru": "Финансовая цель", "en": "Money goal", "tg": "Мақсади молиявӣ" }, "required": false, "default": "понимать, куда уходят деньги" }
+  ],
+  "sources": [],
+  "cronPresets": [
+    { "id": "weekly", "label": { "ru": "Вс 20:00 итог недели", "en": "Sun 20:00 weekly summary" }, "cron": "0 20 * * 0", "prompt": "Подведи итог трат за неделю по категориям и сравни с прошлой неделей." }
+  ],
+  "canAskMain": false,
+  "sandbox": true
+}

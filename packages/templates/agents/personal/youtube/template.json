@@ -1,0 +1,21 @@
+{
+  "id": "youtube",
+  "mode": "personal",
+  "role": "specialist",
+  "emoji": "🎬",
+  "title": { "ru": "YouTube", "en": "YouTube", "tg": "YouTube" },
+  "description": {
+    "ru": "Идеи, сценарии и заголовки для вашего канала. Работает со своей папкой «Идеи».",
+    "en": "Ideas, scripts and titles for your channel. Works from its own Ideas folder.",
+    "tg": "Ғояҳо, сенарияҳо ва сарлавҳаҳо барои канали шумо."
+  },
+  "fields": [
+    { "key": "agentName", "type": "text", "label": { "ru": "Имя", "en": "Name", "tg": "Ном" }, "default": "YouTube" },
+    { "key": "channel", "type": "textarea", "label": { "ru": "О чём канал и для кого", "en": "What the channel is about and for whom", "tg": "Канал дар бораи чист ва барои кӣ" } },
+    { "key": "style", "type": "textarea", "label": { "ru": "Стиль подачи", "en": "Presentation style", "tg": "Услуби пешниҳод" }, "required": false, "default": "живо, без воды" }
+  ],
+  "sources": ["folder"],
+  "cronPresets": [],
+  "canAskMain": true,
+  "sandbox": true
+}

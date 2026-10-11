@@ -5,7 +5,10 @@ import type {
   AiCatalogDto,
   AiStatusDto,
   ApiErrorDto,
+  CreateAgentRequest,
+  CreateAgentResultDto,
   HealthDto,
+  TemplateDto,
   InstallProviderResultDto,
   SignInAnswerRequest,
   SignInStateDto,
@@ -42,6 +45,9 @@ const q = (agentId: string) => `agentId=${encodeURIComponent(agentId)}`;
 export const api = {
   health: () => request<HealthDto>("/api/health"),
   agents: () => request<AgentListDto>("/api/agents"),
+  createAgent: (body: CreateAgentRequest) => post<CreateAgentResultDto>("/api/agents", body),
+  deleteAgent: (agentId: string) => request<void>(`/api/agents/${encodeURIComponent(agentId)}`, { method: "DELETE" }),
+  templates: (mode: string) => request<TemplateDto[]>(`/api/templates?mode=${encodeURIComponent(mode)}&role=specialist`),
   ai: {
     status: (agentId: string) => request<AiStatusDto>(`/api/ai/status?${q(agentId)}`),
     catalog: (agentId: string) => request<AiCatalogDto>(`/api/ai/catalog?${q(agentId)}`),

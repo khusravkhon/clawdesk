@@ -118,6 +118,32 @@ Ollama, LM Studio, vLLM, Custom OpenAI/Anthropic-совместимый) и «Sk
   `detect` (`deepseek-api-key`). **Версия плагина всегда = версия OpenClaw.**
 - Скрипты: `setup-probe`, `activate-probe`, `plugins-probe`, `provider-install-probe` (только фальшивые ключи).
 
+**Вход по подписке (без ключа) — работает через RPC.** `openclaw.setup.auth.start { sessionId (наш uuid), agentId,
+authChoice }` → шаги забираются `wizard.next { sessionId, answer? }`:
+- device code (`openai-device-code`, `github-copilot`, `xai-oauth`, `minimax-*-oauth`): progress → note с
+  `deviceCode.code`, `externalUrl`, сроком 15 мин и предупреждением о фишинге → progress «Waiting for device
+  authorization…» — **`wizard.next` висит, пока человек не подтвердит** (нужен запрос без таймаута);
+- OAuth в браузере (`openai` = ChatGPT Login): note «remote/VPS» → URL входа с `redirect_uri=http://localhost:1455/...`
+  → text «Paste the authorization code (or full redirect URL)». Gateway в Docker колбэк не получит, поэтому
+  человек вставляет адрес из адресной строки.
+- BFF держит «водителя» сессии (`SignInSessionManager`): сам подтверждает progress/note, браузер опрашивает
+  состояние и отвечает только на text/confirm/select.
+
+**Конструктор младших агентов — работает** (создание через UI проверено вживую):
+- `agents.create` принимает только ASCII-имя (`"Диетолог"` → `no valid id characters`): создаём со slug
+  (id шаблона, `-2`, `-3`… при совпадении), затем `agents.update { name: "Диетолог" }`.
+- Новый агент наследует модель по умолчанию; «как у главного» = копия `model.primary` главного, «свой доступ» =
+  после создания тот же экран подключения ИИ с `agentId` нового агента.
+- Связь агентов: `tools.agentToAgent.allow` — **глобальный список целей**, разрешить «младший → только главный» по
+  источнику нельзя. Делаем: `canAskMain` → добавляем `main` и агента в `allow`; без права — у агента
+  `tools.deny: [agent_to_agent, sessions_send, sessions_spawn, conversations_send, conversations_turn]`.
+  Общение младших между собой пока ограничено только инструкцией в `AGENTS.md`.
+- У каждого агента OpenClaw держит **системные cron-задачи** (`skill-collection-review-<id>`), удалить их
+  клиентом нельзя (`system-owned monitor jobs cannot be removed`) — при удалении агента убираем только свои
+  задачи, системные уходят вместе с `agents.delete`. Сужение массива `allow` — только с `replacePaths`.
+- Sandbox к агентам применяется только при `CLAWDESK_SANDBOX=on` (после настройки образа Gateway с Docker);
+  до этого интерфейс прямо предупреждает, что младшие работают без изоляции.
+
 **Цепочка создания агента — работает** (`spike --no-chat`, ~730 мс):
 `agents.create` 243 мс → `agents.files.set` ×3 с проверкой чтения 80 мс → `config.patch` 341 мс → `cron.add` 62 мс.
 Откат проверен вживую: при сбое шага файлов агент удалён (`agents.delete`).

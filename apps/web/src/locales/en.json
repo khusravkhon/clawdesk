@@ -3,7 +3,8 @@
     "title": "ClawDesk"
   },
   "nav": {
-    "status": "Status"
+    "status": "Status",
+    "agents": "Agents"
   },
   "status": {
     "title": "System status",
@@ -78,6 +79,49 @@
     "doneModel": "Model: {model}",
     "details": "Details from the server",
     "cancel": "Cancel"
+  },
+  "agents": {
+    "title": "My agents",
+    "create": "Create agent",
+    "main": "Main assistant",
+    "juniors": "Junior agents",
+    "noJuniors": "No junior agents yet",
+    "noModel": "No AI connected",
+    "canAskMain": "asks main",
+    "delete": "Delete",
+    "confirmDelete": "Delete agent \"{name}\" with its files and schedules?",
+    "deleted": "Agent \"{name}\" deleted",
+    "noSandboxTitle": "Sandbox not set up yet",
+    "noSandbox": "The server does not run the Docker sandbox for junior agents yet, so they run without isolation. Do not give them dangerous tools until the sandbox is on."
+  },
+  "builder": {
+    "title": "New agent",
+    "backToList": "Back to agents",
+    "stepTemplate": "Template",
+    "stepAbout": "About",
+    "stepSchedule": "Schedule",
+    "stepAi": "AI access",
+    "back": "Back",
+    "next": "Next",
+    "fillRequired": "Please fill in: {fields}",
+    "canAskMain": "May ask the main assistant",
+    "canAskMainOn": "If its own data is not enough, it asks the main assistant (briefly, to the point).",
+    "canAskMainOff": "Works only with its own data and does not talk to other agents.",
+    "scheduleHint": "Times are in your timezone: {tz}.",
+    "everyDay": "every day",
+    "scheduleLabel": "Name",
+    "schedulePrompt": "What the agent does at this time",
+    "noSchedules": "This template has no default schedules.",
+    "addSchedule": "Add schedule",
+    "aiInherit": "Same as the main assistant",
+    "aiOwn": "Own access: key or subscription (connect after creating)",
+    "mainNotConnected": "the main assistant has no AI yet",
+    "create": "Create agent",
+    "created": "Agent \"{name}\" created",
+    "createdDetail": "Schedules: {n}. Results show up in its chat; Telegram delivery comes with the Telegram screen.",
+    "connectOwn": "Connect an AI for \"{name}\"",
+    "toList": "Back to agents",
+    "rolledBack": "Nothing was left behind: all steps were undone."
   },
   "lang": {
     "ru": "Русский",

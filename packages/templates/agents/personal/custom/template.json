@@ -1,0 +1,21 @@
+{
+  "id": "custom",
+  "mode": "personal",
+  "role": "specialist",
+  "emoji": "✨",
+  "title": { "ru": "Свой агент", "en": "Custom agent", "tg": "Агенти худ" },
+  "description": {
+    "ru": "Опишите своими словами, что агент должен делать.",
+    "en": "Describe in your own words what the agent should do.",
+    "tg": "Бо суханони худ нависед, ки агент чӣ кор бояд кунад."
+  },
+  "fields": [
+    { "key": "agentName", "type": "text", "label": { "ru": "Имя агента", "en": "Agent name", "tg": "Номи агент" } },
+    { "key": "purpose", "type": "textarea", "label": { "ru": "Что агент делает", "en": "What the agent does", "tg": "Агент чӣ кор мекунад" } },
+    { "key": "rules", "type": "textarea", "label": { "ru": "Правила и стиль (необязательно)", "en": "Rules and style (optional)", "tg": "Қоидаҳо ва услуб (ихтиёрӣ)" }, "required": false, "default": "Отвечай коротко и по делу." }
+  ],
+  "sources": [],
+  "cronPresets": [],
+  "canAskMain": true,
+  "sandbox": true
+}

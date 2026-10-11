@@ -1,0 +1,24 @@
+{
+  "id": "trainer",
+  "mode": "personal",
+  "role": "specialist",
+  "emoji": "🏋️",
+  "title": { "ru": "Тренер", "en": "Coach", "tg": "Мураббӣ" },
+  "description": {
+    "ru": "Тренировка на день, дневник нагрузок, вечерний отчёт. Работает со своей папкой «Тренировки».",
+    "en": "Workout of the day, training log, evening check-in. Works from its own Training folder.",
+    "tg": "Машқи рӯз, рӯзномаи бор, ҳисоботи шом."
+  },
+  "fields": [
+    { "key": "agentName", "type": "text", "label": { "ru": "Имя", "en": "Name", "tg": "Ном" }, "default": "Тренер" },
+    { "key": "goal", "type": "textarea", "label": { "ru": "Цель своими словами", "en": "Goal in your own words", "tg": "Мақсад бо суханони худ" } },
+    { "key": "limits", "type": "textarea", "label": { "ru": "Травмы и ограничения", "en": "Injuries and limits", "tg": "Ҷароҳатҳо ва маҳдудиятҳо" }, "required": false, "default": "нет" }
+  ],
+  "sources": ["folder"],
+  "cronPresets": [
+    { "id": "workout", "label": { "ru": "06:30 тренировка дня", "en": "06:30 workout of the day" }, "cron": "30 6 * * *", "prompt": "Составь тренировку на сегодня с учётом дневника нагрузок." },
+    { "id": "evening", "label": { "ru": "21:00 что сделал", "en": "21:00 what I did" }, "cron": "0 21 * * *", "prompt": "Спроси, что удалось сделать из тренировки, и запиши в дневник нагрузок." }
+  ],
+  "canAskMain": true,
+  "sandbox": true
+}

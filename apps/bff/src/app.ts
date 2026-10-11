@@ -13,6 +13,7 @@ import { GatewayUnavailableError, type GatewayService } from "./gateway/gateway-
 import { registerAgentRoutes } from "./routes/agents.js";
 import { registerAiRoutes } from "./routes/ai.js";
 import { registerHealthRoutes } from "./routes/health.js";
+import { registerTemplateRoutes } from "./routes/templates.js";
 
 export type AppDeps = {
   logger: Logger;
@@ -20,6 +21,7 @@ export type AppDeps = {
   db: Db;
   aiSetup: AiSetupService;
   signIn: SignInSessionManager;
+  sandboxEnabled: boolean;
   webDist: string | undefined;
 };
 
@@ -45,6 +47,7 @@ export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
   registerHealthRoutes(app, deps);
   registerAgentRoutes(app, deps);
   registerAiRoutes(app, deps);
+  registerTemplateRoutes(app);
 
   if (deps.webDist && fs.existsSync(path.join(deps.webDist, "index.html"))) {
     await app.register(fastifyStatic, { root: deps.webDist, wildcard: false });

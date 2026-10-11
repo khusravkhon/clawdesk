@@ -42,12 +42,17 @@ export const AgentListItemDto = z.object({
   role: AgentRole.nullable(),
   parentId: z.string().nullable(),
   status: AgentStatus,
+  purpose: z.string().nullable(),
+  canAskMain: z.boolean().nullable(),
+  sandbox: z.boolean().nullable(),
 });
 export type AgentListItemDto = z.infer<typeof AgentListItemDto>;
 
 export const AgentListDto = z.object({
   defaultId: z.string(),
   agents: z.array(AgentListItemDto),
+  /** False until the server can run Docker sandboxes; junior agents then run without one. */
+  sandboxEnabled: z.boolean(),
 });
 export type AgentListDto = z.infer<typeof AgentListDto>;
 

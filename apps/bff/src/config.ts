@@ -15,6 +15,8 @@ const Env = z.object({
   DATA_DIR: z.string().default("./data"),
   /** Built apps/web to serve as static files; unset in dev (Vite serves the UI). */
   WEB_DIST: z.string().optional(),
+  /** "on" once the gateway can run Docker sandboxes (decision 2); until then junior agents run unsandboxed and the UI says so. */
+  CLAWDESK_SANDBOX: z.enum(["on", "off"]).default("off"),
 });
 
 export type AppConfig = {
@@ -26,6 +28,7 @@ export type AppConfig = {
   dataDir: string;
   dbPath: string;
   webDist: string | undefined;
+  sandboxEnabled: boolean;
 };
 
 export function loadConfig(source: NodeJS.ProcessEnv = process.env): AppConfig {
@@ -40,5 +43,6 @@ export function loadConfig(source: NodeJS.ProcessEnv = process.env): AppConfig {
     dataDir,
     dbPath: path.join(dataDir, "panel.sqlite"),
     webDist: env.WEB_DIST ? path.resolve(env.WEB_DIST) : undefined,
+    sandboxEnabled: env.CLAWDESK_SANDBOX === "on",
   };
 }

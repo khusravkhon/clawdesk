@@ -13,7 +13,7 @@ const { db, close: closeDb } = openDb(config.dbPath);
 const gateway = createGatewayService(config, logger);
 const aiSetup = new AiSetupService(gateway, logger.child({ component: "ai-setup" }));
 const signIn = new SignInSessionManager(gateway, logger.child({ component: "signin" }));
-const app = await buildApp({ logger, gateway, db, aiSetup, signIn, webDist: config.webDist });
+const app = await buildApp({ logger, gateway, db, aiSetup, signIn, sandboxEnabled: config.sandboxEnabled, webDist: config.webDist });
 
 gateway.start();
 await app.listen({ host: config.host, port: config.port });
