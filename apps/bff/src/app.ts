@@ -13,7 +13,9 @@ import { GatewayUnavailableError, type GatewayService } from "./gateway/gateway-
 import { registerAgentRoutes } from "./routes/agents.js";
 import { registerAiRoutes } from "./routes/ai.js";
 import { registerHealthRoutes } from "./routes/health.js";
+import { registerTelegramRoutes } from "./routes/telegram.js";
 import { registerTemplateRoutes } from "./routes/templates.js";
+import type { TelegramService } from "./telegram/telegram-service.js";
 
 export type AppDeps = {
   logger: Logger;
@@ -22,6 +24,7 @@ export type AppDeps = {
   aiSetup: AiSetupService;
   signIn: SignInSessionManager;
   sandboxEnabled: boolean;
+  telegram: TelegramService;
   webDist: string | undefined;
 };
 
@@ -48,6 +51,7 @@ export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
   registerAgentRoutes(app, deps);
   registerAiRoutes(app, deps);
   registerTemplateRoutes(app);
+  registerTelegramRoutes(app, deps);
 
   if (deps.webDist && fs.existsSync(path.join(deps.webDist, "index.html"))) {
     await app.register(fastifyStatic, { root: deps.webDist, wildcard: false });

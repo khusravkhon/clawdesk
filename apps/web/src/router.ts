@@ -7,6 +7,7 @@ export const router = createRouter({
     { path: "/", redirect: "/agents" },
     { path: "/agents", name: "agents", component: () => import("./views/AgentsView.vue") },
     { path: "/agents/new", name: "agent-new", component: () => import("./views/AgentBuilderView.vue") },
+    { path: "/telegram", name: "telegram", component: () => import("./views/TelegramView.vue") },
     { path: "/setup/ai", name: "setup-ai", component: () => import("./views/SetupAiView.vue") },
     { path: "/status", name: "status", component: () => import("./views/StatusView.vue") },
   ],

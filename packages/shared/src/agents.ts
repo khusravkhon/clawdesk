@@ -52,6 +52,8 @@ export const CreateAgentRequest = z.object({
   schedules: z.array(ScheduleInput).max(10),
   /** IANA timezone for schedules, from the person's browser. */
   timezone: z.string().min(1).max(64),
+  /** Deliver schedule results to the owner's Telegram chat (only when Telegram is connected). */
+  deliverToTelegram: z.boolean().default(false),
 });
 export type CreateAgentRequest = z.infer<typeof CreateAgentRequest>;
 

@@ -7,6 +7,7 @@ import { agents } from "../db/schema.js";
 import type { GatewayService } from "../gateway/gateway-service.js";
 import { CreateAgentError, createJuniorAgent, deleteJuniorAgent } from "../provision/create-agent.js";
 import { SagaError } from "../provision/saga.js";
+import type { TelegramService } from "../telegram/telegram-service.js";
 
 type GatewayAgentSummary = {
   id: string;
@@ -18,7 +19,7 @@ type AgentsListResult = { defaultId: string; agents: GatewayAgentSummary[] };
 
 const AgentParams = z.object({ agentId: z.string().regex(/^[a-z0-9][a-z0-9-]{0,63}$/) });
 
-export type AgentRouteDeps = { gateway: GatewayService; db: Db; logger: Logger; sandboxEnabled: boolean };
+export type AgentRouteDeps = { gateway: GatewayService; db: Db; logger: Logger; sandboxEnabled: boolean; telegram: TelegramService };
 
 export function registerAgentRoutes(app: FastifyInstance, deps: AgentRouteDeps): void {
   // OpenClaw is the source of truth for which agents exist; our rows add role/parent.
@@ -48,7 +49,7 @@ export function registerAgentRoutes(app: FastifyInstance, deps: AgentRouteDeps):
   app.post("/api/agents", async (request, reply): Promise<CreateAgentResultDto | ApiErrorDto> => {
     const body = CreateAgentRequest.parse(request.body);
     try {
-      const result = await createJuniorAgent(deps, body);
+      const result = await createJuniorAgent({ ...deps, telegramDelivery: deps.telegram.ownerDelivery() }, body);
       reply.status(201);
       return result;
     } catch (error) {

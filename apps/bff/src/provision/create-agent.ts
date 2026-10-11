@@ -18,7 +18,14 @@ const CROSS_AGENT_TOOLS = ["agent_to_agent", "sessions_send", "sessions_spawn", 
 type AgentsList = { agents: { id: string; model?: { primary?: string } }[] };
 type AgentToAgent = { enabled?: boolean; allow?: string[] };
 
-export type CreateAgentDeps = { gateway: GatewayService; db: Db; logger: Logger; sandboxEnabled: boolean };
+export type CreateAgentDeps = {
+  gateway: GatewayService;
+  db: Db;
+  logger: Logger;
+  sandboxEnabled: boolean;
+  /** Owner chat delivery when Telegram is connected and approved; null otherwise. */
+  telegramDelivery?: { mode: "announce"; channel: string; to: string; bestEffort: boolean } | null;
+};
 
 export class CreateAgentError extends Error {
   constructor(
@@ -48,6 +55,7 @@ export async function createJuniorAgent(deps: CreateAgentDeps, req: CreateAgentR
   const model = req.ai === "inherit" ? mainModel : null;
   const sandboxApplied = deps.sandboxEnabled && template.sandbox;
   const cronJobIds: string[] = [];
+  const delivery = req.deliverToTelegram && deps.telegramDelivery ? deps.telegramDelivery : null;
 
   await runSaga(
     {},
@@ -101,8 +109,8 @@ export async function createJuniorAgent(deps: CreateAgentDeps, req: CreateAgentR
               sessionTarget: "isolated",
               wakeMode: "now",
               payload: { kind: "agentTurn", message: schedule.prompt },
-              // Delivery to Telegram arrives with the Telegram screen; results stay in the agent's sessions until then.
-              delivery: { mode: "none" },
+              // Without Telegram the results stay in the agent's own sessions.
+              delivery: delivery ?? { mode: "none" },
             });
             cronJobIds.push(job.id);
           }
@@ -138,7 +146,7 @@ export async function createJuniorAgent(deps: CreateAgentDeps, req: CreateAgentR
                   cron: schedule.cron,
                   tz: req.timezone,
                   prompt: schedule.prompt,
-                  deliverTo: null,
+                  deliverTo: delivery ? `telegram:${delivery.to}` : null,
                   openclawCronId: cronJobIds[i]!,
                   enabled: true,
                 })

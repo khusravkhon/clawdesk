@@ -191,5 +191,20 @@ authChoice }` → шаги забираются `wizard.next { sessionId, answer
 - Docker Desktop (Windows/macOS): `/var/lib/clawdesk` живёт внутри VM Docker Desktop — сброс Docker Desktop
   к заводским настройкам удалит данные. На сервере Linux это обычная папка хоста (её и бэкапим).
 
+**Telegram (экран 6, v1) — сделан, проверено без настоящего бота.**
+- Токен проверяется у Telegram (`getMe`) прямо из BFF, затем `secrets.store.set { kind: "secret", allowedHosts:
+  ["api.telegram.org"] }` — защищённый, только на запись. В конфиге лишь ссылка
+  `botToken: { source: "store", provider: "default", id: "CLAWDESK_TELEGRAM_BOT_TOKEN" }`.
+- `channels.telegram = { enabled, botToken, dmPolicy: "pairing", groupPolicy: "disabled" }` и маршрут
+  `bindings: [{ agentId: "main", match: { channel: "telegram" } }]` (при `agents.ownership: "explicit"` без маршрута
+  канал никому не принадлежит).
+- Плагин `telegram` встроен, но выключен; `plugins.setEnabled` включает без согласия на права и без рестарта.
+- Владелец: `channels.pairing.list/approve { channel: "telegram", notify: true, bootstrapCommandOwner: true }`;
+  до настройки бота `channels.pairing.list` отвечает `unknown pairing channel: telegram`.
+- После подтверждения владельца все расписания панели получают `delivery: { mode: "announce", channel: "telegram",
+  to: <ownerId>, bestEffort: true }`; новые агенты — по галочке в конструкторе. Тест — RPC `send`.
+- Не проверено вживую (нужен настоящий бот): применение конфига канала, приход заявки на парование, доставка.
+- Следующий шаг: группа с темами — тема на агента (`channels.telegram.groups.<chat>.topics.<topic>.agentId`).
+
 **Сеть.** Pull 2 ГБ образа с ghcr.io рвался (`TLS handshake timeout`, `unexpected EOF`) — в `init.sh` добавлены
 ретраи и `OPENCLAW_IMAGE=openclaw/openclaw` (официальное зеркало Docker Hub) как запасной путь.

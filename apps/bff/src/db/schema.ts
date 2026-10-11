@@ -129,6 +129,15 @@ export const modelCredentialStatus = sqliteTable("model_credential_status", {
   checkedAt: integer("checked_at", { mode: "timestamp_ms" }).notNull(),
 });
 
+/** Small panel facts that are not secrets (e.g. the connected Telegram bot's public username). */
+export const settings = sqliteTable("settings", {
+  key: text("key").primaryKey(),
+  value: text("value", { mode: "json" }).notNull(),
+  updatedAt: integer("updated_at", { mode: "timestamp_ms" })
+    .notNull()
+    .default(sql`(unixepoch('subsec') * 1000)`),
+});
+
 export const auditEvents = sqliteTable(
   "audit_events",
   {

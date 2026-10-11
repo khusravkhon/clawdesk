@@ -46,6 +46,8 @@ const aiMode = ref<"inherit" | "own">("inherit");
 const mainModel = ref<string | null>(null);
 const mainConnected = ref(false);
 const sandboxEnabled = ref(true);
+const telegramReady = ref(false);
+const deliverToTelegram = ref(false);
 const creating = ref(false);
 const createError = ref<string | null>(null);
 const created = ref<CreateAgentResultDto | null>(null);
@@ -63,6 +65,9 @@ async function load(): Promise<void> {
     sandboxEnabled.value = agents.sandboxEnabled;
     mainConnected.value = ai.connected;
     if (!ai.connected) aiMode.value = "own";
+    const tg = await api.telegram.status().catch(() => null);
+    telegramReady.value = !!tg?.connected && !!tg.owner;
+    deliverToTelegram.value = telegramReady.value;
   } catch (error) {
     loadError.value = errorText(error);
   } finally {
@@ -103,6 +108,7 @@ async function create(): Promise<void> {
       ai: aiMode.value,
       schedules: payload,
       timezone,
+      deliverToTelegram: telegramReady.value && deliverToTelegram.value,
     });
     step.value = 5;
   } catch (error) {
@@ -212,6 +218,11 @@ onMounted(load);
           </div>
           <n-text v-if="!schedules.length" depth="3">{{ t("builder.noSchedules") }}</n-text>
           <n-button dashed @click="addSchedule">+ {{ t("builder.addSchedule") }}</n-button>
+          <n-space v-if="telegramReady" align="center">
+            <n-switch v-model:value="deliverToTelegram" />
+            <n-text>{{ t("builder.deliverToTelegram") }}</n-text>
+          </n-space>
+          <n-text v-else depth="3">{{ t("builder.telegramLater") }}</n-text>
         </n-space>
         <n-space class="mt">
           <n-button @click="step = 2">{{ t("builder.back") }}</n-button>
@@ -241,7 +252,7 @@ onMounted(load);
       <!-- 5. created; connect own AI if chosen -->
       <n-card v-else-if="step === 5 && created">
         <n-alert type="success" :title="t('builder.created', { name: created.displayName })" class="block">
-          {{ t("builder.createdDetail", { n: created.cronJobIds.length }) }}
+          {{ t(deliverToTelegram && telegramReady ? "builder.createdDetailTelegram" : "builder.createdDetail", { n: created.cronJobIds.length }) }}
         </n-alert>
         <template v-if="aiMode === 'own' && !aiDone">
           <h3>{{ t("builder.connectOwn", { name: created.displayName }) }}</h3>

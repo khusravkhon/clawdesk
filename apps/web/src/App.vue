@@ -24,6 +24,7 @@ const localeOptions = computed(() => supportedLocales.map((value) => ({ value, l
             <n-space align="center" :size="20">
               <strong>{{ t("app.title") }}</strong>
               <router-link to="/agents" class="nav">{{ t("nav.agents") }}</router-link>
+              <router-link to="/telegram" class="nav">Telegram</router-link>
               <router-link to="/status" class="nav">{{ t("nav.status") }}</router-link>
             </n-space>
             <n-select

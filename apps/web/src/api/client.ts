@@ -5,14 +5,17 @@ import type {
   AiCatalogDto,
   AiStatusDto,
   ApiErrorDto,
+  ApproveTelegramResultDto,
   CreateAgentRequest,
   CreateAgentResultDto,
   HealthDto,
-  TemplateDto,
   InstallProviderResultDto,
   SignInAnswerRequest,
   SignInStateDto,
   StartSignInRequest,
+  TelegramPairingRequestDto,
+  TelegramStatusDto,
+  TemplateDto,
 } from "@clawdesk/shared";
 
 export class ApiError extends Error {
@@ -47,6 +50,14 @@ export const api = {
   agents: () => request<AgentListDto>("/api/agents"),
   createAgent: (body: CreateAgentRequest) => post<CreateAgentResultDto>("/api/agents", body),
   deleteAgent: (agentId: string) => request<void>(`/api/agents/${encodeURIComponent(agentId)}`, { method: "DELETE" }),
+  telegram: {
+    status: () => request<TelegramStatusDto>("/api/telegram"),
+    connect: (token: string) => post<TelegramStatusDto>("/api/telegram/connect", { token }),
+    disconnect: () => post<void>("/api/telegram/disconnect"),
+    pairing: () => request<TelegramPairingRequestDto[]>("/api/telegram/pairing"),
+    approve: (requestId: string, accountId: string) => post<ApproveTelegramResultDto>("/api/telegram/pairing/approve", { requestId, accountId }),
+    test: (text: string) => post<void>("/api/telegram/test", { text }),
+  },
   templates: (mode: string) => request<TemplateDto[]>(`/api/templates?mode=${encodeURIComponent(mode)}&role=specialist`),
   ai: {
     status: (agentId: string) => request<AiStatusDto>(`/api/ai/status?${q(agentId)}`),
