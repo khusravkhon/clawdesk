@@ -4,7 +4,9 @@
   },
   "nav": {
     "status": "Status",
-    "agents": "Agents"
+    "agents": "Agents",
+    "overview": "Overview",
+    "freeModels": "Free models"
   },
   "status": {
     "title": "System status",
@@ -171,7 +173,8 @@
       "telegram_unreachable": "Telegram did not answer. Check that the server has internet access.",
       "no_owner": "Approve yourself first: message the bot and press \"It's me\".",
       "invalid_request": "This does not look like a bot token. It looks like 123456789:AA…"
-    }
+    },
+    "subtitle": "Agents message you in Telegram: plans, reminders, answers"
   },
   "free": {
     "title": "Free models (experimental)",
@@ -197,5 +200,87 @@
     "ru": "Русский",
     "en": "English",
     "tg": "Тоҷикӣ"
+  },
+  "shell": {
+    "theme": "Theme",
+    "light": "Light theme",
+    "dark": "Dark theme",
+    "collapse": "Collapse menu",
+    "menu": "Menu"
+  },
+  "dash": {
+    "title": "Overview",
+    "subtitle": "Usage, agents and schedules for the last {days} days",
+    "all": "All",
+    "tokensUnit": "tok.",
+    "calls": "calls",
+    "range": {
+      "7d": "7 days",
+      "30d": "30 days",
+      "90d": "90 days"
+    },
+    "health": {
+      "title": "System health",
+      "ai": "Main agent AI"
+    },
+    "level": {
+      "ok": "working",
+      "warning": "attention",
+      "error": "error",
+      "off": "off"
+    },
+    "kpi": {
+      "tokens": "Tokens",
+      "sessions": "{n} sessions",
+      "cost": "Spend",
+      "costNote": "at provider prices",
+      "costIncomplete": "some models have no price",
+      "messages": "Messages",
+      "tools": "tools: {n} · errors: {e}",
+      "agents": "Agents",
+      "working": "{n} working",
+      "failed": "{n} failed",
+      "allIdle": "all waiting for tasks",
+      "schedules": "Successful runs",
+      "noRuns": "no runs yet",
+      "runs": "{ok} ok · {e} failed"
+    },
+    "trend": {
+      "title": "Daily activity",
+      "tokens": "Tokens",
+      "cost": "Spend",
+      "messages": "Messages",
+      "empty": "Nothing yet — message an agent and the chart appears here"
+    },
+    "models": {
+      "title": "Models",
+      "empty": "No models used yet"
+    },
+    "agents": {
+      "title": "Agents"
+    },
+    "state": {
+      "working": "working",
+      "idle": "idle",
+      "failed": "failed"
+    },
+    "schedules": {
+      "title": "Schedules",
+      "upcoming": "Upcoming",
+      "recent": "Recent runs",
+      "empty": "No schedules yet. Create an agent with a schedule.",
+      "paused": "paused",
+      "system": "OpenClaw housekeeping jobs: {n} (hidden)"
+    },
+    "run": {
+      "ok": "ok",
+      "error": "failed",
+      "skipped": "skipped"
+    },
+    "err": {
+      "auth": "No AI connected or the key was rejected. Check the agent’s AI access.",
+      "rateLimit": "The AI provider limited requests (rate limit or quota). Try again later.",
+      "timeout": "The AI provider did not answer in time."
+    }
   }
 }

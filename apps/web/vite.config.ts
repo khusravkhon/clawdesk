@@ -11,7 +11,8 @@ export default defineConfig({
     },
   },
   server: {
-    port: 5173,
+    // PORT lets a second dev server run beside the usual one.
+    port: Number(process.env.PORT) || 5173,
     proxy: {
       "/api": { target: "http://127.0.0.1:8787", ws: true },
     },

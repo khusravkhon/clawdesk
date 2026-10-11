@@ -4,12 +4,12 @@ import { api } from "./api/client";
 export const router = createRouter({
   history: createWebHistory(),
   routes: [
-    { path: "/", redirect: "/agents" },
+    { path: "/", name: "dashboard", component: () => import("./views/DashboardView.vue") },
     { path: "/agents", name: "agents", component: () => import("./views/AgentsView.vue") },
     { path: "/agents/new", name: "agent-new", component: () => import("./views/AgentBuilderView.vue") },
     { path: "/free-models", name: "free-models", component: () => import("./views/FreeModelsView.vue") },
     { path: "/telegram", name: "telegram", component: () => import("./views/TelegramView.vue") },
-    { path: "/setup/ai", name: "setup-ai", component: () => import("./views/SetupAiView.vue") },
+    { path: "/setup/ai", name: "setup-ai", component: () => import("./views/SetupAiView.vue"), meta: { bare: true } },
     { path: "/status", name: "status", component: () => import("./views/StatusView.vue") },
   ],
 });

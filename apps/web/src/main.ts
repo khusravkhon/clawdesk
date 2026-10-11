@@ -1,3 +1,5 @@
+import "@fontsource-variable/inter";
+import "./styles.css";
 import { createPinia } from "pinia";
 import { createApp } from "vue";
 import App from "./App.vue";

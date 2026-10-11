@@ -8,10 +8,12 @@ import { ZodError } from "zod";
 import type { ApiErrorDto } from "@clawdesk/shared";
 import type { AiSetupService } from "./ai-setup/ai-setup-service.js";
 import type { SignInSessionManager } from "./ai-setup/signin-sessions.js";
+import { DashboardService } from "./dashboard/dashboard-service.js";
 import type { Db } from "./db/client.js";
 import { GatewayUnavailableError, type GatewayService } from "./gateway/gateway-service.js";
 import { registerAgentRoutes } from "./routes/agents.js";
 import { registerAiRoutes } from "./routes/ai.js";
+import { registerDashboardRoutes } from "./routes/dashboard.js";
 import { registerHealthRoutes } from "./routes/health.js";
 import type { FreeModelsService } from "./free-models/free-models-service.js";
 import { registerFreeModelRoutes } from "./routes/free-models.js";
@@ -56,6 +58,7 @@ export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
   registerTemplateRoutes(app);
   registerTelegramRoutes(app, deps);
   registerFreeModelRoutes(app, deps);
+  registerDashboardRoutes(app, { dashboard: new DashboardService(deps) });
 
   if (deps.webDist && fs.existsSync(path.join(deps.webDist, "index.html"))) {
     await app.register(fastifyStatic, { root: deps.webDist, wildcard: false });

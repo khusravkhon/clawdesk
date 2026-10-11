@@ -29,30 +29,32 @@ export type AgentRouteDeps = {
   freeModels: FreeModelsService;
 };
 
-export function registerAgentRoutes(app: FastifyInstance, deps: AgentRouteDeps): void {
-  // OpenClaw is the source of truth for which agents exist; our rows add role/parent.
-  // An agent in OpenClaw without a panel row is shown with role null (created outside the panel).
-  app.get("/api/agents", async (): Promise<AgentListDto> => {
-    const result = await deps.gateway.request<AgentsListResult>("agents.list", {});
-    const meta = new Map(deps.db.select().from(agents).all().map((row) => [row.id, row]));
-    const items: AgentListItemDto[] = result.agents.map((agent) => {
-      const row = meta.get(agent.id);
-      return {
-        id: agent.id,
-        name: row?.displayName ?? agent.identity?.name ?? agent.name ?? agent.id,
-        emoji: agent.identity?.emoji ?? row?.avatar ?? null,
-        model: agent.model?.primary ?? null,
-        isDefault: agent.id === result.defaultId,
-        role: agent.id === "main" ? "main" : (row?.role ?? null),
-        parentId: row?.parentId ?? null,
-        status: row?.status ?? "ready",
-        purpose: row?.purpose ?? null,
-        canAskMain: row?.canAskMain ?? null,
-        sandbox: row?.sandbox ?? null,
-      };
-    });
-    return { defaultId: result.defaultId, agents: items, sandboxEnabled: deps.sandboxEnabled };
+// OpenClaw is the source of truth for which agents exist; our rows add role/parent.
+// An agent in OpenClaw without a panel row is shown with role null (created outside the panel).
+export async function listAgents(deps: { gateway: GatewayService; db: Db; sandboxEnabled: boolean }): Promise<AgentListDto> {
+  const result = await deps.gateway.request<AgentsListResult>("agents.list", {});
+  const meta = new Map(deps.db.select().from(agents).all().map((row) => [row.id, row]));
+  const items: AgentListItemDto[] = result.agents.map((agent) => {
+    const row = meta.get(agent.id);
+    return {
+      id: agent.id,
+      name: row?.displayName ?? agent.identity?.name ?? agent.name ?? agent.id,
+      emoji: agent.identity?.emoji ?? row?.avatar ?? null,
+      model: agent.model?.primary ?? null,
+      isDefault: agent.id === result.defaultId,
+      role: agent.id === "main" ? "main" : (row?.role ?? null),
+      parentId: row?.parentId ?? null,
+      status: row?.status ?? "ready",
+      purpose: row?.purpose ?? null,
+      canAskMain: row?.canAskMain ?? null,
+      sandbox: row?.sandbox ?? null,
+    };
   });
+  return { defaultId: result.defaultId, agents: items, sandboxEnabled: deps.sandboxEnabled };
+}
+
+export function registerAgentRoutes(app: FastifyInstance, deps: AgentRouteDeps): void {
+  app.get("/api/agents", (): Promise<AgentListDto> => listAgents(deps));
 
   app.post("/api/agents", async (request, reply): Promise<CreateAgentResultDto | ApiErrorDto> => {
     const body = CreateAgentRequest.parse(request.body);

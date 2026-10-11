@@ -5,6 +5,7 @@ import type { FreeModelsStatusDto, FreeProviderDto } from "@clawdesk/shared";
 import { NA, NAlert, NButton, NCard, NCollapse, NCollapseItem, NInput, NPopconfirm, NSpace, NSpin, NTag, NText, useMessage } from "naive-ui";
 import { computed, onMounted, reactive, ref } from "vue";
 import { useI18n } from "vue-i18n";
+import PageHeader from "../components/ui/PageHeader.vue";
 import { api, ApiError } from "../api/client";
 
 const { t } = useI18n();
@@ -62,83 +63,77 @@ onMounted(load);
 </script>
 
 <template>
-  <n-space vertical size="large">
-    <div>
-      <h1 class="title">{{ t("free.title") }}</h1>
-      <p class="lead">{{ t("free.lead") }}</p>
-    </div>
+  <div>
+    <page-header :title="t('free.title')" :subtitle="t('free.lead')" />
+    <n-space vertical size="large">
+      <n-alert type="warning" :title="t('free.warnTitle')">
+        <ul class="warn">
+          <li>{{ t("free.warn1") }}</li>
+          <li>{{ t("free.warn2") }}</li>
+          <li>{{ t("free.warn3") }}</li>
+        </ul>
+      </n-alert>
 
-    <n-alert type="warning" :title="t('free.warnTitle')">
-      <ul class="warn">
-        <li>{{ t("free.warn1") }}</li>
-        <li>{{ t("free.warn2") }}</li>
-        <li>{{ t("free.warn3") }}</li>
-      </ul>
-    </n-alert>
+      <n-alert v-if="error" type="error">{{ error }}</n-alert>
+      <n-alert v-if="status?.ready" type="success" :show-icon="false">{{ t("free.ready") }}</n-alert>
 
-    <n-alert v-if="error" type="error">{{ error }}</n-alert>
-    <n-alert v-if="status?.ready" type="success" :show-icon="false">{{ t("free.ready") }}</n-alert>
-
-    <n-spin :show="loading">
-      <n-card :title="t('free.recommended')">
-        <p class="hint">{{ t("free.startWithGoogle") }}</p>
-        <n-space vertical size="large">
-          <div v-for="p in recommended" :key="p.platform" class="row">
-            <n-space align="center" justify="space-between">
-              <n-space align="center">
-                <strong>{{ p.name }}</strong>
-                <n-tag v-if="p.configured" type="success" size="small">{{ t("free.keyAdded", { n: p.keyCount }) }}</n-tag>
+      <n-spin :show="loading">
+        <n-card :title="t('free.recommended')">
+          <p class="hint">{{ t("free.startWithGoogle") }}</p>
+          <n-space vertical size="large">
+            <div v-for="p in recommended" :key="p.platform" class="row">
+              <n-space align="center" justify="space-between">
+                <n-space align="center">
+                  <strong>{{ p.name }}</strong>
+                  <n-tag v-if="p.configured" type="success" size="small">{{ t("free.keyAdded", { n: p.keyCount }) }}</n-tag>
+                </n-space>
+                <n-a v-if="p.signupUrl" :href="p.signupUrl" target="_blank" rel="noopener noreferrer">{{ t("free.getKey") }}</n-a>
               </n-space>
-              <n-a v-if="p.signupUrl" :href="p.signupUrl" target="_blank" rel="noopener noreferrer">{{ t("free.getKey") }}</n-a>
-            </n-space>
-            <n-space class="mt-s" align="center" :wrap="false">
-              <n-input
-                v-model:value="keys[p.platform]"
-                type="password"
-                show-password-on="click"
-                :placeholder="t('free.keyPlaceholder')"
-                :input-props="{ autocomplete: 'off', spellcheck: false }"
-                style="min-width: 280px"
-              />
-              <n-button type="primary" :loading="busy === p.platform" :disabled="(keys[p.platform] ?? '').trim().length < 8" @click="add(p)">
-                {{ t("free.add") }}
-              </n-button>
-              <n-popconfirm v-if="p.configured" @positive-click="remove(p)">
-                <template #trigger>
-                  <n-button quaternary type="error" :disabled="busy === p.platform">{{ t("free.remove") }}</n-button>
-                </template>
-                {{ t("free.removeConfirm", { name: p.name }) }}
-              </n-popconfirm>
-            </n-space>
-          </div>
-        </n-space>
-      </n-card>
-
-      <n-collapse v-if="others.length" class="mt">
-        <n-collapse-item :title="t('free.others', { n: others.length })" name="others">
-          <n-text depth="3">{{ t("free.othersHint") }}</n-text>
-          <n-space vertical class="mt-s">
-            <n-space v-for="p in others" :key="p.platform" align="center">
-              <span class="other-name">{{ p.name }}</span>
-              <n-tag v-if="p.configured" type="success" size="small">{{ t("free.keyAdded", { n: p.keyCount }) }}</n-tag>
-              <n-input v-model:value="keys[p.platform]" type="password" size="small" :placeholder="t('free.keyPlaceholder')" style="width: 240px" />
-              <n-button size="small" :loading="busy === p.platform" :disabled="(keys[p.platform] ?? '').trim().length < 8" @click="add(p)">{{ t("free.add") }}</n-button>
-            </n-space>
+              <n-space class="mt-s" align="center" :wrap="false">
+                <n-input
+                  v-model:value="keys[p.platform]"
+                  type="password"
+                  show-password-on="click"
+                  :placeholder="t('free.keyPlaceholder')"
+                  :input-props="{ autocomplete: 'off', spellcheck: false }"
+                  style="min-width: 280px"
+                />
+                <n-button type="primary" :loading="busy === p.platform" :disabled="(keys[p.platform] ?? '').trim().length < 8" @click="add(p)">
+                  {{ t("free.add") }}
+                </n-button>
+                <n-popconfirm v-if="p.configured" @positive-click="remove(p)">
+                  <template #trigger>
+                    <n-button quaternary type="error" :disabled="busy === p.platform">{{ t("free.remove") }}</n-button>
+                  </template>
+                  {{ t("free.removeConfirm", { name: p.name }) }}
+                </n-popconfirm>
+              </n-space>
+            </div>
           </n-space>
-        </n-collapse-item>
-      </n-collapse>
-    </n-spin>
-  </n-space>
+        </n-card>
+
+        <n-collapse v-if="others.length" class="mt">
+          <n-collapse-item :title="t('free.others', { n: others.length })" name="others">
+            <n-text depth="3">{{ t("free.othersHint") }}</n-text>
+            <n-space vertical class="mt-s">
+              <n-space v-for="p in others" :key="p.platform" align="center">
+                <span class="other-name">{{ p.name }}</span>
+                <n-tag v-if="p.configured" type="success" size="small">{{ t("free.keyAdded", { n: p.keyCount }) }}</n-tag>
+                <n-input v-model:value="keys[p.platform]" type="password" size="small" :placeholder="t('free.keyPlaceholder')" style="width: 240px" />
+                <n-button size="small" :loading="busy === p.platform" :disabled="(keys[p.platform] ?? '').trim().length < 8" @click="add(p)">{{ t("free.add") }}</n-button>
+              </n-space>
+            </n-space>
+          </n-collapse-item>
+        </n-collapse>
+      </n-spin>
+    </n-space>
+  </div>
 </template>
 
 <style scoped>
 .title {
   margin: 0 0 4px;
   font-size: 22px;
-}
-.lead {
-  margin: 0;
-  opacity: 0.8;
 }
 .warn {
   margin: 0;

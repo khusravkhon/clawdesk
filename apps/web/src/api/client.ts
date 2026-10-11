@@ -8,6 +8,8 @@ import type {
   ApproveTelegramResultDto,
   CreateAgentRequest,
   CreateAgentResultDto,
+  DashboardDto,
+  DashboardRange,
   FreeModelsStatusDto,
   HealthDto,
   InstallProviderResultDto,
@@ -48,6 +50,7 @@ const q = (agentId: string) => `agentId=${encodeURIComponent(agentId)}`;
 
 export const api = {
   health: () => request<HealthDto>("/api/health"),
+  dashboard: (range: DashboardRange) => request<DashboardDto>(`/api/dashboard?range=${range}`),
   agents: () => request<AgentListDto>("/api/agents"),
   createAgent: (body: CreateAgentRequest) => post<CreateAgentResultDto>("/api/agents", body),
   deleteAgent: (agentId: string) => request<void>(`/api/agents/${encodeURIComponent(agentId)}`, { method: "DELETE" }),

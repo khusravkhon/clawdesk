@@ -4,6 +4,7 @@
 import { NButton, NCard, NSpace } from "naive-ui";
 import { ref } from "vue";
 import { useI18n } from "vue-i18n";
+import PageHeader from "../components/ui/PageHeader.vue";
 import { useRouter } from "vue-router";
 import AiConnect from "../components/AiConnect.vue";
 import { markAiConnected } from "../router";
@@ -19,25 +20,14 @@ function onConnected(): void {
 </script>
 
 <template>
-  <n-space vertical size="large">
-    <div>
-      <h1 class="title">{{ t("setupAi.title") }}</h1>
-      <p class="lead">{{ t("setupAi.lead") }}</p>
-    </div>
-    <n-card>
-      <AiConnect agent-id="main" @connected="onConnected" />
-    </n-card>
-    <n-button v-if="done" type="primary" size="large" @click="router.push('/agents')">{{ t("setupAi.next") }}</n-button>
-  </n-space>
+  <div>
+    <page-header :title="t('setupAi.title')" :subtitle="t('setupAi.lead')" />
+    <n-space vertical size="large">
+      <n-card>
+        <AiConnect agent-id="main" @connected="onConnected" />
+      </n-card>
+      <n-button v-if="done" type="primary" size="large" @click="router.push('/')">{{ t("setupAi.next") }}</n-button>
+    </n-space>
+  </div>
 </template>
 
-<style scoped>
-.title {
-  margin: 0 0 4px;
-  font-size: 24px;
-}
-.lead {
-  margin: 0;
-  opacity: 0.8;
-}
-</style>

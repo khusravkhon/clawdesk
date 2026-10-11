@@ -22,6 +22,7 @@ import {
 } from "naive-ui";
 import { computed, onMounted, reactive, ref } from "vue";
 import { useI18n } from "vue-i18n";
+import PageHeader from "../components/ui/PageHeader.vue";
 import { useRouter } from "vue-router";
 import { api, ApiError } from "../api/client";
 import AiConnect from "../components/AiConnect.vue";
@@ -152,133 +153,129 @@ onMounted(load);
 </script>
 
 <template>
-  <n-space vertical size="large">
-    <n-space justify="space-between" align="center">
-      <h1 class="title">{{ t("builder.title") }}</h1>
+  <div>
+    <page-header :title="t('builder.title')">
       <n-button quaternary @click="router.push('/agents')">{{ t("builder.backToList") }}</n-button>
+    </page-header>
+    <n-space vertical size="large">
+      <n-steps :current="Math.min(step, 4)" size="small">
+        <n-step :title="t('builder.stepTemplate')" />
+        <n-step :title="t('builder.stepAbout')" />
+        <n-step :title="t('builder.stepSchedule')" />
+        <n-step :title="t('builder.stepAi')" />
+      </n-steps>
+
+      <n-alert v-if="loadError" type="error">{{ loadError }}</n-alert>
+
+      <n-spin :show="loading">
+        <!-- 1. template -->
+        <n-grid v-if="step === 1" cols="1 s:2 m:3" responsive="screen" :x-gap="12" :y-gap="12">
+          <n-gi v-for="tpl in templates" :key="tpl.id">
+            <button class="tpl" type="button" @click="pick(tpl)">
+              <span class="emoji">{{ tpl.emoji ?? "🤖" }}</span>
+              <strong>{{ tx(tpl.title) }}</strong>
+              <n-text depth="3" class="desc">{{ tx(tpl.description) }}</n-text>
+            </button>
+          </n-gi>
+        </n-grid>
+
+        <!-- 2. about -->
+        <n-card v-else-if="step === 2 && template" :title="`${template.emoji ?? ''} ${tx(template.title)}`">
+          <n-form label-placement="top">
+            <n-form-item v-for="field in template.fields" :key="field.key" :label="tx(field.label)" :required="field.required">
+              <n-input
+                v-model:value="values[field.key]"
+                :type="field.type === 'textarea' ? 'textarea' : 'text'"
+                :autosize="field.type === 'textarea' ? { minRows: 2, maxRows: 6 } : undefined"
+                placeholder=""
+              />
+            </n-form-item>
+            <n-form-item :label="t('builder.canAskMain')">
+              <n-space align="center">
+                <n-switch v-model:value="canAskMain" />
+                <n-text depth="3">{{ canAskMain ? t("builder.canAskMainOn") : t("builder.canAskMainOff") }}</n-text>
+              </n-space>
+            </n-form-item>
+          </n-form>
+          <n-space>
+            <n-button @click="step = 1">{{ t("builder.back") }}</n-button>
+            <n-button type="primary" :disabled="missingRequired.length > 0" @click="step = 3">{{ t("builder.next") }}</n-button>
+          </n-space>
+          <n-text v-if="missingRequired.length" depth="3" class="hint">{{ t("builder.fillRequired", { fields: missingRequired.join(", ") }) }}</n-text>
+        </n-card>
+
+        <!-- 3. schedule -->
+        <n-card v-else-if="step === 3" :title="t('builder.stepSchedule')">
+          <p class="hint">{{ t("builder.scheduleHint", { tz: timezone }) }}</p>
+          <n-space vertical size="large">
+            <div v-for="(s, i) in schedules" :key="i" class="schedule">
+              <n-space align="center">
+                <n-switch v-model:value="s.enabled" />
+                <n-time-picker v-model:formatted-value="s.time" value-format="HH:mm" format="HH:mm" :minutes="5" :disabled="!s.enabled" style="width: 110px" />
+                <n-text>{{ daysText(s.days) }}</n-text>
+                <n-input v-if="!s.presetId" v-model:value="s.label" :placeholder="t('builder.scheduleLabel')" size="small" style="width: 200px" />
+                <n-text v-else depth="3">{{ s.label }}</n-text>
+              </n-space>
+              <n-input v-model:value="s.prompt" type="textarea" :autosize="{ minRows: 1, maxRows: 4 }" :placeholder="t('builder.schedulePrompt')" :disabled="!s.enabled" class="mt-s" />
+            </div>
+            <n-text v-if="!schedules.length" depth="3">{{ t("builder.noSchedules") }}</n-text>
+            <n-button dashed @click="addSchedule">+ {{ t("builder.addSchedule") }}</n-button>
+            <n-space v-if="telegramReady" align="center">
+              <n-switch v-model:value="deliverToTelegram" />
+              <n-text>{{ t("builder.deliverToTelegram") }}</n-text>
+            </n-space>
+            <n-text v-else depth="3">{{ t("builder.telegramLater") }}</n-text>
+          </n-space>
+          <n-space class="mt">
+            <n-button @click="step = 2">{{ t("builder.back") }}</n-button>
+            <n-button type="primary" @click="step = 4">{{ t("builder.next") }}</n-button>
+          </n-space>
+        </n-card>
+
+        <!-- 4. AI access + create -->
+        <n-card v-else-if="step === 4" :title="t('builder.stepAi')">
+          <n-radio-group v-model:value="aiMode" class="block">
+            <n-space vertical>
+              <n-radio value="inherit" :disabled="!mainConnected">
+                {{ t("builder.aiInherit") }}
+                <n-text depth="3"> — {{ mainConnected ? (mainModel ?? "") : t("builder.mainNotConnected") }}</n-text>
+              </n-radio>
+              <n-radio value="own">{{ t("builder.aiOwn") }}</n-radio>
+              <!-- Free models: personal-mode juniors only (never the main agent or company teams). -->
+              <n-radio v-if="template?.mode === 'personal'" value="free" :disabled="!freeReady">
+                {{ t("builder.aiFree") }}
+                <n-text depth="3"> — {{ freeReady ? t("builder.aiFreeHint") : "" }}</n-text>
+                <router-link v-if="!freeReady" to="/free-models" target="_blank">{{ t("builder.aiFreeSetup") }}</router-link>
+              </n-radio>
+            </n-space>
+          </n-radio-group>
+          <n-alert v-if="!sandboxEnabled" type="warning" :show-icon="false" class="block">{{ t("agents.noSandbox") }}</n-alert>
+          <n-alert v-if="createError" type="error" class="block">{{ createError }}</n-alert>
+          <n-space>
+            <n-button :disabled="creating" @click="step = 3">{{ t("builder.back") }}</n-button>
+            <n-button type="primary" :loading="creating" @click="create">{{ t("builder.create") }}</n-button>
+          </n-space>
+        </n-card>
+
+        <!-- 5. created; connect own AI if chosen -->
+        <n-card v-else-if="step === 5 && created">
+          <n-alert type="success" :title="t('builder.created', { name: created.displayName })" class="block">
+            {{ t(deliverToTelegram && telegramReady ? "builder.createdDetailTelegram" : "builder.createdDetail", { n: created.cronJobIds.length }) }}
+          </n-alert>
+          <template v-if="aiMode === 'own' && !aiDone">
+            <h3>{{ t("builder.connectOwn", { name: created.displayName }) }}</h3>
+            <AiConnect :agent-id="created.agentId" @connected="aiDone = true" />
+          </template>
+          <n-space class="mt">
+            <n-button type="primary" @click="router.push('/agents')">{{ t("builder.toList") }}</n-button>
+          </n-space>
+        </n-card>
+      </n-spin>
     </n-space>
-
-    <n-steps :current="Math.min(step, 4)" size="small">
-      <n-step :title="t('builder.stepTemplate')" />
-      <n-step :title="t('builder.stepAbout')" />
-      <n-step :title="t('builder.stepSchedule')" />
-      <n-step :title="t('builder.stepAi')" />
-    </n-steps>
-
-    <n-alert v-if="loadError" type="error">{{ loadError }}</n-alert>
-
-    <n-spin :show="loading">
-      <!-- 1. template -->
-      <n-grid v-if="step === 1" cols="1 s:2 m:3" responsive="screen" :x-gap="12" :y-gap="12">
-        <n-gi v-for="tpl in templates" :key="tpl.id">
-          <button class="tpl" type="button" @click="pick(tpl)">
-            <span class="emoji">{{ tpl.emoji ?? "🤖" }}</span>
-            <strong>{{ tx(tpl.title) }}</strong>
-            <n-text depth="3" class="desc">{{ tx(tpl.description) }}</n-text>
-          </button>
-        </n-gi>
-      </n-grid>
-
-      <!-- 2. about -->
-      <n-card v-else-if="step === 2 && template" :title="`${template.emoji ?? ''} ${tx(template.title)}`">
-        <n-form label-placement="top">
-          <n-form-item v-for="field in template.fields" :key="field.key" :label="tx(field.label)" :required="field.required">
-            <n-input
-              v-model:value="values[field.key]"
-              :type="field.type === 'textarea' ? 'textarea' : 'text'"
-              :autosize="field.type === 'textarea' ? { minRows: 2, maxRows: 6 } : undefined"
-              placeholder=""
-            />
-          </n-form-item>
-          <n-form-item :label="t('builder.canAskMain')">
-            <n-space align="center">
-              <n-switch v-model:value="canAskMain" />
-              <n-text depth="3">{{ canAskMain ? t("builder.canAskMainOn") : t("builder.canAskMainOff") }}</n-text>
-            </n-space>
-          </n-form-item>
-        </n-form>
-        <n-space>
-          <n-button @click="step = 1">{{ t("builder.back") }}</n-button>
-          <n-button type="primary" :disabled="missingRequired.length > 0" @click="step = 3">{{ t("builder.next") }}</n-button>
-        </n-space>
-        <n-text v-if="missingRequired.length" depth="3" class="hint">{{ t("builder.fillRequired", { fields: missingRequired.join(", ") }) }}</n-text>
-      </n-card>
-
-      <!-- 3. schedule -->
-      <n-card v-else-if="step === 3" :title="t('builder.stepSchedule')">
-        <p class="hint">{{ t("builder.scheduleHint", { tz: timezone }) }}</p>
-        <n-space vertical size="large">
-          <div v-for="(s, i) in schedules" :key="i" class="schedule">
-            <n-space align="center">
-              <n-switch v-model:value="s.enabled" />
-              <n-time-picker v-model:formatted-value="s.time" value-format="HH:mm" format="HH:mm" :minutes="5" :disabled="!s.enabled" style="width: 110px" />
-              <n-text>{{ daysText(s.days) }}</n-text>
-              <n-input v-if="!s.presetId" v-model:value="s.label" :placeholder="t('builder.scheduleLabel')" size="small" style="width: 200px" />
-              <n-text v-else depth="3">{{ s.label }}</n-text>
-            </n-space>
-            <n-input v-model:value="s.prompt" type="textarea" :autosize="{ minRows: 1, maxRows: 4 }" :placeholder="t('builder.schedulePrompt')" :disabled="!s.enabled" class="mt-s" />
-          </div>
-          <n-text v-if="!schedules.length" depth="3">{{ t("builder.noSchedules") }}</n-text>
-          <n-button dashed @click="addSchedule">+ {{ t("builder.addSchedule") }}</n-button>
-          <n-space v-if="telegramReady" align="center">
-            <n-switch v-model:value="deliverToTelegram" />
-            <n-text>{{ t("builder.deliverToTelegram") }}</n-text>
-          </n-space>
-          <n-text v-else depth="3">{{ t("builder.telegramLater") }}</n-text>
-        </n-space>
-        <n-space class="mt">
-          <n-button @click="step = 2">{{ t("builder.back") }}</n-button>
-          <n-button type="primary" @click="step = 4">{{ t("builder.next") }}</n-button>
-        </n-space>
-      </n-card>
-
-      <!-- 4. AI access + create -->
-      <n-card v-else-if="step === 4" :title="t('builder.stepAi')">
-        <n-radio-group v-model:value="aiMode" class="block">
-          <n-space vertical>
-            <n-radio value="inherit" :disabled="!mainConnected">
-              {{ t("builder.aiInherit") }}
-              <n-text depth="3"> — {{ mainConnected ? (mainModel ?? "") : t("builder.mainNotConnected") }}</n-text>
-            </n-radio>
-            <n-radio value="own">{{ t("builder.aiOwn") }}</n-radio>
-            <!-- Free models: personal-mode juniors only (never the main agent or company teams). -->
-            <n-radio v-if="template?.mode === 'personal'" value="free" :disabled="!freeReady">
-              {{ t("builder.aiFree") }}
-              <n-text depth="3"> — {{ freeReady ? t("builder.aiFreeHint") : "" }}</n-text>
-              <router-link v-if="!freeReady" to="/free-models" target="_blank">{{ t("builder.aiFreeSetup") }}</router-link>
-            </n-radio>
-          </n-space>
-        </n-radio-group>
-        <n-alert v-if="!sandboxEnabled" type="warning" :show-icon="false" class="block">{{ t("agents.noSandbox") }}</n-alert>
-        <n-alert v-if="createError" type="error" class="block">{{ createError }}</n-alert>
-        <n-space>
-          <n-button :disabled="creating" @click="step = 3">{{ t("builder.back") }}</n-button>
-          <n-button type="primary" :loading="creating" @click="create">{{ t("builder.create") }}</n-button>
-        </n-space>
-      </n-card>
-
-      <!-- 5. created; connect own AI if chosen -->
-      <n-card v-else-if="step === 5 && created">
-        <n-alert type="success" :title="t('builder.created', { name: created.displayName })" class="block">
-          {{ t(deliverToTelegram && telegramReady ? "builder.createdDetailTelegram" : "builder.createdDetail", { n: created.cronJobIds.length }) }}
-        </n-alert>
-        <template v-if="aiMode === 'own' && !aiDone">
-          <h3>{{ t("builder.connectOwn", { name: created.displayName }) }}</h3>
-          <AiConnect :agent-id="created.agentId" @connected="aiDone = true" />
-        </template>
-        <n-space class="mt">
-          <n-button type="primary" @click="router.push('/agents')">{{ t("builder.toList") }}</n-button>
-        </n-space>
-      </n-card>
-    </n-spin>
-  </n-space>
+  </div>
 </template>
 
 <style scoped>
-.title {
-  margin: 0;
-  font-size: 22px;
-}
 .tpl {
   width: 100%;
   height: 100%;

@@ -5,6 +5,7 @@ import type { TelegramPairingRequestDto, TelegramStatusDto } from "@clawdesk/sha
 import { NA, NAlert, NButton, NCard, NInput, NPopconfirm, NSpace, NSpin, NStep, NSteps, NTag, NText, useMessage } from "naive-ui";
 import { computed, onBeforeUnmount, onMounted, ref } from "vue";
 import { useI18n } from "vue-i18n";
+import PageHeader from "../components/ui/PageHeader.vue";
 import { api, ApiError } from "../api/client";
 
 const { t } = useI18n();
@@ -112,95 +113,92 @@ onBeforeUnmount(() => clearInterval(pollTimer));
 </script>
 
 <template>
-  <n-space vertical size="large">
-    <h1 class="title">Telegram</h1>
+  <div>
+    <page-header title="Telegram" :subtitle="t('telegram.subtitle')" />
+    <n-space vertical size="large">
+      <n-steps :current="step" size="small">
+        <n-step :title="t('telegram.stepBot')" />
+        <n-step :title="t('telegram.stepOwner')" />
+        <n-step :title="t('telegram.stepDone')" />
+      </n-steps>
 
-    <n-steps :current="step" size="small">
-      <n-step :title="t('telegram.stepBot')" />
-      <n-step :title="t('telegram.stepOwner')" />
-      <n-step :title="t('telegram.stepDone')" />
-    </n-steps>
+      <n-alert v-if="error" type="error">{{ error }}</n-alert>
 
-    <n-alert v-if="error" type="error">{{ error }}</n-alert>
+      <n-spin :show="loading && !status">
+        <!-- 1. bot token -->
+        <n-card v-if="step === 1" :title="t('telegram.stepBot')">
+          <ol class="howto">
+            <li>
+              {{ t("telegram.howto1") }}
+              <n-a href="https://t.me/BotFather" target="_blank" rel="noopener noreferrer">@BotFather</n-a>
+            </li>
+            <li>{{ t("telegram.howto2") }}</li>
+            <li>{{ t("telegram.howto3") }}</li>
+          </ol>
+          <n-input
+            v-model:value="token"
+            type="password"
+            show-password-on="click"
+            :placeholder="t('telegram.tokenPlaceholder')"
+            :input-props="{ autocomplete: 'off', spellcheck: false }"
+            class="block"
+            @keyup.enter="token.trim() && connect()"
+          />
+          <p class="hint">{{ t("telegram.tokenPrivacy") }}</p>
+          <n-button type="primary" :loading="connecting" :disabled="!token.trim()" @click="connect">{{ t("telegram.connect") }}</n-button>
+          <p v-if="connecting" class="hint">{{ t("telegram.connecting") }}</p>
+        </n-card>
 
-    <n-spin :show="loading && !status">
-      <!-- 1. bot token -->
-      <n-card v-if="step === 1" :title="t('telegram.stepBot')">
-        <ol class="howto">
-          <li>
-            {{ t("telegram.howto1") }}
-            <n-a href="https://t.me/BotFather" target="_blank" rel="noopener noreferrer">@BotFather</n-a>
-          </li>
-          <li>{{ t("telegram.howto2") }}</li>
-          <li>{{ t("telegram.howto3") }}</li>
-        </ol>
-        <n-input
-          v-model:value="token"
-          type="password"
-          show-password-on="click"
-          :placeholder="t('telegram.tokenPlaceholder')"
-          :input-props="{ autocomplete: 'off', spellcheck: false }"
-          class="block"
-          @keyup.enter="token.trim() && connect()"
-        />
-        <p class="hint">{{ t("telegram.tokenPrivacy") }}</p>
-        <n-button type="primary" :loading="connecting" :disabled="!token.trim()" @click="connect">{{ t("telegram.connect") }}</n-button>
-        <p v-if="connecting" class="hint">{{ t("telegram.connecting") }}</p>
-      </n-card>
+        <!-- 2. owner pairing -->
+        <n-card v-else-if="step === 2" :title="t('telegram.stepOwner')">
+          <p>
+            {{ t("telegram.writeBot") }}
+            <n-a v-if="botLink" :href="botLink" target="_blank" rel="noopener noreferrer">@{{ status?.bot?.username }}</n-a>
+          </p>
+          <n-text depth="3">{{ t("telegram.waiting") }}</n-text>
+          <n-space vertical class="mt">
+            <n-card v-for="req in requests" :key="req.requestId" size="small" embedded>
+              <n-space justify="space-between" align="center">
+                <span>
+                  <strong>{{ req.senderLabel }}</strong>
+                  <n-text depth="3"> · id {{ req.senderId }}</n-text>
+                </span>
+                <n-button type="primary" size="small" :loading="approving === req.requestId" @click="approve(req)">{{ t("telegram.itsMe") }}</n-button>
+              </n-space>
+            </n-card>
+          </n-space>
+          <n-alert type="warning" :show-icon="false" class="mt">{{ t("telegram.onlyYours") }}</n-alert>
+        </n-card>
 
-      <!-- 2. owner pairing -->
-      <n-card v-else-if="step === 2" :title="t('telegram.stepOwner')">
-        <p>
-          {{ t("telegram.writeBot") }}
-          <n-a v-if="botLink" :href="botLink" target="_blank" rel="noopener noreferrer">@{{ status?.bot?.username }}</n-a>
-        </p>
-        <n-text depth="3">{{ t("telegram.waiting") }}</n-text>
-        <n-space vertical class="mt">
-          <n-card v-for="req in requests" :key="req.requestId" size="small" embedded>
-            <n-space justify="space-between" align="center">
-              <span>
-                <strong>{{ req.senderLabel }}</strong>
-                <n-text depth="3"> · id {{ req.senderId }}</n-text>
+        <!-- 3. connected -->
+        <n-card v-else-if="status" :title="t('telegram.stepDone')">
+          <n-space vertical>
+            <n-space align="center">
+              <n-tag :type="status.running ? 'success' : 'warning'" size="small">{{ status.running ? t("telegram.running") : t("telegram.notRunning") }}</n-tag>
+              <span v-if="status.bot">
+                {{ t("telegram.bot") }}: <n-a :href="botLink!" target="_blank" rel="noopener noreferrer">@{{ status.bot.username }}</n-a>
               </span>
-              <n-button type="primary" size="small" :loading="approving === req.requestId" @click="approve(req)">{{ t("telegram.itsMe") }}</n-button>
+              <span v-if="status.owner">· {{ t("telegram.owner") }}: {{ status.owner.label ?? status.owner.id }}</span>
             </n-space>
-          </n-card>
-        </n-space>
-        <n-alert type="warning" :show-icon="false" class="mt">{{ t("telegram.onlyYours") }}</n-alert>
-      </n-card>
-
-      <!-- 3. connected -->
-      <n-card v-else-if="status" :title="t('telegram.stepDone')">
-        <n-space vertical>
-          <n-space align="center">
-            <n-tag :type="status.running ? 'success' : 'warning'" size="small">{{ status.running ? t("telegram.running") : t("telegram.notRunning") }}</n-tag>
-            <span v-if="status.bot">
-              {{ t("telegram.bot") }}: <n-a :href="botLink!" target="_blank" rel="noopener noreferrer">@{{ status.bot.username }}</n-a>
-            </span>
-            <span v-if="status.owner">· {{ t("telegram.owner") }}: {{ status.owner.label ?? status.owner.id }}</span>
+            <n-alert v-if="status.lastError" type="error" :show-icon="false">{{ status.lastError }}</n-alert>
+            <p class="hint">{{ t("telegram.doneHint") }}</p>
+            <n-space>
+              <n-button :loading="testing" @click="sendTest">{{ t("telegram.sendTest") }}</n-button>
+              <n-popconfirm @positive-click="disconnect">
+                <template #trigger>
+                  <n-button quaternary type="error">{{ t("telegram.disconnect") }}</n-button>
+                </template>
+                {{ t("telegram.disconnectConfirm") }}
+              </n-popconfirm>
+            </n-space>
           </n-space>
-          <n-alert v-if="status.lastError" type="error" :show-icon="false">{{ status.lastError }}</n-alert>
-          <p class="hint">{{ t("telegram.doneHint") }}</p>
-          <n-space>
-            <n-button :loading="testing" @click="sendTest">{{ t("telegram.sendTest") }}</n-button>
-            <n-popconfirm @positive-click="disconnect">
-              <template #trigger>
-                <n-button quaternary type="error">{{ t("telegram.disconnect") }}</n-button>
-              </template>
-              {{ t("telegram.disconnectConfirm") }}
-            </n-popconfirm>
-          </n-space>
-        </n-space>
-      </n-card>
-    </n-spin>
-  </n-space>
+        </n-card>
+      </n-spin>
+    </n-space>
+  </div>
 </template>
 
 <style scoped>
-.title {
-  margin: 0;
-  font-size: 22px;
-}
 .howto {
   margin: 0 0 16px;
   padding-left: 20px;
