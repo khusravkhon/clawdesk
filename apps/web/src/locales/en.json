@@ -23,5 +23,35 @@
       "disconnected": "connection lost"
     }
   },
+  "common": { "retry": "Retry" },
+  "setupAi": {
+    "title": "Connect an AI for your main assistant",
+    "lead": "Choose which AI powers your main assistant and paste a key or subscription token. Junior agents can get their own access later.",
+    "next": "Continue"
+  },
+  "ai": {
+    "loadFailed": "Could not load the AI list",
+    "moreProviders": "More providers ({n})",
+    "subscriptionSoon": "Sign in with a subscription, no key (coming soon):",
+    "chooseOther": "Choose another AI",
+    "installExplain": "{name} support has to be installed on the server once. The agent server will restart; this takes up to a minute.",
+    "install": "Install {name} support",
+    "keyPlaceholder": "Paste your API key",
+    "tokenPlaceholder": "Paste your subscription token",
+    "whereKey": "Where to get a {name} key",
+    "privacy": "The key only goes to your server and is stored by OpenClaw. The panel does not keep it or show it again.",
+    "checkAndConnect": "Check and connect",
+    "connected": "AI connected",
+    "connectedDetail": "Model: {model}. Answered in {ms} ms.",
+    "fail": {
+      "auth": "The key was rejected. Make sure you copied all of it and that it is active.",
+      "billing": "The provider refused for billing reasons: top up or check your plan.",
+      "rate_limit": "The provider is rate limiting requests. Try again in a minute.",
+      "timeout": "The provider did not answer in time. Try again.",
+      "unavailable": "This way of connecting is not available on the server right now.",
+      "format": "The key has the wrong format.",
+      "unknown": "Could not connect: {error}"
+    }
+  },
   "lang": { "ru": "Русский", "en": "English", "tg": "Тоҷикӣ" }
 }

@@ -42,7 +42,7 @@ deploy/
 ```bash
 pnpm install
 bash deploy/scripts/init.sh --dev        # Gateway в Docker на 127.0.0.1:18789, создаёт apps/bff/.env
-pnpm dev:bff                             # BFF на :8080
+pnpm dev:bff                             # BFF на :8787
 pnpm dev:web                             # админка на :5173 (проксирует /api на BFF)
 ```
 

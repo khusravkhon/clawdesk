@@ -39,6 +39,8 @@ export class GatewayService {
   readonly #waiters = new Set<{ resolve: () => void; reject: (error: Error) => void }>();
   #client: GatewayClient | null = null;
   #hello: HelloOk | null = null;
+  /** Incremented on every hello-ok; lets callers wait for a reconnect after a Gateway restart. */
+  #generation = 0;
   #status: GatewayStatusDto = {
     state: "idle",
     serverVersion: null,
@@ -62,6 +64,19 @@ export class GatewayService {
 
   get deviceId(): string {
     return this.#opts.identity.deviceId;
+  }
+
+  get generation(): number {
+    return this.#generation;
+  }
+
+  /** Resolves once a hello-ok newer than `sinceGeneration` arrives (i.e. after a Gateway restart). */
+  async waitForReconnect(sinceGeneration: number, timeoutMs = 120_000): Promise<void> {
+    const deadline = Date.now() + timeoutMs;
+    while (this.#generation <= sinceGeneration) {
+      if (Date.now() > deadline) throw new Error(`gateway did not reconnect within ${timeoutMs}ms (state: ${this.#status.state})`);
+      await new Promise((resolve) => setTimeout(resolve, 250));
+    }
   }
 
   start(): void {
@@ -168,6 +183,7 @@ export class GatewayService {
 
   #onHello(hello: HelloOk): void {
     this.#hello = hello;
+    this.#generation++;
     this.#setStatus({
       state: "connected",
       serverVersion: hello.server.version,

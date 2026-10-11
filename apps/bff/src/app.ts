@@ -6,15 +6,18 @@ import Fastify, { type FastifyBaseLogger, type FastifyInstance } from "fastify";
 import type { Logger } from "pino";
 import { ZodError } from "zod";
 import type { ApiErrorDto } from "@clawdesk/shared";
+import type { AiSetupService } from "./ai-setup/ai-setup-service.js";
 import type { Db } from "./db/client.js";
 import { GatewayUnavailableError, type GatewayService } from "./gateway/gateway-service.js";
 import { registerAgentRoutes } from "./routes/agents.js";
+import { registerAiRoutes } from "./routes/ai.js";
 import { registerHealthRoutes } from "./routes/health.js";
 
 export type AppDeps = {
   logger: Logger;
   gateway: GatewayService;
   db: Db;
+  aiSetup: AiSetupService;
   webDist: string | undefined;
 };
 
@@ -39,6 +42,7 @@ export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
 
   registerHealthRoutes(app, deps);
   registerAgentRoutes(app, deps);
+  registerAiRoutes(app, deps);
 
   if (deps.webDist && fs.existsSync(path.join(deps.webDist, "index.html"))) {
     await app.register(fastifyStatic, { root: deps.webDist, wildcard: false });
