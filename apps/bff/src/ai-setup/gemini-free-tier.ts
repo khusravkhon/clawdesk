@@ -10,24 +10,31 @@ import type { GatewayService } from "../gateway/gateway-service.js";
 const MODELS_URL = "https://generativelanguage.googleapis.com/v1beta/models?pageSize=1000";
 const NOT_CHAT = /lite|image|tts|live|audio|embedding|vision|exp|thinking|native|computer/i;
 
-/** Picks the newest general Flash chat model; stable versions win over previews. */
-export function selectFlashModel(models: { name: string; supportedGenerationMethods?: string[] }[]): string | null {
+/**
+ * General Flash chat models this key can use, best first (stable before preview, newer first).
+ * Google can be ahead of the pinned OpenClaw catalog, so callers try them in order.
+ */
+export function selectFlashModels(models: { name: string; supportedGenerationMethods?: string[] }[]): string[] {
   const candidates = models
     .map((m) => ({ id: m.name.replace(/^models\//, ""), methods: m.supportedGenerationMethods ?? [] }))
     .filter((m) => /^gemini-[\d.]+-flash(-preview(-[\w-]+)?)?$/.test(m.id) && !NOT_CHAT.test(m.id) && m.methods.includes("generateContent"))
     .map((m) => ({ id: m.id, version: Number.parseFloat(m.id.split("-")[1] ?? "0"), preview: m.id.includes("preview") }));
   candidates.sort((a, b) => Number(a.preview) - Number(b.preview) || b.version - a.version);
-  return candidates[0]?.id ?? null;
+  return candidates.map((c) => c.id);
 }
 
-export async function findFlashModel(apiKey: string, fetchImpl: typeof fetch = fetch): Promise<string | null> {
+export function selectFlashModel(models: { name: string; supportedGenerationMethods?: string[] }[]): string | null {
+  return selectFlashModels(models)[0] ?? null;
+}
+
+export async function findFlashModels(apiKey: string, fetchImpl: typeof fetch = fetch): Promise<string[]> {
   try {
     const res = await fetchImpl(MODELS_URL, { headers: { "x-goog-api-key": apiKey }, signal: AbortSignal.timeout(15_000) });
-    if (!res.ok) return null;
+    if (!res.ok) return [];
     const body = (await res.json()) as { models?: { name: string; supportedGenerationMethods?: string[] }[] };
-    return selectFlashModel(body.models ?? []);
+    return selectFlashModels(body.models ?? []);
   } catch {
-    return null;
+    return [];
   }
 }
 

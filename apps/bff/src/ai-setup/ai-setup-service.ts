@@ -2,7 +2,7 @@ import type { ActivateApiKeyRequest, ActivateResultDto, AiCatalogDto, AiStatusDt
 import type { Logger } from "pino";
 import type { GatewayService } from "../gateway/gateway-service.js";
 import { buildCatalog, providerPluginId, type DetectResult, type PluginEntry } from "./catalog.js";
-import { findFlashModel, storeKeyWithModelViaWizard } from "./gemini-free-tier.js";
+import { findFlashModels, storeKeyWithModelViaWizard } from "./gemini-free-tier.js";
 
 type ActivateResult = { ok: boolean; status?: string; modelRef?: string; latencyMs?: number; error?: string };
 type InstallResult = { ok: true; plugin: { id: string; version?: string }; restartRequired?: boolean };
@@ -78,25 +78,29 @@ export class AiSetupService {
 
   /** Free Google keys have no Pro quota; retry the main agent on a Flash model this key can use. */
   async #activateGeminiFlash(apiKey: string): Promise<ActivateResultDto | null> {
-    const flash = await findFlashModel(apiKey);
-    if (!flash) return null;
-    const modelRef = `google/${flash}`;
+    const candidates = (await findFlashModels(apiKey)).slice(0, 6);
+    if (!candidates.length) return null;
+    type Verify = { ok: boolean; modelRef?: string; latencyMs?: number; status?: string; error?: string };
+    let verify: Verify | null = null;
+    let modelRef = `google/${candidates[0]}`;
     try {
       await storeKeyWithModelViaWizard(this.gateway, this.logger, { provider: "google", apiKey, modelRef });
+      for (const [i, id] of candidates.entries()) {
+        modelRef = `google/${id}`;
+        if (i > 0) await this.gateway.request("agents.update", { agentId: "main", model: modelRef });
+        verify = await this.gateway.request<Verify>("openclaw.setup.verify", { agentId: "main" }, { timeoutMs: 90_000 });
+        this.logger.info({ modelRef, ok: verify.ok, status: verify.status }, "gemini flash fallback");
+        // "format": the pinned OpenClaw does not know this (newer) model yet; try the next one.
+        if (verify.ok || verify.status !== "format") break;
+      }
     } catch (error) {
       this.logger.warn({ err: error }, "could not store the Gemini key with a Flash model");
-      return null;
     }
-    const verify = await this.gateway.request<{ ok: boolean; modelRef?: string; latencyMs?: number; status?: string; error?: string }>(
-      "openclaw.setup.verify",
-      { agentId: "main" },
-      { timeoutMs: 90_000 },
-    );
-    this.logger.info({ modelRef, ok: verify.ok, status: verify.status }, "gemini flash fallback");
-    if (!verify.ok) {
+    if (!verify?.ok) {
       // Leave nothing half-configured behind.
       await this.gateway.request("models.authLogout", { provider: "google", agentId: "main" }).catch(() => undefined);
       await this.gateway.request("agents.update", { agentId: "main", model: null }).catch(() => undefined);
+      if (!verify) return null;
     }
     return {
       ok: verify.ok,

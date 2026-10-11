@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { selectFlashModel } from "../src/ai-setup/gemini-free-tier.js";
+import { selectFlashModel, selectFlashModels } from "../src/ai-setup/gemini-free-tier.js";
 
 const gen = ["generateContent", "countTokens"];
 
@@ -16,6 +16,17 @@ describe("selectFlashModel", () => {
         { name: "models/gemini-2.5-flash-preview-tts", supportedGenerationMethods: gen },
       ]),
     ).toBe("gemini-3-flash");
+  });
+
+  it("orders all candidates so a model unknown to the pinned OpenClaw can be skipped", () => {
+    expect(
+      selectFlashModels([
+        { name: "models/gemini-3.8-flash", supportedGenerationMethods: gen },
+        { name: "models/gemini-3.6-flash", supportedGenerationMethods: gen },
+        { name: "models/gemini-2.5-flash", supportedGenerationMethods: gen },
+        { name: "models/gemini-3-flash-preview", supportedGenerationMethods: gen },
+      ]),
+    ).toEqual(["gemini-3.8-flash", "gemini-3.6-flash", "gemini-2.5-flash", "gemini-3-flash-preview"]);
   });
 
   it("falls back to a preview Flash when no stable one exists, and to null when none", () => {
