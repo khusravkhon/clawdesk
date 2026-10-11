@@ -50,7 +50,9 @@ export async function createJuniorAgent(deps: CreateAgentDeps, req: CreateAgentR
   const purpose = (req.values.goal ?? req.values.purpose ?? req.values.channel ?? "").trim() || null;
 
   const list = await gateway.request<AgentsList>("agents.list", {});
-  const agentId = uniqueSlug(slugBase(template, displayName), new Set(list.agents.map((a) => a.id)));
+  const taken = new Set(list.agents.map((a) => a.id));
+  const base = slugBase(template, displayName);
+  let agentId = uniqueSlug(base, taken);
   const mainModel = list.agents.find((a) => a.id === "main")?.model?.primary ?? null;
   // Free models only for personal-mode juniors; company teams and the main agent never get them.
   if (req.ai === "free" && template.mode !== "personal") throw new CreateAgentError("invalid_values", "free models are only available for personal assistants");
@@ -66,7 +68,17 @@ export async function createJuniorAgent(deps: CreateAgentDeps, req: CreateAgentR
         name: "agents.create",
         // OpenClaw ids are ASCII; the Cyrillic display name is set right after.
         run: async () => {
-          const res = await gateway.request<{ agentId: string }>("agents.create", { name: agentId, ...(template.emoji ? { emoji: template.emoji } : {}) });
+          let res: { agentId: string } | undefined;
+          // A just-deleted agent keeps its id while OpenClaw finishes cleanup; take the next free one.
+          for (let attempt = 0; !res; attempt++) {
+            try {
+              res = await gateway.request<{ agentId: string }>("agents.create", { name: agentId, ...(template.emoji ? { emoji: template.emoji } : {}) });
+            } catch (error) {
+              if (attempt >= 4 || !/deletion cleanup is still pending/i.test((error as Error).message)) throw error;
+              taken.add(agentId);
+              agentId = uniqueSlug(base, taken);
+            }
+          }
           if (res.agentId !== agentId) throw new Error(`gateway assigned id "${res.agentId}" instead of "${agentId}"`);
           await gateway.request("agents.update", { agentId, name: displayName });
         },

@@ -218,5 +218,18 @@ authChoice }` → шаги забираются `wizard.next { sessionId, answer
   8 тыс. токенов/мин FreeLLMAPI пропускает. Нужны провайдеры с запасом (Google AI Studio, Cerebras, Mistral).
 - Не показывается для главного агента (первое окно) и для шаблонов режима «Проекты компании»; BFF это проверяет.
 
+**Google (Gemini) на бесплатном ключе.** `openclaw.setup.activate` проверяет ключ **всегда** на модели провайдера
+по умолчанию (`google/gemini-3.1-pro-preview`), `modelRef` и заранее заданная модель агента игнорируются. У Pro на
+бесплатном тарифе квота 0 → 429 `RESOURCE_EXHAUSTED`, хотя ключ рабочий. Решение (главный агент): по списку моделей
+Google для этого ключа выбираем Flash, сохраняем ключ+модель через мастер `setup` (он пишет оба на шаге модели —
+даже если потом падает), отменяем мастер и проверяем `openclaw.setup.verify` (он пробует **настроенную** модель).
+Ключ в `models.providers.google.apiKey` OpenClaw не использует — нужен профиль в хранилище агента.
+
+**Опасно: удаление агента + рестарт.** `agents.delete` дочищает асинхронно; пока не дочистил, id занят
+(`deletion cleanup is still pending`), а **рестарт Gateway в этот момент валит запуск**
+(`agent database is unavailable while agent <id> is deleted`, `doctor --fix` не лечит). Ручной выход: перенести
+`agents/<id>` и `workspace/<id>` из каталога состояния. Панель: при занятом id берёт следующий (`-2`); не
+перезапускать Gateway сразу после удаления агентов (TODO: ждать завершения очистки перед установкой плагинов).
+
 **Сеть.** Pull 2 ГБ образа с ghcr.io рвался (`TLS handshake timeout`, `unexpected EOF`) — в `init.sh` добавлены
 ретраи и `OPENCLAW_IMAGE=openclaw/openclaw` (официальное зеркало Docker Hub) как запасной путь.

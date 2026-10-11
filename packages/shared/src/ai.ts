@@ -69,6 +69,8 @@ export const ActivateResultDto = z.object({
   modelRef: z.string().nullable(),
   latencyMs: z.number().nullable(),
   error: z.string().nullable(),
+  /** The provider default was not usable on this key; a model that is (e.g. Gemini Flash on a free key) was chosen. */
+  switchedModel: z.boolean(),
 });
 export type ActivateResultDto = z.infer<typeof ActivateResultDto>;
 

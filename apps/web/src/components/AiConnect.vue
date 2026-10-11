@@ -99,7 +99,7 @@ async function activate(): Promise<void> {
 }
 
 function onSignedIn(modelRef: string | null): void {
-  emit("connected", { ok: true, status: "ok", modelRef, latencyMs: null, error: null });
+  emit("connected", { ok: true, status: "ok", modelRef, latencyMs: null, error: null, switchedModel: false });
 }
 
 function failureText(res: ActivateResultDto): string {
@@ -211,6 +211,7 @@ onMounted(load);
 
         <n-alert v-if="result?.ok" type="success" class="mt" :title="t('ai.connected')">
           {{ t("ai.connectedDetail", { model: result.modelRef ?? "—", ms: result.latencyMs ?? "—" }) }}
+          <template v-if="result.switchedModel"><br />{{ t("ai.switchedModel") }}</template>
         </n-alert>
         <n-alert v-else-if="result" type="error" class="mt">{{ failureText(result) }}</n-alert>
       </template>

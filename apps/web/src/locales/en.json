@@ -69,7 +69,8 @@
       "moonshot": "Under API Keys click \"Create API Key\" and copy it.",
       "zai": "Click \"Add new API key\" and copy it.",
       "openrouter": "Click \"Create Key\" and copy it (starts with sk-or-…)."
-    }
+    },
+    "switchedModel": "The default (Pro) model is not available on a free key, so the free Gemini Flash model was connected."
   },
   "signIn": {
     "deviceSteps": "Open the sign-in page in your own browser, sign in and enter this code:",
