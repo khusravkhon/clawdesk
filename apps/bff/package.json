@@ -24,7 +24,8 @@
     "db:generate": "drizzle-kit generate",
     "notion-probe": "tsx --conditions=source src/scripts/notion-probe.ts",
     "chat-probe": "tsx --conditions=source src/scripts/chat-probe.ts",
-    "gemini-fallbacks": "tsx --conditions=source src/scripts/gemini-fallbacks.ts"
+    "gemini-fallbacks": "tsx --conditions=source src/scripts/gemini-fallbacks.ts",
+    "approval-probe": "tsx --conditions=source src/scripts/approval-probe.ts"
   },
   "dependencies": {
     "@clawdesk/shared": "workspace:*",

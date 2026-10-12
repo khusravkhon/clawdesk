@@ -61,8 +61,14 @@ namespace Gateway (`network_mode: service:gateway`): Gateway слушает то
   (в compose). Бесплатный Flash часто `503 high demand` и быстро `429 quota` → запасные модели
   `agents.entries.main.model { primary, fallbacks }` (сужение массива — `replacePaths`); `gemini-flash-latest` /
   `gemini-flash-lite-latest` — псевдонимы Google. `models.list { view: "all" }` — весь каталог OpenClaw.
-- Главный агент выполняет `exec` в контейнере Gateway **без одобрения** (сам запустил `openclaw doctor` по heartbeat).
-  По ТЗ — только через одобрение: экран 12.
+- Главный агент выполнял `exec` в контейнере Gateway **без одобрения** (`security: full, ask: off` по умолчанию).
+  **Одобрения (сделано 2026-10-12):** действует более строгая из `tools.exec.*` и документа хоста
+  (`exec.approvals.get/set`, `agents.main { security: allowlist, ask: on-miss, askFallback: deny }` — панель ставит
+  один раз при старте). Очередь: `exec.approval.list` / `plugin.approval.list` (`approval.list` в 2026.8.1 нет),
+  решение `exec.approval.resolve { id, decision: allow-once|allow-always|deny }`, журнал `approval.history`, события
+  `exec.approval.requested|resolved`. **Клиент должен объявить `caps: ["approvals", "exec-approvals"]`**, иначе
+  получателя нет и запрос сразу отклоняется (`terminalReason: no-route`). `caps: ["tool-events"]` — события
+  инструментов в `agent`. Проверка без модели: `pnpm --filter @clawdesk/bff approval-probe --wait`.
 - Память главного (`memory-core`) ищет ключ OpenAI для эмбеддингов (`sync failed … provider "openai"`) — настроить
   на провайдера пользователя.
 

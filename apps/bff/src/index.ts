@@ -6,6 +6,8 @@ import { loadConfig } from "./config.js";
 import { openDb } from "./db/client.js";
 import { createLogger } from "./lib/logger.js";
 import { createGatewayService } from "./runtime.js";
+import { ApprovalsService } from "./approvals/approvals-service.js";
+import { getSetting, putSetting } from "./db/settings.js";
 import { BridgeClient } from "./gateway/bridge-client.js";
 import { SourcesService } from "./sources/sources-service.js";
 import { TelegramService } from "./telegram/telegram-service.js";
@@ -23,10 +25,19 @@ const signIn = new SignInSessionManager(gateway, logger.child({ component: "sign
 const telegram = new TelegramService(gateway, db, logger.child({ component: "telegram" }));
 const freeModels = new FreeModelsService(gateway, logger.child({ component: "free-models" }), { ...config.freeModels, dataDir: config.dataDir });
 const sources = new SourcesService({ gateway, db, logger: logger.child({ component: "sources" }), files: config.files, bridge: new BridgeClient(config.bridgeUrl, config.gateway.sharedToken) });
-const app = await buildApp({ logger, gateway, db, aiSetup, signIn, telegram, freeModels, sources, sandboxEnabled: config.sandboxEnabled, webDist: config.webDist });
+const approvals = new ApprovalsService(gateway, logger.child({ component: "approvals" }));
+const app = await buildApp({ logger, gateway, db, aiSetup, signIn, telegram, freeModels, sources, approvals, sandboxEnabled: config.sandboxEnabled, webDist: config.webDist });
 
 gateway.start();
 await app.listen({ host: config.host, port: config.port });
+
+// Main agent: commands on the server need the owner's approval (applied once, then the owner decides).
+const EXEC_DEFAULT_SETTING = "approvals.mainDefaultApplied";
+void gateway
+  .waitUntilConnected(120_000)
+  .then(() => approvals.ensureDefault(getSetting<boolean>(db, EXEC_DEFAULT_SETTING) === true))
+  .then((applied) => applied && putSetting(db, EXEC_DEFAULT_SETTING, true))
+  .catch((error: Error) => logger.warn({ err: error }, "could not apply the default exec approval mode"));
 
 let shuttingDown = false;
 async function shutdown(signal: string): Promise<void> {

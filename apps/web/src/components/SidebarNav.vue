@@ -1,12 +1,13 @@
 <script setup lang="ts">
 // Sidebar body: brand, sections, theme and language. Shared by the desktop sidebar and the phone drawer.
 import type { Locale } from "@clawdesk/shared";
-import { Activity, Bot, Database, LayoutDashboard, MessagesSquare, Moon, PanelLeftClose, PanelLeftOpen, Send, Sparkles, Sun } from "@lucide/vue";
+import { Activity, Bot, Database, LayoutDashboard, MessagesSquare, ShieldCheck, Moon, PanelLeftClose, PanelLeftOpen, Send, Sparkles, Sun } from "@lucide/vue";
 import { NButton, NMenu, NSelect, NTooltip, type MenuOption } from "naive-ui";
 import { computed, h, type Component } from "vue";
 import { useI18n } from "vue-i18n";
 import { RouterLink, useRoute } from "vue-router";
 import { setLocale, supportedLocales } from "../i18n";
+import { useApprovalsStore } from "../stores/approvals";
 import { themeMode, toggleTheme } from "../theme";
 
 const props = defineProps<{ collapsed?: boolean; collapsible?: boolean }>();
@@ -14,15 +15,20 @@ const emit = defineEmits<{ toggle: []; navigate: [] }>();
 
 const { t, locale } = useI18n();
 const route = useRoute();
+const approvals = useApprovalsStore();
 
 const icon = (c: Component) => () => h(c, { size: 18, strokeWidth: 1.75 });
-const link = (to: string, label: string) => () => h(RouterLink, { to, onClick: () => emit("navigate") }, { default: () => label });
+const link = (to: string, label: string, badge?: () => number) => () =>
+  h(RouterLink, { to, onClick: () => emit("navigate"), class: "nav-link" }, {
+    default: () => [label, badge && badge() > 0 ? h("span", { class: "nav-badge" }, String(badge())) : null],
+  });
 
 const menu = computed<MenuOption[]>(() => [
   { key: "/", label: link("/", t("nav.overview")), icon: icon(LayoutDashboard) },
   { key: "/chat", label: link("/chat", t("nav.chat")), icon: icon(MessagesSquare) },
   { key: "/agents", label: link("/agents", t("nav.agents")), icon: icon(Bot) },
   { key: "/sources", label: link("/sources", t("nav.sources")), icon: icon(Database) },
+  { key: "/approvals", label: link("/approvals", t("nav.approvals"), () => approvals.count), icon: icon(ShieldCheck) },
   { key: "/telegram", label: link("/telegram", "Telegram"), icon: icon(Send) },
   { key: "/free-models", label: link("/free-models", t("nav.freeModels")), icon: icon(Sparkles) },
   { key: "/status", label: link("/status", t("nav.status")), icon: icon(Activity) },
@@ -122,5 +128,24 @@ const collapsed = computed(() => !!props.collapsed);
 .lang {
   flex: 1;
   min-width: 0;
+}
+:deep(.nav-link) {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+:deep(.nav-badge) {
+  margin-left: auto;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  box-sizing: border-box;
+  border-radius: 999px;
+  background: var(--warning);
+  color: #1a1300;
+  font-size: 11px;
+  font-weight: 600;
+  display: inline-grid;
+  place-items: center;
 }
 </style>

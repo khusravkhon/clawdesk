@@ -8,7 +8,8 @@
     "overview": "Overview",
     "freeModels": "Free models",
     "sources": "Data sources",
-    "chat": "Chat"
+    "chat": "Chat",
+    "approvals": "Approvals"
   },
   "status": {
     "title": "System status",
@@ -354,5 +355,50 @@
       "tool": "Using tools…",
       "writing": "Writing…"
     }
+  },
+  "approvals": {
+    "title": "Approvals",
+    "subtitle": "Risky agent actions run only with your permission",
+    "modeTitle": "Main assistant commands on the server",
+    "mode": {
+      "ask": "Ask me",
+      "full": "Allow everything",
+      "deny": "Block"
+    },
+    "modeDesc": {
+      "ask": "Known commands run right away, new ones wait for you. If nobody answers in 30 minutes, the command does not run.",
+      "full": "The assistant runs any command without asking. Convenient but risky.",
+      "deny": "The assistant cannot run commands on the server at all."
+    },
+    "recommended": "recommended",
+    "modeSaved": "Mode saved",
+    "pendingTitle": "Waiting for you",
+    "nothingPending": "Nothing is waiting for your answer.",
+    "wants": "“{name}” wants to run a command",
+    "expires": "expires {when}",
+    "cwd": "Folder",
+    "allowOnce": "Allow once",
+    "allowAlways": "Always allow",
+    "deny": "Deny",
+    "done": {
+      "allow-once": "Allowed once",
+      "allow-always": "Command added to allowed",
+      "deny": "Denied"
+    },
+    "allowedTitle": "Always allowed",
+    "allowedHint": "The assistant runs these without asking. Remove one and it asks again.",
+    "noneAllowed": "Nothing yet",
+    "remove": "Remove",
+    "confirmRemove": "Remove from allowed? The assistant will ask again.",
+    "historyTitle": "Recent decisions",
+    "noHistory": "No decisions yet",
+    "status": {
+      "allowed": "allowed",
+      "denied": "denied",
+      "expired": "expired",
+      "cancelled": "cancelled"
+    },
+    "toastTitle": "An agent is waiting for your permission",
+    "open": "Open"
   }
 }

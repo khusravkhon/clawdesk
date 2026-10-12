@@ -4,6 +4,9 @@ import type {
   AgentListDto,
   AiCatalogDto,
   AiStatusDto,
+  ApprovalDecision,
+  ApprovalsDto,
+  ExecMode,
   ChatHistoryDto,
   ApiErrorDto,
   ApproveTelegramResultDto,
@@ -69,6 +72,13 @@ export const api = {
     status: () => request<FreeModelsStatusDto>("/api/free-models"),
     addKey: (platform: string, key: string) => post<FreeModelsStatusDto>("/api/free-models/keys", { platform, key }),
     removeKeys: (platform: string) => request<FreeModelsStatusDto>(`/api/free-models/keys/${encodeURIComponent(platform)}`, { method: "DELETE" }),
+  },
+  approvals: {
+    list: () => request<ApprovalsDto>("/api/approvals"),
+    resolve: (id: string, kind: "exec" | "plugin", decision: ApprovalDecision) => post<void>(`/api/approvals/${encodeURIComponent(id)}/resolve`, { kind, decision }),
+    setMode: (mode: ExecMode) => post<ApprovalsDto>("/api/approvals/mode", { mode }),
+    removeAllowed: (pattern: string) => post<ApprovalsDto>("/api/approvals/allowed/remove", { pattern }),
+    eventsUrl: "/api/approvals/events",
   },
   chat: {
     history: (agentId: string) => request<ChatHistoryDto>(`/api/chat/${encodeURIComponent(agentId)}/history`),

@@ -1,12 +1,31 @@
 <script setup lang="ts">
 // Panel frame. Desktop: left sidebar that folds to icons. Phone: top bar, menu slides in from the left.
 import { Menu as MenuIcon } from "@lucide/vue";
-import { NButton, NDrawer, NLayout, NLayoutContent, NLayoutSider } from "naive-ui";
-import { onBeforeUnmount, onMounted, ref } from "vue";
+import { NButton, NDrawer, NLayout, NLayoutContent, NLayoutSider, useNotification } from "naive-ui";
+import { h, onBeforeUnmount, onMounted, ref } from "vue";
 import { useI18n } from "vue-i18n";
+import { useRouter } from "vue-router";
+import { useApprovalsStore } from "../stores/approvals";
 import SidebarNav from "./SidebarNav.vue";
 
 const { t } = useI18n();
+const router = useRouter();
+const notification = useNotification();
+const approvals = useApprovalsStore();
+
+// Anywhere in the panel: a command waiting for approval pops up a notice.
+onMounted(() =>
+  approvals.watch((p) => {
+    const notice = notification.warning({
+      title: t("approvals.toastTitle"),
+      content: p.command.length > 120 ? `${p.command.slice(0, 120)}…` : p.command,
+      duration: 20_000,
+      action: () =>
+        h(NButton, { size: "small", type: "warning", secondary: true, onClick: () => { notice.destroy(); void router.push("/approvals"); } }, { default: () => t("approvals.open") }),
+    });
+  }),
+);
+
 const collapsed = ref(false);
 const drawerOpen = ref(false);
 

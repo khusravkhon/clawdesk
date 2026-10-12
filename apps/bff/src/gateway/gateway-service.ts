@@ -96,6 +96,9 @@ export class GatewayService {
       platform: process.platform,
       role: ROLE,
       scopes: [...PANEL_OPERATOR_SCOPES],
+      // Without these the Gateway has no reviewer for approvals (it denies at once: "no-route")
+      // and keeps tool activity out of the agent events the chat shows.
+      caps: ["approvals", "exec-approvals", "plugin-approvals", "tool-events"],
       minProtocol: PROTOCOL_VERSION,
       maxProtocol: PROTOCOL_VERSION,
       deviceIdentity: identity,

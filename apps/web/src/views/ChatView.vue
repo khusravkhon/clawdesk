@@ -8,8 +8,10 @@ import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue"
 import { useI18n } from "vue-i18n";
 import { useRoute, useRouter } from "vue-router";
 import { api, ApiError } from "../api/client";
+import ApprovalCard from "../components/ApprovalCard.vue";
 import { intlLocale } from "../format";
 import { modelErrorHint } from "../model-errors";
+import { useApprovalsStore } from "../stores/approvals";
 
 const { t, locale } = useI18n();
 const message = useMessage();
@@ -30,6 +32,12 @@ const agentId = computed(() => (route.params.agentId as string | undefined) || "
 const agent = computed(() => agents.value.find((a) => a.id === agentId.value) ?? null);
 const agentOptions = computed(() => agents.value.map((a) => ({ value: a.id, label: `${a.emoji ?? (a.role === "main" ? "🧭" : "🤖")}  ${displayName(a)}` })));
 const displayName = (a: AgentListItemDto) => (a.role === "main" && a.name === a.id ? t("agents.main") : a.name);
+
+const approvals = useApprovalsStore();
+// Commands this agent is waiting on, answered right here in the chat.
+const waiting = computed(() =>
+  approvals.pending.filter((p) => p.sessionKey === `agent:${agentId.value}:main` || (!p.sessionKey && p.agentId === agentId.value)),
+);
 
 const messages = ref<ChatMessageDto[]>([]);
 const loading = ref(true);
@@ -254,7 +262,7 @@ watch(agentId, () => void open());
           </div>
         </template>
 
-        <div v-if="running" class="row assistant">
+        <div v-if="running || waiting.length" class="row assistant">
           <div class="avatar">{{ agent?.emoji ?? "🧭" }}</div>
           <div class="body">
             <div v-if="liveTools.length" class="tools">
@@ -262,11 +270,14 @@ watch(agentId, () => void open());
             </div>
             <!-- eslint-disable-next-line vue/no-v-html -- rendered with html disabled -->
             <div v-if="liveText" class="md" v-html="md.render(liveText)" />
-            <div v-else class="typing">
+            <div v-else-if="!waiting.length" class="typing">
               <span class="dots"><i /><i /><i /></span>
               {{ t(`chat.phase.${phase}`) }}
             </div>
-            <div v-if="slow" class="slow">{{ t("chat.slow") }}</div>
+            <div v-if="waiting.length" class="approvals">
+              <approval-card v-for="a in waiting" :key="a.id" :approval="a" :agent-name="agent ? displayName(agent) : undefined" compact />
+            </div>
+            <div v-if="slow && !waiting.length" class="slow">{{ t("chat.slow") }}</div>
           </div>
         </div>
       </div>
@@ -520,6 +531,12 @@ watch(agentId, () => void open());
     animation: none;
     opacity: 0.7;
   }
+}
+.approvals {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 8px;
 }
 .slow {
   margin-top: 8px;
