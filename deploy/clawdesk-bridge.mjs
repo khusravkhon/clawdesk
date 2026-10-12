@@ -15,6 +15,7 @@
 //   POST /google/login/start { email, services, readonly, redirectUri? } → { authorizationUrl }
 //   POST /google/login/complete { …same, authUrl }
 //   POST /google/remove      { email }
+//   POST /freellmapi/reset   { newPassword }   recover FreeLLMAPI's account (code from its log)
 
 import { spawn } from "node:child_process";
 import { timingSafeEqual } from "node:crypto";
@@ -202,6 +203,66 @@ async function googleRemove(body) {
   return { status: 200, body: { ok: true } };
 }
 
+// --- FreeLLMAPI account recovery
+//
+// The panel keeps FreeLLMAPI's single account password in its own volume. If that volume is lost,
+// FreeLLMAPI's reset flow is the way back in: it prints a one-time code to its log only. The Gateway
+// container can read that log through the Docker socket it already has.
+
+const FREELLMAPI = "http://127.0.0.1:3001"; // shares this network namespace
+
+function runDocker(args, timeoutMs = 20_000) {
+  return new Promise((resolve) => {
+    const child = spawn("docker", args, { env: process.env, stdio: ["ignore", "pipe", "pipe"] });
+    let out = "";
+    const timer = setTimeout(() => child.kill("SIGTERM"), timeoutMs);
+    child.stdout.on("data", (c) => (out += c));
+    child.stderr.on("data", (c) => (out += c)); // docker logs writes the container's stderr here
+    child.on("close", (code) => {
+      clearTimeout(timer);
+      resolve({ code, out });
+    });
+    child.on("error", () => {
+      clearTimeout(timer);
+      resolve({ code: null, out });
+    });
+  });
+}
+
+/** The FreeLLMAPI container of this Compose project (it runs in this container's network namespace). */
+async function freellmapiContainer() {
+  const self = process.env.HOSTNAME ?? "";
+  const project = (await runDocker(["inspect", self, "--format", '{{index .Config.Labels "com.docker.compose.project"}}'])).out.trim();
+  if (!project) return null;
+  const list = await runDocker(["ps", "--filter", `label=com.docker.compose.project=${project}`, "--filter", "label=com.docker.compose.service=freellmapi", "--format", "{{.Names}}"]);
+  return list.out.trim().split("\n")[0] || null;
+}
+
+async function freellmapiReset(body) {
+  const newPassword = typeof body.newPassword === "string" ? body.newPassword : "";
+  if (newPassword.length < 16 || newPassword.length > 200) return { status: 400, body: { error: "invalid_password" } };
+  const container = await freellmapiContainer();
+  if (!container) return { status: 501, body: { error: "freellmapi_missing", message: "FreeLLMAPI container not found" } };
+  const since = new Date(Date.now() - 2_000).toISOString();
+  const forgot = await fetch(`${FREELLMAPI}/api/auth/forgot-password`, { method: "POST", headers: { "content-type": "application/json" }, body: "{}" }).catch(() => null);
+  if (!forgot?.ok) return { status: 502, body: { error: "reset_failed", message: `forgot-password answered ${forgot?.status ?? "nothing"}` } };
+  let code = null;
+  for (let i = 0; i < 10 && !code; i++) {
+    await new Promise((r) => setTimeout(r, 300));
+    const logs = await runDocker(["logs", "--since", since, container]);
+    code = [...logs.out.matchAll(/Password-reset code: (\S+)/g)].at(-1)?.[1] ?? null;
+  }
+  if (!code) return { status: 502, body: { error: "reset_failed", message: "no reset code in the FreeLLMAPI log" } };
+  const reset = await fetch(`${FREELLMAPI}/api/auth/reset-password`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ resetCode: code, newPassword }),
+  }).catch(() => null);
+  if (!reset?.ok) return { status: 502, body: { error: "reset_failed", message: `reset-password answered ${reset?.status ?? "nothing"}` } };
+  log("freellmapi password reset");
+  return { status: 200, body: { ok: true } };
+}
+
 function readJson(req) {
   return new Promise((resolve, reject) => {
     let raw = "";
@@ -235,6 +296,7 @@ async function handle(req) {
 
   const body = await readJson(req);
   if (!(await gogInstalled()) && url.pathname.startsWith("/google/")) return { status: 501, body: { error: "gog_missing", message: "gog is not in this Gateway image" } };
+  if (url.pathname === "/freellmapi/reset") return freellmapiReset(body);
   switch (url.pathname) {
     case "/google/credentials":
       return googleCredentials(body);

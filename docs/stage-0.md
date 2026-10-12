@@ -310,5 +310,7 @@ Google для этого ключа выбираем Flash, сохраняем �
 `**/.env`), шаблоны и веб на месте, процесс от `node`. Контейнер в namespace Gateway подключается без одобрения
 устройства (loopback), все эндпоинты 200, SPA и SSE работают, колбэки OAuth тоже.
 - Контейнеры живут в UTC: часовой пояс для графиков и новых расписаний берётся из браузера (`?tz=`, проверка IANA).
-- Риск: учётка FreeLLMAPI (`data/freellmapi/account.json`) хранится только в томе панели; потеря тома → панель не
-  войдёт в FreeLLMAPI («Setup already completed»). TODO: восстановление (сброс учётки FreeLLMAPI).
+- Учётка FreeLLMAPI: пароль = HMAC(`OPENCLAW_GATEWAY_TOKEN`, "clawdesk/freellmapi/account/v1"), файл в томе панели —
+  только кеш. Старые случайные пароли панель переводит на вычисляемый (`change-password`). Если пароль неизвестен
+  («Setup already completed») — bridge: `forgot-password` → код сброса из `docker logs` контейнера FreeLLMAPI
+  (того же compose-проекта) → `reset-password`. Ключи провайдеров не трогаются. Проверено вживую все три случая.

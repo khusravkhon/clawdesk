@@ -72,6 +72,11 @@ export class BridgeClient {
     return this.#call("POST", "/google/remove", { email });
   }
 
+  /** Recovers FreeLLMAPI's single account (one-time code from its log) and sets this password. */
+  freellmapiReset(newPassword: string): Promise<{ ok: true }> {
+    return this.#call("POST", "/freellmapi/reset", { newPassword }, 60_000);
+  }
+
   async #call<T>(method: "GET" | "POST", path: string, body?: unknown, timeoutMs = 90_000): Promise<T> {
     if (!this.token) throw new BridgeError("bridge_unavailable", "the Gateway token is not configured");
     let res: Response;

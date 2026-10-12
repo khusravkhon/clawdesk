@@ -24,8 +24,14 @@ const gateway = createGatewayService(config, logger, { retryPairing: true });
 const aiSetup = new AiSetupService(gateway, logger.child({ component: "ai-setup" }));
 const signIn = new SignInSessionManager(gateway, logger.child({ component: "signin" }));
 const telegram = new TelegramService(gateway, db, logger.child({ component: "telegram" }));
-const freeModels = new FreeModelsService(gateway, logger.child({ component: "free-models" }), { ...config.freeModels, dataDir: config.dataDir });
-const sources = new SourcesService({ gateway, db, logger: logger.child({ component: "sources" }), files: config.files, bridge: new BridgeClient(config.bridgeUrl, config.gateway.sharedToken) });
+const bridge = new BridgeClient(config.bridgeUrl, config.gateway.sharedToken);
+const freeModels = new FreeModelsService(gateway, logger.child({ component: "free-models" }), {
+  ...config.freeModels,
+  dataDir: config.dataDir,
+  accountSecret: config.gateway.sharedToken,
+  bridge,
+});
+const sources = new SourcesService({ gateway, db, logger: logger.child({ component: "sources" }), files: config.files, bridge });
 const approvals = new ApprovalsService(gateway, logger.child({ component: "approvals" }));
 const assistant = new AssistantService({ gateway, db, logger: logger.child({ component: "assistant" }) });
 const app = await buildApp({ logger, gateway, db, aiSetup, signIn, telegram, freeModels, sources, approvals, assistant, sandboxEnabled: config.sandboxEnabled, webDist: config.webDist });

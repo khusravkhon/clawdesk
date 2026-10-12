@@ -4,13 +4,15 @@ import path from "node:path";
 import { FREE_MODEL_REF, type FreeModelsStatusDto, type FreeProviderDto } from "@clawdesk/shared";
 import type { Logger } from "pino";
 import { z } from "zod";
+import type { BridgeClient } from "../gateway/bridge-client.js";
 import { patchConfig } from "../gateway/config-patch.js";
 import type { GatewayService } from "../gateway/gateway-service.js";
 import { readJsonIfExists, writeSecureJson } from "../lib/secure-file.js";
 
 // Manages the bundled FreeLLMAPI for "free models" (junior agents, personal mode).
-// The panel owns FreeLLMAPI's single dashboard account (random credentials kept
-// in a 0600 file), adds the provider keys people paste, and registers
+// The panel owns FreeLLMAPI's single dashboard account. Its password is derived from the Gateway
+// token (deploy/.env), so a lost panel volume does not lock the panel out; the 0600 file is a cache.
+// The panel adds the provider keys people paste, and registers
 // FreeLLMAPI in OpenClaw as provider "freellmapi" with its unified key stored
 // as a protected Gateway secret.
 
@@ -52,7 +54,18 @@ export type FreeModelsOptions = {
   dataDir: string;
   /** Only needed when the BFF is not on FreeLLMAPI's loopback (host development). */
   setupCode: string | undefined;
+  /** Gateway token: the account password is derived from it. */
+  accountSecret?: string;
+  /** Recovers the account when the panel has lost (or never had) its password. */
+  bridge?: BridgeClient;
 };
+
+const ACCOUNT_EMAIL = "clawdesk@panel.local";
+
+/** Same input, same password — on any reinstall of the panel with the same deploy/.env. */
+export function derivedPassword(secret: string): string {
+  return crypto.createHmac("sha256", secret).update("clawdesk/freellmapi/account/v1").digest("base64url");
+}
 
 export class FreeModelsService {
   #session: string | null = null;
@@ -149,42 +162,77 @@ export class FreeModelsService {
     return body as T;
   }
 
-  /** Logs into FreeLLMAPI with the panel's account, creating it on first use. */
+  /** Logs into FreeLLMAPI with the panel's account: creates it on first use, moves it to the derived password, recovers it. */
   async #login(): Promise<string> {
     if (this.#session) return this.#session;
     const file = path.join(this.opts.dataDir, "freellmapi", "account.json");
     const stored = readJsonIfExists(file);
-    const post = async (route: string, body: unknown) => {
-      try {
-        const res = await fetch(`${this.opts.baseUrl}/api/auth/${route}`, {
-          method: "POST",
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify(body),
-          signal: AbortSignal.timeout(15_000),
-        });
-        return { ok: res.ok, status: res.status, body: (await res.json().catch(() => ({}))) as { token?: string; error?: { message?: string } } };
-      } catch {
-        throw new FreeModelsError("unavailable", "the free models service is not responding");
-      }
-    };
+    const derived = this.opts.accountSecret ? { email: ACCOUNT_EMAIL, password: derivedPassword(this.opts.accountSecret) } : null;
+    const post = (route: string, body: unknown, token?: string) => this.#authPost(route, body, token);
+
     if (stored !== undefined) {
       const account = Account.parse(stored);
       const res = await post("login", account);
-      if (!res.ok || !res.body.token) throw new FreeModelsError("rejected", res.body.error?.message ?? "could not sign in to the free models service");
-      this.#session = res.body.token;
-      return this.#session;
+      if (res.ok && res.body.token) {
+        if (derived && account.password !== derived.password) await this.#moveToDerived(res.body.token, account.password, derived, file);
+        return (this.#session = res.body.token);
+      }
+      this.logger.warn("free models: stored account was rejected; trying the derived password");
     }
-    const account = { email: "clawdesk@panel.local", password: crypto.randomBytes(24).toString("base64url") };
-    // Persist first: if setup succeeds but the write failed, the account would be unrecoverable.
+
+    if (derived) {
+      const res = await post("login", derived);
+      if (res.ok && res.body.token) {
+        writeSecureJson(file, derived);
+        return (this.#session = res.body.token);
+      }
+    }
+
+    const account = derived ?? { email: ACCOUNT_EMAIL, password: crypto.randomBytes(24).toString("base64url") };
+    // Persist first: if setup succeeds but the write failed, a random password would be unrecoverable.
     writeSecureJson(file, account);
-    const res = await post("setup", { ...account, ...(this.opts.setupCode ? { setupCode: this.opts.setupCode } : {}) });
-    if (!res.ok || !res.body.token) {
-      fs.rmSync(file, { force: true });
-      throw new FreeModelsError("rejected", res.body.error?.message ?? "could not set up the free models service");
+    const setup = await post("setup", { ...account, ...(this.opts.setupCode ? { setupCode: this.opts.setupCode } : {}) });
+    if (setup.ok && setup.body.token) {
+      this.logger.info("free models service account created");
+      return (this.#session = setup.body.token);
     }
-    this.logger.info("free models service account created");
-    this.#session = res.body.token;
-    return this.#session;
+
+    // The account exists but its password is gone (e.g. a lost panel volume): reset it.
+    if (derived && this.opts.bridge && /already/i.test(setup.body.error?.message ?? "")) {
+      await this.opts.bridge.freellmapiReset(derived.password);
+      const res = await post("login", derived);
+      if (res.ok && res.body.token) {
+        this.logger.info("free models service account recovered");
+        return (this.#session = res.body.token);
+      }
+    }
+    if (!derived) fs.rmSync(file, { force: true });
+    throw new FreeModelsError("rejected", setup.body.error?.message ?? "could not sign in to the free models service");
+  }
+
+  /** Accounts made before the derived password: switch once, keep the file in step. */
+  async #moveToDerived(token: string, current: string, derived: { email: string; password: string }, file: string): Promise<void> {
+    const res = await this.#authPost("change-password", { currentPassword: current, newPassword: derived.password }, token);
+    if (res.ok) {
+      writeSecureJson(file, derived);
+      this.logger.info("free models account moved to the derived password");
+    } else {
+      this.logger.warn({ status: res.status }, "free models: could not move the account to the derived password");
+    }
+  }
+
+  async #authPost(route: string, body: unknown, token?: string) {
+    try {
+      const res = await fetch(`${this.opts.baseUrl}/api/auth/${route}`, {
+        method: "POST",
+        headers: { "content-type": "application/json", ...(token ? { authorization: `Bearer ${token}` } : {}) },
+        body: JSON.stringify(body),
+        signal: AbortSignal.timeout(15_000),
+      });
+      return { ok: res.ok, status: res.status, body: (await res.json().catch(() => ({}))) as { token?: string; error?: { message?: string } } };
+    } catch {
+      throw new FreeModelsError("unavailable", "the free models service is not responding");
+    }
   }
 }
 
