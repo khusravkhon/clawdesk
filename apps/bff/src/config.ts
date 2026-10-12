@@ -27,6 +27,11 @@ const Env = z.object({
   FILES_HOST_PATH: z.string().optional(),
   /** ClawDesk bridge in the Gateway container (deploy/clawdesk-bridge.mjs); shares the Gateway's loopback. */
   CLAWDESK_BRIDGE_URL: z.string().url().default("http://127.0.0.1:18790"),
+  /**
+   * Proxies whose X-Forwarded-For/-Proto/-Host the panel believes (Fastify trustProxy), e.g. "loopback,uniquelocal"
+   * for Caddy on the compose network. Empty: no proxy, the socket address is the client.
+   */
+  TRUST_PROXY: z.string().default(""),
 });
 
 export type AppConfig = {
@@ -42,6 +47,7 @@ export type AppConfig = {
   freeModels: { baseUrl: string | undefined; setupCode: string | undefined };
   files: { dir: string | undefined; hostPath: string | undefined };
   bridgeUrl: string;
+  trustProxy: string | false;
 };
 
 export function loadConfig(source: NodeJS.ProcessEnv = process.env): AppConfig {
@@ -60,5 +66,6 @@ export function loadConfig(source: NodeJS.ProcessEnv = process.env): AppConfig {
     freeModels: { baseUrl: env.FREELLMAPI_URL?.replace(/\/$/, ""), setupCode: env.FREELLMAPI_SETUP_CODE || undefined },
     files: { dir: env.FILES_DIR ? path.resolve(env.FILES_DIR) : undefined, hostPath: env.FILES_HOST_PATH || env.FILES_DIR || undefined },
     bridgeUrl: env.CLAWDESK_BRIDGE_URL.replace(/\/$/, ""),
+    trustProxy: env.TRUST_PROXY.trim() || false,
   };
 }

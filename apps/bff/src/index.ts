@@ -36,7 +36,7 @@ const sources = new SourcesService({ gateway, db, logger: logger.child({ compone
 const approvals = new ApprovalsService(gateway, logger.child({ component: "approvals" }));
 const assistant = new AssistantService({ gateway, db, logger: logger.child({ component: "assistant" }) });
 const auth = new AuthService({ db, dataDir: config.dataDir, logger: logger.child({ component: "auth" }), telegram });
-const app = await buildApp({ logger, gateway, db, aiSetup, signIn, telegram, freeModels, sources, approvals, assistant, auth, sandboxEnabled: config.sandboxEnabled, webDist: config.webDist });
+const app = await buildApp({ logger, gateway, db, aiSetup, signIn, telegram, freeModels, sources, approvals, assistant, auth, sandboxEnabled: config.sandboxEnabled, webDist: config.webDist, trustProxy: config.trustProxy });
 
 gateway.start();
 await app.listen({ host: config.host, port: config.port });

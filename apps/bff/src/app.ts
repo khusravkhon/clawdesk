@@ -47,10 +47,12 @@ export type AppDeps = {
   assistant: AssistantService;
   auth: AuthService;
   webDist: string | undefined;
+  /** Fastify trustProxy: client address and HTTPS come from the proxy's headers (Caddy). */
+  trustProxy?: string | false;
 };
 
 export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
-  const app = Fastify({ loggerInstance: deps.logger as FastifyBaseLogger });
+  const app = Fastify({ loggerInstance: deps.logger as FastifyBaseLogger, trustProxy: deps.trustProxy ?? false });
 
   app.setErrorHandler((error, request, reply) => {
     const send = (status: number, body: ApiErrorDto) => reply.status(status).send(body);

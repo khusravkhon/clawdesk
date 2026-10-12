@@ -4,6 +4,9 @@
 #
 #   deploy/scripts/init.sh          production stack (gateway + panel)
 #   deploy/scripts/init.sh --dev    gateway only, published on 127.0.0.1:18789 for host development
+#
+# CLAWDESK_DOMAIN, CLAWDESK_FILES_DIR, CLAWDESK_TZ in the environment are written to deploy/.env
+# (install.sh passes them). With a domain, Caddy serves the panel over HTTPS.
 set -euo pipefail
 
 DEPLOY_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -46,6 +49,11 @@ env_set() {
   else echo "$1=$2" >> .env; fi
 }
 
+# Values from install.sh (or the person) win over what .env had; set-but-empty clears (e.g. --no-https).
+for name in CLAWDESK_DOMAIN CLAWDESK_FILES_DIR CLAWDESK_TZ; do
+  if [[ -n "${!name+set}" ]]; then env_set "$name" "${!name}"; fi
+done
+
 if [[ -z "$(env_get FREELLMAPI_ENCRYPTION_KEY)" ]]; then
   env_set FREELLMAPI_ENCRYPTION_KEY "$(random_token)"
   echo "generated FREELLMAPI_ENCRYPTION_KEY"
@@ -80,6 +88,18 @@ STATE_DIR="$DATA_DIR/openclaw"
 step "Preparing OpenClaw state at $STATE_DIR (same path on host and in the Gateway)"
 # Created through Docker so it works the same on Linux hosts and inside Docker Desktop's VM; owned by uid 1000 (node).
 docker run --rm --user 0 -v "$DATA_DIR:$DATA_DIR" debian:bookworm-slim   sh -c "mkdir -p '$STATE_DIR' && chown 1000:1000 '$STATE_DIR' && chmod 700 '$STATE_DIR'"
+
+# A shared folder inside the data folder (servers: install.sh puts it there) belongs to the agent user too.
+FILES_DIR="$(env_get CLAWDESK_FILES_DIR)"
+if [[ "$FILES_DIR" == "$DATA_DIR"/* ]]; then
+  docker run --rm --user 0 -v "$DATA_DIR:$DATA_DIR" debian:bookworm-slim sh -c "mkdir -p '$FILES_DIR' && chown 1000:1000 '$FILES_DIR'"
+fi
+
+DOMAIN="$(env_get CLAWDESK_DOMAIN)"
+if [[ -n "$DOMAIN" && $DEV == 0 ]]; then
+  COMPOSE+=(--profile https)
+  echo "HTTPS for $DOMAIN through Caddy (ports 80 and 443)"
+fi
 
 step "Building the Gateway image (OpenClaw + Docker CLI) and the agent sandbox image"
 built=0
@@ -125,6 +145,10 @@ else
   "${COMPOSE[@]}" up -d --build
   port="$(grep '^PANEL_PORT=' .env | cut -d= -f2-)"
   url="http://127.0.0.1:${port:-8080}"
+  if [[ -n "$DOMAIN" ]]; then
+    url="https://$DOMAIN"
+    echo "Caddy is getting the certificate; the first opening can take up to a minute."
+  fi
   echo
   echo "ClawDesk is starting: $url"
   # First run: the panel opens only with the owner code (prints nothing once the owner has a password).

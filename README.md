@@ -4,8 +4,8 @@ Open-source self-hosted панель для [OpenClaw](https://github.com/opencl
 поднимает главного ИИ-агента, подключает свои сервисы и Telegram, а потом создаёт младших агентов —
 диетолога, тренера, YouTube-помощника или команду проекта.
 
-> Статус: **этап 0** — каркас и проверка RPC против живого OpenClaw 2026.8.1. Пока не для продакшена:
-> вход в панель появится на этапе 1, до этого панель слушает только `127.0.0.1`.
+> Статус: MVP в работе. Есть вход в панель по паролю владельца и установка на сервер с HTTPS;
+> на настоящем сервере установка ещё не прогонялась.
 
 ## Как устроено
 
@@ -30,8 +30,9 @@ packages/
   shared/       zod-схемы и типы, общие для web и bff
   templates/    шаблоны агентов: template.json + SOUL.md / AGENTS.md / USER.md
 deploy/
-  docker-compose.yml       gateway + panel
+  docker-compose.yml       gateway + panel (+ Caddy для HTTPS, профиль https)
   docker-compose.dev.yml   gateway для разработки на хосте
+  install.sh               установка на сервер Ubuntu / Debian: Docker, код, HTTPS, первый запуск
   scripts/init.sh          первый запуск: .env, онбординг OpenClaw, старт
 ```
 
@@ -48,13 +49,22 @@ pnpm dev:web                             # админка на :5173 (прокс
 
 Проверки: `pnpm typecheck`, `pnpm test`, `pnpm build`.
 
-## Установка на сервер (предварительно)
+## Установка на сервер
+
+Сервер: Ubuntu 22.04 / 24.04 или Debian 12, x86-64, от 2 ГБ памяти (лучше 4 ГБ), 20 ГБ диска, открытые порты 80 и 443.
+Домен по желанию: его A-запись должна смотреть на IP сервера. Без домена панель получит адрес `<ip>.sslip.io`.
 
 ```bash
-bash deploy/scripts/init.sh              # gateway + panel, панель на 127.0.0.1:8080
+# пока репозиторий приватный: скопировать код на сервер (git clone с токеном GitHub или scp), затем
+sudo bash clawdesk/deploy/install.sh --domain panel.example.com
 ```
 
-HTTPS наружу — через Caddy или Cloudflare Tunnel перед панелью. Порт Gateway (18789) наружу не открывается.
+Установщик ставит Docker, собирает образы, поднимает gateway + panel + Caddy (сертификат Let's Encrypt) и печатает
+ссылку `https://<домен>/setup?code=…` — по ней задаётся пароль владельца. Повторный запуск того же
+`install.sh` обновляет код и перезапускает, данные (`/var/lib/clawdesk`) и `deploy/.env` сохраняются.
+
+Наружу смотрят только 80/443 (Caddy). Панель — на `127.0.0.1:8080` (доступна через SSH-туннель), Gateway — только
+внутри контейнера.
 
 ## Шаблоны агентов
 
