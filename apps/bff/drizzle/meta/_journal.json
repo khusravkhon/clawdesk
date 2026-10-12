@@ -15,6 +15,13 @@
       "when": 1791732194959,
       "tag": "0001_settings",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1791822713195,
+      "tag": "0002_panel_login",
+      "breakpoints": true
     }
   ]
 }

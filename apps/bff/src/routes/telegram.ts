@@ -34,7 +34,7 @@ export function registerTelegramRoutes(app: FastifyInstance, deps: { telegram: T
 
   app.post("/api/telegram/test", async (request, reply) => {
     const { text } = TestMessage.parse(request.body);
-    const res = await withTelegramErrors(reply, () => deps.telegram.sendTest(text));
+    const res = await withTelegramErrors(reply, () => deps.telegram.sendToOwner(text));
     return res === undefined ? reply.status(204).send() : res;
   });
 }

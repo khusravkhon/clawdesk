@@ -1,3 +1,4 @@
+import type { AuthStateDto } from "@clawdesk/shared";
 import { createRouter, createWebHistory } from "vue-router";
 import { api } from "./api/client";
 
@@ -14,10 +15,20 @@ export const router = createRouter({
     { path: "/approvals", name: "approvals", component: () => import("./views/ApprovalsView.vue") },
     { path: "/sources", name: "sources", component: () => import("./views/SourcesView.vue") },
     { path: "/telegram", name: "telegram", component: () => import("./views/TelegramView.vue") },
+    { path: "/login", name: "login", component: () => import("./views/LoginView.vue"), meta: { bare: true, public: true } },
+    { path: "/setup", name: "setup", component: () => import("./views/OwnerSetupView.vue"), meta: { bare: true, public: true } },
     { path: "/setup/ai", name: "setup-ai", component: () => import("./views/SetupAiView.vue"), meta: { bare: true } },
     { path: "/status", name: "status", component: () => import("./views/StatusView.vue") },
   ],
 });
+
+// Sign-in comes first: without a session every page leads to the sign-in screen, and before the
+// owner exists — to setting the password with the owner code. Checked until signed in.
+let auth: AuthStateDto | null = null;
+
+export function markSignedIn(): void {
+  auth = { state: "ok", telegramReset: auth?.telegramReset ?? false };
+}
 
 // First run: until the main agent has an AI connected, every page leads to the
 // "connect AI" window. Checked once per page load; unreachable Gateway lets the
@@ -39,6 +50,16 @@ function devSkipsAiGuard(): boolean {
 }
 
 router.beforeEach(async (to) => {
+  if (to.meta.public) return true;
+  if (auth?.state !== "ok") {
+    try {
+      auth = await api.auth.state();
+    } catch {
+      return true; // panel server unreachable: the page shows the error
+    }
+    if (auth.state === "setup") return { name: "setup" };
+    if (auth.state === "login") return { name: "login", query: { next: to.fullPath } };
+  }
   if (to.name === "setup-ai" || aiConnected === true || devSkipsAiGuard()) return true;
   if (aiConnected === null) {
     try {

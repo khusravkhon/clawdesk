@@ -9,6 +9,7 @@ import type { ApiErrorDto } from "@clawdesk/shared";
 import type { AiSetupService } from "./ai-setup/ai-setup-service.js";
 import type { ApprovalsService } from "./approvals/approvals-service.js";
 import type { AssistantService } from "./assistant/assistant-service.js";
+import type { AuthService } from "./auth/auth-service.js";
 import type { SignInSessionManager } from "./ai-setup/signin-sessions.js";
 import { ChatService } from "./chat/chat-service.js";
 import { DashboardService } from "./dashboard/dashboard-service.js";
@@ -19,6 +20,7 @@ import { registerAgentRoutes } from "./routes/agents.js";
 import { registerAiRoutes } from "./routes/ai.js";
 import { registerApprovalRoutes } from "./routes/approvals.js";
 import { registerAssistantRoutes } from "./routes/assistant.js";
+import { registerAuthRoutes } from "./routes/auth.js";
 import { registerChatRoutes } from "./routes/chat.js";
 import { registerDashboardRoutes } from "./routes/dashboard.js";
 import { registerHealthRoutes } from "./routes/health.js";
@@ -43,6 +45,7 @@ export type AppDeps = {
   sources: SourcesService;
   approvals: ApprovalsService;
   assistant: AssistantService;
+  auth: AuthService;
   webDist: string | undefined;
 };
 
@@ -65,6 +68,8 @@ export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
     return send(status, { error: status >= 500 ? "internal_error" : "request_error", message: status >= 500 ? "internal error" : (error as Error).message });
   });
 
+  // First: its guard stands in front of every other /api route.
+  registerAuthRoutes(app, deps);
   registerHealthRoutes(app, deps);
   registerAgentRoutes(app, deps);
   registerAiRoutes(app, deps);

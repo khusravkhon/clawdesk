@@ -24,12 +24,28 @@ export const panelUsers = sqliteTable(
   "panel_users",
   {
     id: text("id").primaryKey(),
-    email: text("email").notNull(),
+    /** The owner signs in with a password only; email is for team members later. */
+    email: text("email"),
     passwordHash: text("password_hash"),
     role: text("role", { enum: ["owner", "member"] }).notNull(),
     createdAt: createdAt(),
   },
   (t) => [uniqueIndex("panel_users_email_uq").on(t.email)],
+);
+
+/** Signed-in browsers. `id` is the SHA-256 of the cookie token; the token itself is never stored. */
+export const panelSessions = sqliteTable(
+  "panel_sessions",
+  {
+    id: text("id").primaryKey(),
+    userId: text("user_id")
+      .notNull()
+      .references(() => panelUsers.id, { onDelete: "cascade" }),
+    expiresAt: integer("expires_at", { mode: "timestamp_ms" }).notNull(),
+    userAgent: text("user_agent"),
+    createdAt: createdAt(),
+  },
+  (t) => [index("panel_sessions_user_idx").on(t.userId)],
 );
 
 export const teams = sqliteTable("teams", {

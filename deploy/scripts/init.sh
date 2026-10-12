@@ -124,6 +124,12 @@ else
   step "Building and starting panel + gateway"
   "${COMPOSE[@]}" up -d --build
   port="$(grep '^PANEL_PORT=' .env | cut -d= -f2-)"
+  url="http://127.0.0.1:${port:-8080}"
   echo
-  echo "ClawDesk is starting: http://127.0.0.1:${port:-8080}"
+  echo "ClawDesk is starting: $url"
+  # First run: the panel opens only with the owner code (prints nothing once the owner has a password).
+  for _ in $(seq 1 30); do
+    "${COMPOSE[@]}" exec -T panel node dist/cli/owner-code.js --first-run "$url" 2>/dev/null && break
+    sleep 2
+  done
 fi

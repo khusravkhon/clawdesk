@@ -523,5 +523,41 @@
       "saved": "Memory set up",
       "restarting": "The agent server is restarting…"
     }
+  },
+  "auth": {
+    "loginTitle": "Sign in to ClawDesk",
+    "loginLead": "Enter the panel owner's password.",
+    "password": "Password",
+    "signIn": "Sign in",
+    "forgot": "Forgot the password?",
+    "backToLogin": "Back to sign-in",
+    "telegramLead": "The bot will send you a code in Telegram. Use it to set a new password.",
+    "telegramSend": "Send a code to Telegram",
+    "telegramResend": "Send the code again",
+    "telegramSent": "The code is in Telegram. It is valid for 15 minutes.",
+    "telegramCode": "Code from Telegram",
+    "newPassword": "New password",
+    "repeatPassword": "Repeat the password",
+    "changePassword": "Change the password and sign in",
+    "noTelegram": "The Telegram bot is not connected, so there is nowhere to send a code.",
+    "serverWay": "Without Telegram: run the command below on the server. It prints a link where you set a new password.",
+    "setupTitle": "Create the owner password",
+    "setupLead": "The password protects the panel: it reaches your mail, files and agents.",
+    "resetTitle": "New password with the owner code",
+    "resetLead": "After the change every other browser is signed out of the panel.",
+    "ownerCode": "Owner code",
+    "ownerCodeHint": "The code is printed when ClawDesk is installed. A new one comes from this command on the server:",
+    "savePassword": "Save the password and sign in",
+    "passwordHint": "At least {n} characters. A phrase of a few words works best.",
+    "mismatch": "The passwords do not match",
+    "logout": "Sign out",
+    "errors": {
+      "wrong_password": "Wrong password",
+      "invalid_code": "The code is wrong, expired or already used",
+      "too_many_attempts": "Too many attempts. Wait {sec} s.",
+      "too_soon": "A code was just sent. A new one in {sec} s.",
+      "telegram_unavailable": "Could not send the code to Telegram",
+      "no_owner": "The owner password is not set yet"
+    }
   }
 }

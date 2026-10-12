@@ -8,6 +8,7 @@ import { createLogger } from "./lib/logger.js";
 import { createGatewayService } from "./runtime.js";
 import { ApprovalsService } from "./approvals/approvals-service.js";
 import { AssistantService } from "./assistant/assistant-service.js";
+import { AuthService } from "./auth/auth-service.js";
 import { getSetting, putSetting } from "./db/settings.js";
 import { BridgeClient } from "./gateway/bridge-client.js";
 import { SourcesService } from "./sources/sources-service.js";
@@ -34,10 +35,15 @@ const freeModels = new FreeModelsService(gateway, logger.child({ component: "fre
 const sources = new SourcesService({ gateway, db, logger: logger.child({ component: "sources" }), files: config.files, bridge });
 const approvals = new ApprovalsService(gateway, logger.child({ component: "approvals" }));
 const assistant = new AssistantService({ gateway, db, logger: logger.child({ component: "assistant" }) });
-const app = await buildApp({ logger, gateway, db, aiSetup, signIn, telegram, freeModels, sources, approvals, assistant, sandboxEnabled: config.sandboxEnabled, webDist: config.webDist });
+const auth = new AuthService({ db, dataDir: config.dataDir, logger: logger.child({ component: "auth" }), telegram });
+const app = await buildApp({ logger, gateway, db, aiSetup, signIn, telegram, freeModels, sources, approvals, assistant, auth, sandboxEnabled: config.sandboxEnabled, webDist: config.webDist });
 
 gateway.start();
 await app.listen({ host: config.host, port: config.port });
+
+// First run: nobody can claim the panel without this code (a new one: cli/owner-code).
+const ownerCode = auth.ownerCodeForFirstRun();
+if (ownerCode) logger.warn(`No panel owner yet. Open the panel at /setup?code=${ownerCode} to set the password.`);
 
 // Main agent: commands on the server need the owner's approval (applied once, then the owner decides).
 const EXEC_DEFAULT_SETTING = "approvals.mainDefaultApplied";

@@ -8,6 +8,7 @@ import type {
   ApprovalsDto,
   AssistantDto,
   AssistantProfile,
+  AuthStateDto,
   MemoryProvider,
   ExecMode,
   ChatHistoryDto,
@@ -48,6 +49,10 @@ export class ApiError extends Error {
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(path, { ...init, headers: { accept: "application/json", ...init?.headers } });
   const body = (await res.json().catch(() => ({ error: "bad_response", message: res.statusText }))) as unknown;
+  // Session ended (signed out elsewhere, password changed, 30 days unused): back to the sign-in screen.
+  if (res.status === 401 && (body as ApiErrorDto).error === "unauthorized" && !location.pathname.startsWith("/login")) {
+    location.assign(`/login?next=${encodeURIComponent(location.pathname + location.search)}`);
+  }
   if (!res.ok) throw new ApiError(res.status, body as ApiErrorDto);
   return body as T;
 }
@@ -68,6 +73,14 @@ export function browserTimeZone(): string {
 const q = (agentId: string) => `agentId=${encodeURIComponent(agentId)}`;
 
 export const api = {
+  auth: {
+    state: () => request<AuthStateDto>("/api/auth/state"),
+    setup: (code: string, password: string) => post<AuthStateDto>("/api/auth/setup", { code, password }),
+    login: (password: string) => post<AuthStateDto>("/api/auth/login", { password }),
+    logout: () => post<{ ok: true }>("/api/auth/logout"),
+    telegramSend: (locale: string) => post<{ ok: true }>("/api/auth/telegram/send", { locale }),
+    telegramReset: (code: string, password: string) => post<AuthStateDto>("/api/auth/telegram/reset", { code, password }),
+  },
   health: () => request<HealthDto>("/api/health"),
   dashboard: (range: DashboardRange) => request<DashboardDto>(`/api/dashboard?range=${range}&tz=${encodeURIComponent(browserTimeZone())}`),
   agents: () => request<AgentListDto>("/api/agents"),

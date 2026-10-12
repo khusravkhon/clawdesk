@@ -1,11 +1,12 @@
 <script setup lang="ts">
 // Sidebar body: brand, sections, theme and language. Shared by the desktop sidebar and the phone drawer.
 import type { Locale } from "@clawdesk/shared";
-import { Activity, Bot, CalendarClock, Database, LayoutDashboard, MessagesSquare, ShieldCheck, UserRound, Moon, PanelLeftClose, PanelLeftOpen, Send, Sparkles, Sun } from "@lucide/vue";
+import { Activity, Bot, CalendarClock, Database, LayoutDashboard, LogOut, MessagesSquare, ShieldCheck, UserRound, Moon, PanelLeftClose, PanelLeftOpen, Send, Sparkles, Sun } from "@lucide/vue";
 import { NButton, NMenu, NSelect, NTooltip, type MenuOption } from "naive-ui";
 import { computed, h, type Component } from "vue";
 import { useI18n } from "vue-i18n";
 import { RouterLink, useRoute } from "vue-router";
+import { api } from "../api/client";
 import { setLocale, supportedLocales } from "../i18n";
 import { useApprovalsStore } from "../stores/approvals";
 import { themeMode, toggleTheme } from "../theme";
@@ -42,6 +43,12 @@ const activeKey = computed(() => {
   return menu.value.map((m) => m.key as string).find((k) => k !== "/" && route.path.startsWith(k)) ?? null;
 });
 
+async function logout(): Promise<void> {
+  await api.auth.logout().catch(() => undefined);
+  // Full reload: nothing of the signed-in panel stays in memory.
+  location.assign("/login");
+}
+
 const localeOptions = computed(() => supportedLocales.map((value) => ({ value, label: t(`lang.${value}`) })));
 const collapsed = computed(() => !!props.collapsed);
 </script>
@@ -71,6 +78,14 @@ const collapsed = computed(() => !!props.collapsed);
           </n-button>
         </template>
         {{ themeMode === "dark" ? t("shell.light") : t("shell.dark") }}
+      </n-tooltip>
+      <n-tooltip placement="right">
+        <template #trigger>
+          <n-button quaternary circle size="small" :aria-label="t('auth.logout')" @click="logout">
+            <log-out :size="16" />
+          </n-button>
+        </template>
+        {{ t("auth.logout") }}
       </n-tooltip>
       <n-button v-if="collapsible" quaternary circle size="small" :aria-label="t('shell.collapse')" @click="emit('toggle')">
         <component :is="collapsed ? PanelLeftOpen : PanelLeftClose" :size="16" />

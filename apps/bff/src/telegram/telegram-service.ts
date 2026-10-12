@@ -148,7 +148,12 @@ export class TelegramService {
     return routed;
   }
 
-  async sendTest(text: string): Promise<void> {
+  /** The owner approved themselves in the bot, so the panel can write to them. */
+  hasOwner(): boolean {
+    return !!this.#owner()?.peerId;
+  }
+
+  async sendToOwner(text: string): Promise<void> {
     const owner = this.#owner();
     if (!owner?.peerId) throw new TelegramError("no_owner", "approve yourself in the bot first");
     await this.gateway.request("send", { channel: "telegram", to: owner.peerId, message: text, idempotencyKey: crypto.randomUUID() });

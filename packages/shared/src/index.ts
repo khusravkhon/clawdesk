@@ -10,3 +10,4 @@ export * from "./chat.js";
 export * from "./approvals.js";
 export * from "./schedules.js";
 export * from "./assistant.js";
+export * from "./auth.js";
