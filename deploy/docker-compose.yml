@@ -47,6 +47,9 @@ services:
       OPENCLAW_WORKSPACE_DIR: ${CLAWDESK_DATA_DIR:-/var/lib/clawdesk}/openclaw/workspace
       OPENCLAW_GATEWAY_TOKEN: ${OPENCLAW_GATEWAY_TOKEN:?run deploy/scripts/init.sh to create .env}
       OPENCLAW_DISABLE_BONJOUR: "1"
+      # 2026.8.1 retries a slow first Gemini 3 Flash answer with thinking level MINIMAL, which newer
+      # Flash models (gemini-3.7-flash) reject with 400 — the turn then fails. Wait for the answer instead.
+      OPENCLAW_GOOGLE_GEMINI_FIRST_RESPONSE_RETRY_MS: "0"
       TZ: ${CLAWDESK_TZ:-UTC}
     volumes:
       - ${CLAWDESK_DATA_DIR:-/var/lib/clawdesk}/openclaw:${CLAWDESK_DATA_DIR:-/var/lib/clawdesk}/openclaw

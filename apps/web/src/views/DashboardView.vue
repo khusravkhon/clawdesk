@@ -26,6 +26,7 @@ import BarList, { type BarItem } from "../components/ui/BarList.vue";
 import PageHeader from "../components/ui/PageHeader.vue";
 import StatTile from "../components/ui/StatTile.vue";
 import { formatCompact, formatCost, formatDay, formatInt, formatRelative } from "../format";
+import { modelErrorHint } from "../model-errors";
 
 const { t, locale } = useI18n();
 const range = ref<DashboardRange>("7d");
@@ -90,14 +91,7 @@ const modelBars = computed<BarItem[]>(() =>
 // --- agents
 const agentMaxTokens = computed(() => Math.max(0, ...(data.value?.agents ?? []).map((a) => a.tokens)));
 const stateIcon: Record<DashboardAgentState, Component> = { working: Zap, idle: CircleDashed, failed: AlertCircle };
-/** Plain words for the usual model failures; anything else shows as the Gateway said it. */
-function errorHint(error: string | null): string {
-  if (!error) return "";
-  if (/401|403|unauthori[sz]ed|no api key|invalid api key|authentication/i.test(error)) return t("dash.err.auth");
-  if (/429|rate.?limit|quota/i.test(error)) return t("dash.err.rateLimit");
-  if (/timed? ?out|timeout/i.test(error)) return t("dash.err.timeout");
-  return error;
-}
+const errorHint = (error: string | null) => modelErrorHint(t, error);
 // The main agent is called "main" until the user names it; show a human name instead of the id.
 const displayName = (a: { id: string; name: string; role: string | null }) => (a.role === "main" && a.name === a.id ? t("agents.main") : a.name);
 const agentName = (id: string | null) => {

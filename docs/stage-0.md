@@ -49,6 +49,22 @@ namespace Gateway (`network_mode: service:gateway`): Gateway слушает то
 
 **Чат.** `chat.send { sessionKey: "agent:<id>:main", agentId, message, idempotencyKey }`; ответ приходит событиями
 `chat` (`state: delta | final | error | aborted`, `deltaText`, `replace`).
+- **Проверено вживую (2026-10-12):** первый ответ Gemini — поток `status → delta → final`, ~37 с (запрос ≈10 тыс. токенов).
+  События `chat`: `status` с `phase` (`preparing_workspace|preparing_context|starting_model`), затем `delta`. Инструменты —
+  события `agent` со `stream: "tool"`. **Если все модели упали до ответа, закрывающего события `chat` нет** — панель
+  сверяется с `chat.history` (`inFlightRun`) раз в 4 с. В истории вместо причины — заглушка
+  `The agent run failed before producing a reply.` (`stopReason: error`); причина есть только в событии `error`.
+- История: `chat.history { sessionKey, agentId, limit }` → `messages` (`role: user|assistant|toolResult`, `content` —
+  строка или части `text|thinking|toolCall`, `stopReason: stop|toolUse|error|aborted`), `inFlightRun`.
+- **Gemini 3 Flash + 2026.8.1:** если первого ответа нет 45 с, OpenClaw повторяет запрос с thinking `MINIMAL`, а
+  `gemini-3.7-flash` его не поддерживает (`400`) → ход падает. Лечится `OPENCLAW_GOOGLE_GEMINI_FIRST_RESPONSE_RETRY_MS=0`
+  (в compose). Бесплатный Flash часто `503 high demand` и быстро `429 quota` → запасные модели
+  `agents.entries.main.model { primary, fallbacks }` (сужение массива — `replacePaths`); `gemini-flash-latest` /
+  `gemini-flash-lite-latest` — псевдонимы Google. `models.list { view: "all" }` — весь каталог OpenClaw.
+- Главный агент выполняет `exec` в контейнере Gateway **без одобрения** (сам запустил `openclaw doctor` по heartbeat).
+  По ТЗ — только через одобрение: экран 12.
+- Память главного (`memory-core`) ищет ключ OpenAI для эмбеддингов (`sync failed … provider "openai"`) — настроить
+  на провайдера пользователя.
 
 ## Как запустить спайк (Windows / Linux)
 

@@ -7,7 +7,8 @@
     "agents": "Agents",
     "overview": "Overview",
     "freeModels": "Free models",
-    "sources": "Data sources"
+    "sources": "Data sources",
+    "chat": "Chat"
   },
   "status": {
     "title": "System status",
@@ -281,7 +282,8 @@
     "err": {
       "auth": "No AI connected or the key was rejected. Check the agent’s AI access.",
       "rateLimit": "The AI provider limited requests (rate limit or quota). Try again later.",
-      "timeout": "The AI provider did not answer in time."
+      "timeout": "The AI provider did not answer in time.",
+      "overloaded": "The AI provider is overloaded right now. Try again in a couple of minutes."
     }
   },
   "sources": {
@@ -329,6 +331,28 @@
     "google": {
       "about": "Drive, Docs, Gmail",
       "next": "Next: a step-by-step setup through your own Google Cloud project (about 10 minutes, free)."
+    }
+  },
+  "chat": {
+    "placeholder": "Write a message…",
+    "send": "Send",
+    "stop": "Stop",
+    "hint": "Enter to send, Shift+Enter for a new line",
+    "emptyTitle": "Chat with “{name}”",
+    "emptyLead": "Ask anything or give it a task. The assistant sees your connected sources.",
+    "failed": "No answer: the AI provider did not reply or returned an error. Try again.",
+    "stopped": "Stopped",
+    "slow": "Free models sometimes take up to a minute — the answer is on its way.",
+    "suggest": {
+      "what": "What can you do?",
+      "files": "Which files are in the files folder?",
+      "plan": "Help me plan my day"
+    },
+    "phase": {
+      "preparing": "Getting ready…",
+      "thinking": "Thinking…",
+      "tool": "Using tools…",
+      "writing": "Writing…"
     }
   }
 }

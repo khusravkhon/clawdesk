@@ -35,3 +35,15 @@ describe("selectFlashModel", () => {
     expect(selectFlashModel([{ name: "models/gemini-3.1-pro-preview", supportedGenerationMethods: gen }])).toBeNull();
   });
 });
+
+describe("geminiFallbacks", () => {
+  it("keeps the other Flash models of the key, then Google's aliases, never the primary twice", async () => {
+    const { geminiFallbacks } = await import("../src/ai-setup/ai-setup-service.js");
+    expect(geminiFallbacks("google/gemini-3.7-flash", ["gemini-3.5-flash", "gemini-flash-latest"])).toEqual([
+      "google/gemini-3.5-flash",
+      "google/gemini-flash-latest",
+      "google/gemini-flash-lite-latest",
+    ]);
+    expect(geminiFallbacks("google/gemini-flash-latest", [])).toEqual(["google/gemini-flash-lite-latest"]);
+  });
+});

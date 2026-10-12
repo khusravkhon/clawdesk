@@ -22,7 +22,9 @@
     "signin-probe": "tsx --conditions=source src/scripts/signin-probe.ts",
     "rpc": "tsx --conditions=source src/scripts/rpc.ts",
     "db:generate": "drizzle-kit generate",
-    "notion-probe": "tsx --conditions=source src/scripts/notion-probe.ts"
+    "notion-probe": "tsx --conditions=source src/scripts/notion-probe.ts",
+    "chat-probe": "tsx --conditions=source src/scripts/chat-probe.ts",
+    "gemini-fallbacks": "tsx --conditions=source src/scripts/gemini-fallbacks.ts"
   },
   "dependencies": {
     "@clawdesk/shared": "workspace:*",

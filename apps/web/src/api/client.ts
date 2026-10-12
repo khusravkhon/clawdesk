@@ -4,6 +4,7 @@ import type {
   AgentListDto,
   AiCatalogDto,
   AiStatusDto,
+  ChatHistoryDto,
   ApiErrorDto,
   ApproveTelegramResultDto,
   CreateAgentRequest,
@@ -68,6 +69,12 @@ export const api = {
     status: () => request<FreeModelsStatusDto>("/api/free-models"),
     addKey: (platform: string, key: string) => post<FreeModelsStatusDto>("/api/free-models/keys", { platform, key }),
     removeKeys: (platform: string) => request<FreeModelsStatusDto>(`/api/free-models/keys/${encodeURIComponent(platform)}`, { method: "DELETE" }),
+  },
+  chat: {
+    history: (agentId: string) => request<ChatHistoryDto>(`/api/chat/${encodeURIComponent(agentId)}/history`),
+    send: (agentId: string, text: string) => post<{ runId: string | null }>(`/api/chat/${encodeURIComponent(agentId)}/send`, { text }),
+    abort: (agentId: string) => post<void>(`/api/chat/${encodeURIComponent(agentId)}/abort`),
+    eventsUrl: (agentId: string) => `/api/chat/${encodeURIComponent(agentId)}/events`,
   },
   sources: {
     status: () => request<SourcesDto>("/api/sources"),

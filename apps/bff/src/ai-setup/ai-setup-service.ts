@@ -1,5 +1,6 @@
 import type { ActivateApiKeyRequest, ActivateResultDto, AiCatalogDto, AiStatusDto, InstallProviderResultDto } from "@clawdesk/shared";
 import type { Logger } from "pino";
+import { patchConfig } from "../gateway/config-patch.js";
 import type { GatewayService } from "../gateway/gateway-service.js";
 import { buildCatalog, providerPluginId, type DetectResult, type PluginEntry } from "./catalog.js";
 import { findFlashModels, storeKeyWithModelViaWizard } from "./gemini-free-tier.js";
@@ -91,7 +92,11 @@ export class AiSetupService {
         verify = await this.gateway.request<Verify>("openclaw.setup.verify", { agentId: "main" }, { timeoutMs: 90_000 });
         this.logger.info({ modelRef, ok: verify.ok, status: verify.status }, "gemini flash fallback");
         // "format": the pinned OpenClaw does not know this (newer) model yet; try the next one.
-        if (verify.ok || verify.status !== "format") break;
+        if (verify.ok) {
+          await this.#setGeminiFallbacks(modelRef, candidates.slice(i + 1));
+          break;
+        }
+        if (verify.status !== "format") break;
       }
     } catch (error) {
       this.logger.warn({ err: error }, "could not store the Gemini key with a Flash model");
@@ -110,6 +115,17 @@ export class AiSetupService {
       error: verify.ok ? null : (verify.error ?? null),
       switchedModel: verify.ok,
     };
+  }
+
+  /**
+   * Free Flash models are often "overloaded" (503) for minutes; without fallbacks the turn just fails.
+   * The other Flash models of the same key take over (OpenClaw tries them in order).
+   */
+  async #setGeminiFallbacks(primary: string, rest: string[]): Promise<void> {
+    const fallbacks = geminiFallbacks(primary, rest);
+    await patchConfig(this.gateway, { agents: { entries: { main: { model: { primary, fallbacks } } } } }, { replacePaths: ["agents.entries.main.model.fallbacks"], note: "clawdesk: gemini fallbacks" }).catch(
+      (error: Error) => this.logger.warn({ err: error }, "could not set Gemini fallback models"),
+    );
   }
 
   async #install(pluginId: string): Promise<InstallProviderResultDto> {
@@ -149,6 +165,13 @@ export class AiSetupService {
     }
     return { ok: true, pluginId, version: result.plugin.version ?? version, restarted };
   }
+}
+
+/** Google keeps these aliases on current free-tier Flash models, so they work whatever this key lists. */
+const GEMINI_ALIASES = ["gemini-flash-latest", "gemini-flash-lite-latest"];
+
+export function geminiFallbacks(primary: string, rest: string[]): string[] {
+  return [...new Set([...rest, ...GEMINI_ALIASES].map((id) => `google/${id}`))].filter((ref) => ref !== primary);
 }
 
 function readReviewToken(error: unknown): string | null {

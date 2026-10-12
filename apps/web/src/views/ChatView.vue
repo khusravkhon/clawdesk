@@ -1,0 +1,579 @@
+<script setup lang="ts">
+// Chat with an agent (screen 9): its main session, replies streamed live.
+import type { AgentListItemDto, ChatMessageDto, ChatRunPhase, ChatStreamEvent } from "@clawdesk/shared";
+import { AlertCircle, ArrowUp, CircleSlash, Square, Wrench } from "@lucide/vue";
+import MarkdownIt from "markdown-it";
+import { NButton, NSelect, NSpin, useMessage } from "naive-ui";
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue";
+import { useI18n } from "vue-i18n";
+import { useRoute, useRouter } from "vue-router";
+import { api, ApiError } from "../api/client";
+import { intlLocale } from "../format";
+import { modelErrorHint } from "../model-errors";
+
+const { t, locale } = useI18n();
+const message = useMessage();
+const route = useRoute();
+const router = useRouter();
+
+// The model's text is untrusted: no raw HTML, links open in a new tab.
+const md = new MarkdownIt({ html: false, linkify: true, breaks: true });
+const defaultLinkOpen = md.renderer.rules.link_open ?? ((tokens, idx, options, _env, self) => self.renderToken(tokens, idx, options));
+md.renderer.rules.link_open = (tokens, idx, options, env, self) => {
+  tokens[idx]!.attrSet("target", "_blank");
+  tokens[idx]!.attrSet("rel", "noopener noreferrer");
+  return defaultLinkOpen(tokens, idx, options, env, self);
+};
+
+const agents = ref<AgentListItemDto[]>([]);
+const agentId = computed(() => (route.params.agentId as string | undefined) || "main");
+const agent = computed(() => agents.value.find((a) => a.id === agentId.value) ?? null);
+const agentOptions = computed(() => agents.value.map((a) => ({ value: a.id, label: `${a.emoji ?? (a.role === "main" ? "🧭" : "🤖")}  ${displayName(a)}` })));
+const displayName = (a: AgentListItemDto) => (a.role === "main" && a.name === a.id ? t("agents.main") : a.name);
+
+const messages = ref<ChatMessageDto[]>([]);
+const loading = ref(true);
+const draft = ref("");
+const sending = ref(false);
+
+// The turn in progress.
+const running = ref(false);
+const phase = ref<ChatRunPhase>("preparing");
+const liveText = ref("");
+const liveTools = ref<string[]>([]);
+const startedAt = ref<number | null>(null);
+/** Why the last turn failed, from its error event (the transcript keeps only a placeholder). */
+const lastFailure = ref<string | null>(null);
+const lastErrorId = computed(() => {
+  const last = messages.value.findLast((m) => m.role === "assistant");
+  return last?.status === "error" ? last.id : null;
+});
+const now = ref(Date.now());
+const slow = computed(() => running.value && !liveText.value && startedAt.value !== null && now.value - startedAt.value > 20_000);
+
+const scroller = ref<HTMLElement | null>(null);
+const input = ref<HTMLTextAreaElement | null>(null);
+
+function scrollDown(): void {
+  void nextTick(() => scroller.value?.scrollTo({ top: scroller.value.scrollHeight }));
+}
+
+async function loadHistory(): Promise<void> {
+  const before = messages.value.length;
+  try {
+    const h = await api.chat.history(agentId.value);
+    messages.value = h.messages;
+    if (h.messages.length !== before) scrollDown();
+    if (h.running && !running.value) startRun();
+    // The Gateway does not always send a closing chat event (e.g. every model failed before replying);
+    // the transcript is the source of truth once the turn has had a moment to register.
+    if (!h.running && running.value && !sending.value && startedAt.value !== null && Date.now() - startedAt.value > 3_000) endRun();
+  } catch (e) {
+    message.error(e instanceof ApiError ? e.body.message : String(e));
+  } finally {
+    if (loading.value) scrollDown();
+    loading.value = false;
+  }
+}
+
+function startRun(): void {
+  running.value = true;
+  phase.value = "preparing";
+  liveText.value = "";
+  liveTools.value = [];
+  startedAt.value = Date.now();
+}
+
+function endRun(): void {
+  running.value = false;
+  liveText.value = "";
+  liveTools.value = [];
+  startedAt.value = null;
+}
+
+let events: EventSource | null = null;
+function connect(): void {
+  events?.close();
+  events = new EventSource(api.chat.eventsUrl(agentId.value));
+  events.onmessage = (e) => onEvent(JSON.parse(e.data) as ChatStreamEvent);
+}
+
+async function onEvent(ev: ChatStreamEvent): Promise<void> {
+  if (!running.value && ev.type !== "final" && ev.type !== "error" && ev.type !== "aborted") startRun();
+  switch (ev.type) {
+    case "status":
+      phase.value = ev.phase;
+      break;
+    case "tool":
+      phase.value = "tool";
+      liveTools.value.push(ev.name);
+      break;
+    case "delta":
+      phase.value = "writing";
+      liveText.value = ev.replace ? ev.text : liveText.value + ev.text;
+      break;
+    case "error":
+      lastFailure.value = ev.message;
+      await loadHistory();
+      endRun();
+      break;
+    case "final":
+    case "aborted":
+      await loadHistory();
+      endRun();
+      break;
+  }
+  scrollDown();
+}
+
+async function send(text = draft.value): Promise<void> {
+  const body = text.trim();
+  if (!body || sending.value) return;
+  sending.value = true;
+  draft.value = "";
+  lastFailure.value = null;
+  messages.value.push({ id: `local-${Date.now()}`, role: "user", text: body, tools: [], at: Date.now(), status: "ok" });
+  startRun();
+  scrollDown();
+  try {
+    await api.chat.send(agentId.value, body);
+  } catch (e) {
+    endRun();
+    message.error(e instanceof ApiError ? e.body.message : String(e));
+    draft.value = body;
+  } finally {
+    sending.value = false;
+    void nextTick(() => input.value?.focus());
+  }
+}
+
+async function stop(): Promise<void> {
+  try {
+    await api.chat.abort(agentId.value);
+  } catch (e) {
+    message.error(e instanceof ApiError ? e.body.message : String(e));
+  }
+}
+
+function onKeydown(e: KeyboardEvent): void {
+  if (e.key === "Enter" && !e.shiftKey && !e.isComposing) {
+    e.preventDefault();
+    void send();
+  }
+}
+
+// Textarea grows with its text, up to a limit.
+watch(draft, () =>
+  nextTick(() => {
+    const el = input.value;
+    if (!el) return;
+    el.style.height = "auto";
+    el.style.height = `${Math.min(el.scrollHeight, 200)}px`;
+  }),
+);
+
+const suggestions = computed(() => [t("chat.suggest.what"), t("chat.suggest.files"), t("chat.suggest.plan")]);
+const time = (ms: number | null) => (ms ? new Intl.DateTimeFormat(intlLocale(locale.value), { hour: "2-digit", minute: "2-digit" }).format(ms) : "");
+
+let clock: ReturnType<typeof setInterval> | undefined;
+let poll: ReturnType<typeof setInterval> | undefined;
+async function open(): Promise<void> {
+  loading.value = true;
+  messages.value = [];
+  endRun();
+  connect();
+  await loadHistory();
+}
+
+onMounted(async () => {
+  clock = setInterval(() => (now.value = Date.now()), 1000);
+  poll = setInterval(() => {
+    if (running.value) void loadHistory();
+  }, 4_000);
+  try {
+    agents.value = (await api.agents()).agents;
+  } catch {
+    // the picker stays empty; the chat itself still works for main
+  }
+  await open();
+});
+onBeforeUnmount(() => {
+  events?.close();
+  clearInterval(clock);
+  clearInterval(poll);
+});
+watch(agentId, () => void open());
+</script>
+
+<template>
+  <div class="chat">
+    <header class="bar">
+      <n-select
+        :value="agentId"
+        :options="agentOptions"
+        size="small"
+        class="picker"
+        :consistent-menu-width="false"
+        @update:value="(id: string) => router.push({ name: 'chat', params: { agentId: id === 'main' ? undefined : id } })"
+      />
+      <span v-if="agent?.model" class="model">{{ agent.model }}</span>
+    </header>
+
+    <div ref="scroller" class="scroll">
+      <div class="thread">
+        <n-spin v-if="loading" class="center" />
+
+        <div v-else-if="!messages.length && !running" class="empty">
+          <div class="empty-avatar">{{ agent?.emoji ?? "🧭" }}</div>
+          <h2>{{ t("chat.emptyTitle", { name: agent ? displayName(agent) : t("agents.main") }) }}</h2>
+          <p>{{ t("chat.emptyLead") }}</p>
+          <div class="chips">
+            <button v-for="s in suggestions" :key="s" class="chip" type="button" @click="send(s)">{{ s }}</button>
+          </div>
+        </div>
+
+        <template v-for="m in messages" :key="m.id">
+          <div v-if="m.role === 'user'" class="row user">
+            <div class="bubble">{{ m.text }}</div>
+          </div>
+          <div v-else class="row assistant">
+            <div class="avatar">{{ agent?.emoji ?? "🧭" }}</div>
+            <div class="body">
+              <div v-if="m.tools.length" class="tools">
+                <span v-for="(tool, i) in m.tools" :key="i" class="tool"><wrench :size="12" /> {{ tool }}</span>
+              </div>
+              <div v-if="m.status === 'error'" class="notice error">
+                <alert-circle :size="15" />
+                <span>{{ t("chat.failed") }}<template v-if="m.id === lastErrorId && lastFailure"> {{ modelErrorHint(t, lastFailure) }}</template></span>
+              </div>
+              <div v-else-if="m.status === 'aborted' && !m.text" class="notice"><circle-slash :size="15" /> {{ t("chat.stopped") }}</div>
+              <!-- eslint-disable-next-line vue/no-v-html -- rendered with html disabled -->
+              <div v-if="m.text" class="md" v-html="md.render(m.text)" />
+              <div class="meta">{{ time(m.at) }}</div>
+            </div>
+          </div>
+        </template>
+
+        <div v-if="running" class="row assistant">
+          <div class="avatar">{{ agent?.emoji ?? "🧭" }}</div>
+          <div class="body">
+            <div v-if="liveTools.length" class="tools">
+              <span v-for="(tool, i) in liveTools" :key="i" class="tool"><wrench :size="12" /> {{ tool }}</span>
+            </div>
+            <!-- eslint-disable-next-line vue/no-v-html -- rendered with html disabled -->
+            <div v-if="liveText" class="md" v-html="md.render(liveText)" />
+            <div v-else class="typing">
+              <span class="dots"><i /><i /><i /></span>
+              {{ t(`chat.phase.${phase}`) }}
+            </div>
+            <div v-if="slow" class="slow">{{ t("chat.slow") }}</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <footer class="composer">
+      <div class="box">
+        <textarea
+          ref="input"
+          v-model="draft"
+          rows="1"
+          :placeholder="t('chat.placeholder')"
+          :aria-label="t('chat.placeholder')"
+          @keydown="onKeydown"
+        />
+        <n-button v-if="running" circle size="small" secondary :aria-label="t('chat.stop')" @click="stop">
+          <square :size="12" fill="currentColor" />
+        </n-button>
+        <n-button v-else circle size="small" type="primary" :disabled="!draft.trim()" :loading="sending" :aria-label="t('chat.send')" @click="send()">
+          <arrow-up :size="16" />
+        </n-button>
+      </div>
+      <p class="hint">{{ t("chat.hint") }}</p>
+    </footer>
+  </div>
+</template>
+
+<style scoped>
+.chat {
+  display: flex;
+  flex-direction: column;
+  /* page padding: 28px top + 48px bottom on desktop */
+  height: calc(100dvh - 76px);
+  margin: -8px 0 -28px;
+}
+.bar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--border);
+}
+.picker {
+  width: 260px;
+  max-width: 60vw;
+}
+.model {
+  font-size: 12px;
+  color: var(--muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.scroll {
+  flex: 1;
+  overflow-y: auto;
+  min-height: 0;
+}
+.thread {
+  max-width: 760px;
+  margin: 0 auto;
+  padding: 24px 4px;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+.center {
+  margin: 60px auto;
+}
+.empty {
+  text-align: center;
+  margin: 8vh auto 0;
+  max-width: 480px;
+}
+.empty-avatar {
+  width: 56px;
+  height: 56px;
+  margin: 0 auto 14px;
+  border-radius: 16px;
+  display: grid;
+  place-items: center;
+  font-size: 28px;
+  background: var(--surface-2);
+}
+.empty h2 {
+  margin: 0;
+  font-size: 20px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+.empty p {
+  margin: 8px 0 20px;
+  color: var(--text-2);
+  font-size: 14px;
+}
+.chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: center;
+}
+.chip {
+  font: inherit;
+  font-size: 13px;
+  color: var(--text);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 7px 14px;
+  cursor: pointer;
+}
+.chip:hover {
+  background: var(--surface-2);
+}
+.row {
+  display: flex;
+  gap: 12px;
+}
+.row.user {
+  justify-content: flex-end;
+}
+.bubble {
+  max-width: 80%;
+  background: var(--accent-soft);
+  border: 1px solid var(--border);
+  padding: 9px 14px;
+  border-radius: 16px 16px 4px 16px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font-size: 14px;
+  line-height: 1.55;
+}
+.avatar {
+  width: 30px;
+  height: 30px;
+  border-radius: 9px;
+  display: grid;
+  place-items: center;
+  background: var(--surface-2);
+  font-size: 16px;
+  flex: none;
+}
+.body {
+  min-width: 0;
+  flex: 1;
+  padding-top: 4px;
+}
+.tools {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+.tool {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  padding: 2px 8px;
+  border-radius: 6px;
+  background: var(--surface-2);
+  color: var(--text-2);
+  font-family: "JetBrains Mono", ui-monospace, Consolas, monospace;
+}
+.notice {
+  display: inline-flex;
+  align-items: flex-start;
+  gap: 6px;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--muted);
+}
+.notice svg {
+  flex: none;
+  margin-top: 2px;
+}
+.notice.error {
+  color: var(--critical);
+}
+.md {
+  font-size: 14px;
+  line-height: 1.65;
+  overflow-wrap: anywhere;
+}
+.md :deep(p) {
+  margin: 0 0 8px;
+}
+.md :deep(p:last-child) {
+  margin-bottom: 0;
+}
+.md :deep(ul),
+.md :deep(ol) {
+  margin: 4px 0 8px;
+  padding-left: 22px;
+}
+.md :deep(pre) {
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 10px 12px;
+  overflow-x: auto;
+}
+.md :deep(pre code) {
+  background: none;
+  padding: 0;
+}
+.md :deep(a) {
+  color: var(--accent);
+}
+.meta {
+  margin-top: 6px;
+  font-size: 11px;
+  color: var(--muted);
+}
+.typing {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: var(--text-2);
+}
+.dots {
+  display: inline-flex;
+  gap: 3px;
+}
+.dots i {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--accent);
+  animation: blink 1.2s infinite ease-in-out;
+}
+.dots i:nth-child(2) {
+  animation-delay: 0.15s;
+}
+.dots i:nth-child(3) {
+  animation-delay: 0.3s;
+}
+@keyframes blink {
+  0%,
+  80%,
+  100% {
+    opacity: 0.25;
+  }
+  40% {
+    opacity: 1;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .dots i {
+    animation: none;
+    opacity: 0.7;
+  }
+}
+.slow {
+  margin-top: 8px;
+  font-size: 12px;
+  color: var(--muted);
+}
+.composer {
+  padding-top: 12px;
+}
+.box {
+  max-width: 760px;
+  margin: 0 auto;
+  display: flex;
+  align-items: flex-end;
+  gap: 8px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 8px 8px 8px 14px;
+}
+.box:focus-within {
+  border-color: var(--accent);
+}
+textarea {
+  flex: 1;
+  resize: none;
+  border: 0;
+  outline: none;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  font-size: 14px;
+  line-height: 1.5;
+  padding: 4px 0;
+  max-height: 200px;
+}
+textarea::placeholder {
+  color: var(--muted);
+}
+.hint {
+  max-width: 760px;
+  margin: 6px auto 0;
+  font-size: 11px;
+  color: var(--muted);
+  text-align: center;
+}
+@media (max-width: 768px) {
+  .chat {
+    /* phone: 52px top bar + 20px/40px page padding */
+    height: calc(100dvh - 112px);
+    margin: -4px 0 -24px;
+  }
+  .bubble {
+    max-width: 88%;
+  }
+}
+</style>
