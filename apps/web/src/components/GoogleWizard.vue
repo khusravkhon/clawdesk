@@ -106,8 +106,14 @@ async function completePasted(): Promise<void> {
       <p>
         {{ t("sources.google.s3text") }}
         <n-a :href="`${CONSOLE}/auth/overview`" target="_blank" rel="noopener noreferrer">{{ t("sources.google.consent") }} <external-link :size="12" /></n-a>
-        ·
-        <n-a :href="`${CONSOLE}/auth/audience`" target="_blank" rel="noopener noreferrer">{{ t("sources.google.testUsers") }} <external-link :size="12" /></n-a>
+      </p>
+    </li>
+    <!-- In "Testing" Google drops the sign-in after 7 days; a published personal app keeps it. -->
+    <li :class="{ done: google.clientConfigured }">
+      <div class="step-title">{{ t("sources.google.publish") }}</div>
+      <p>
+        {{ t("sources.google.publishText") }}
+        <n-a :href="`${CONSOLE}/auth/audience`" target="_blank" rel="noopener noreferrer">{{ t("sources.google.audience") }} <external-link :size="12" /></n-a>
       </p>
     </li>
     <li :class="{ done: google.clientConfigured }">
@@ -139,6 +145,7 @@ async function completePasted(): Promise<void> {
           <span>{{ t("sources.google.allowChanges") }}</span>
         </label>
         <p class="hint">{{ allowChanges ? t("sources.google.changesHint") : t("sources.google.readonlyHint") }}</p>
+        <p class="hint">{{ t("sources.google.unverifiedHint") }}</p>
         <n-button type="primary" :disabled="!emailOk || !services.length" :loading="starting" @click="signIn">
           <template #icon><log-in :size="16" /></template>
           {{ t("sources.google.signIn") }}
