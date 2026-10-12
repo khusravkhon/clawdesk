@@ -230,6 +230,28 @@ Google для этого ключа выбираем Flash, сохраняем �
 (`agent database is unavailable while agent <id> is deleted`, `doctor --fix` не лечит). Ручной выход: перенести
 `agents/<id>` и `workspace/<id>` из каталога состояния. Панель: при занятом id берёт следующий (`-2`); не
 перезапускать Gateway сразу после удаления агентов (TODO: ждать завершения очистки перед установкой плагинов).
+- **Первопричина (найдена 2026-10-12):** песочница монтирует навыки *внутрь* workspace
+  (`…/skills-workspaces/<x>/…/skills → /workspace/.openclaw/sandbox-skills/skills:ro`). Точки монтирования нет —
+  демон Docker создаёт `workspace/<id>/.openclaw/sandbox-skills/skills` **от root**; Gateway (`node`) потом не может
+  удалить workspace, очистка обрывается, `agents/<id>` остаётся, и следующий старт падает. Случай: `dietitian`
+  (папки перенесены в `tmp/clawdesk-recovered/`).
+- **Исправление:** в образе Gateway `docker` — обёртка `deploy/docker-mountpoints.sh`: перед `create|run` создаёт
+  вложенные точки монтирования внутри rw-биндов от `node`, настоящий CLI — `/usr/local/libexec/docker`.
+  Проверено на временных папках; полный цикл «песочница → удаление → рестарт» проверить на этапе чата.
+- `agents.delete` отвечает `{ removed, failed: [{ path, reason }], purgeFailed }` — BFF пишет предупреждение в лог.
+- Контейнеры песочниц удалённых агентов (`openclaw-sbx-workspace-*`) остаются в `docker ps -a`.
+
+**Источники данных.**
+- **Notion:** официальный плагин `@openclaw/notion` 1.0.1 (ClawHub, семейство `bundle-plugin`) — обёртка над
+  MCP Notion `https://mcp.notion.com/mcp`, `auth: "oauth"`, streamable-http. Ставится
+  `plugins.install { source: "clawhub", packageName, version: "1.0.1" }` + согласие `reviewToken` + рестарт;
+  сервер появляется как `mcp.servers.notion`. Вход: `openclaw mcp login notion` печатает URL авторизации,
+  ждёт возврат на `redirectUrl` (по умолчанию `http://127.0.0.1:8989/oauth/callback`, задаётся в конфиге сервера),
+  либо `openclaw mcp login notion --code <code>`. RPC для входа нет — BFF зовёт CLI в контейнере Gateway.
+  Пока не вошли, `doctor --lint` ругается: `MCP server "notion" requires OAuth authorization`.
+- **Google:** плагинов OpenClaw нет; навык `gog` (нужен бинарь `gog` + `client_secret.json`), плагины сообщества и
+  официальный Workspace MCP Google (`gmailmcp|drivemcp|docsmcp….googleapis.com/mcp/v1`, developer preview с 05.2026)
+  — все требуют свой OAuth-клиент Google Cloud, автоматической регистрации нет. Решение: пошаговый мастер.
 
 **Сеть.** Pull 2 ГБ образа с ghcr.io рвался (`TLS handshake timeout`, `unexpected EOF`) — в `init.sh` добавлены
 ретраи и `OPENCLAW_IMAGE=openclaw/openclaw` (официальное зеркало Docker Hub) как запасной путь.

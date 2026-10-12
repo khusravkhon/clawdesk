@@ -8,4 +8,7 @@ ARG OPENCLAW_IMAGE=ghcr.io/openclaw/openclaw
 FROM docker:29-cli AS docker-cli
 
 FROM ${OPENCLAW_IMAGE}:${OPENCLAW_VERSION}
-COPY --from=docker-cli /usr/local/bin/docker /usr/local/bin/docker
+# The real CLI sits behind a wrapper that keeps agent workspaces owned by the Gateway
+# user (see docker-mountpoints.sh); OpenClaw keeps calling plain `docker`.
+COPY --from=docker-cli /usr/local/bin/docker /usr/local/libexec/docker
+COPY --chmod=0755 docker-mountpoints.sh /usr/local/bin/docker

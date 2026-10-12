@@ -21,7 +21,8 @@
     "provider-install-probe": "tsx --conditions=source src/scripts/provider-install-probe.ts",
     "signin-probe": "tsx --conditions=source src/scripts/signin-probe.ts",
     "rpc": "tsx --conditions=source src/scripts/rpc.ts",
-    "db:generate": "drizzle-kit generate"
+    "db:generate": "drizzle-kit generate",
+    "notion-probe": "tsx --conditions=source src/scripts/notion-probe.ts"
   },
   "dependencies": {
     "@clawdesk/shared": "workspace:*",
