@@ -228,9 +228,9 @@ export class DashboardService {
 
   constructor(private readonly deps: DashboardDeps) {}
 
-  async get(range: DashboardRange): Promise<DashboardDto> {
+  async get(range: DashboardRange, timeZone = this.timeZone): Promise<DashboardDto> {
     const now = Date.now();
-    const days = rangeDays(range, now, this.timeZone);
+    const days = rangeDays(range, now, timeZone);
     const { gateway } = this.deps;
 
     const [usageRes, agentsRes, sessionsRes, jobsRes, runsRes, health] = await Promise.allSettled([
@@ -239,7 +239,7 @@ export class DashboardService {
         startDate: days[0],
         endDate: days[days.length - 1],
         mode: "specific",
-        timeZone: this.timeZone,
+        timeZone,
         limit: 500,
       }),
       listAgents(this.deps),
@@ -260,12 +260,12 @@ export class DashboardService {
 
     let schedules: DashboardSchedulesDto | null = null;
     if (jobsRes.status === "fulfilled") {
-      schedules = buildSchedules(jobsRes.value.jobs ?? [], runsRes.status === "fulfilled" ? (runsRes.value.entries ?? []) : [], days, this.timeZone);
+      schedules = buildSchedules(jobsRes.value.jobs ?? [], runsRes.status === "fulfilled" ? (runsRes.value.entries ?? []) : [], days, timeZone);
     } else errors.schedules = errorText(jobsRes.reason);
 
     return {
       range,
-      timeZone: this.timeZone,
+      timeZone,
       generatedAt: now,
       usage,
       agents,

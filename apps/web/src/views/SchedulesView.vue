@@ -5,7 +5,7 @@ import { AlertCircle, CalendarClock, CheckCircle2, CircleSlash, History, Pencil,
 import { NButton, NEmpty, NPopconfirm, NSkeleton, NSwitch, NTooltip, useMessage } from "naive-ui";
 import { computed, onMounted, ref } from "vue";
 import { useI18n } from "vue-i18n";
-import { api, ApiError } from "../api/client";
+import { api, ApiError, browserTimeZone } from "../api/client";
 import ScheduleForm from "../components/ScheduleForm.vue";
 import PageHeader from "../components/ui/PageHeader.vue";
 import { describeSchedule } from "../cron";
@@ -51,7 +51,7 @@ async function load(): Promise<void> {
 async function create(v: { agentId: string; label: string; prompt: string; cron: string }): Promise<void> {
   saving.value = true;
   try {
-    data.value = await api.schedules.create({ ...v, tz: data.value?.timeZone ?? "UTC" });
+    data.value = await api.schedules.create({ ...v, tz: browserTimeZone() });
     creating.value = false;
     message.success(t("schedules.created"));
   } catch (e) {
@@ -64,7 +64,7 @@ async function create(v: { agentId: string; label: string; prompt: string; cron:
 async function update(id: string, v: { label: string; prompt: string; cron: string }): Promise<void> {
   saving.value = true;
   try {
-    data.value = await api.schedules.update(id, { label: v.label, prompt: v.prompt, cron: v.cron });
+    data.value = await api.schedules.update(id, { label: v.label, prompt: v.prompt, cron: v.cron, tz: browserTimeZone() });
     editing.value = null;
     message.success(t("schedules.saved"));
   } catch (e) {
@@ -125,7 +125,7 @@ onMounted(load);
 
 <template>
   <div>
-    <page-header :title="t('schedules.title')" :subtitle="t('schedules.subtitle', { tz: data?.timeZone ?? '' })">
+    <page-header :title="t('schedules.title')" :subtitle="t('schedules.subtitle', { tz: browserTimeZone() })">
       <n-button v-if="!creating" type="primary" :disabled="!agents.length" @click="creating = true">
         <template #icon><plus :size="16" /></template>
         {{ t("schedules.new") }}

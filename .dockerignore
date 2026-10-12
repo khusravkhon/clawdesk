@@ -2,6 +2,8 @@
 **/dist
 **/data
 .git
-.env
+**/.env
+**/.env.*
+!**/.env.example
 deploy/.env
 *.log

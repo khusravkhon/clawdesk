@@ -60,11 +60,16 @@ function post<T>(path: string, body?: unknown): Promise<T> {
   });
 }
 
+/** The person's own time zone; the panel server may run in UTC. */
+export function browserTimeZone(): string {
+  return Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
+}
+
 const q = (agentId: string) => `agentId=${encodeURIComponent(agentId)}`;
 
 export const api = {
   health: () => request<HealthDto>("/api/health"),
-  dashboard: (range: DashboardRange) => request<DashboardDto>(`/api/dashboard?range=${range}`),
+  dashboard: (range: DashboardRange) => request<DashboardDto>(`/api/dashboard?range=${range}&tz=${encodeURIComponent(browserTimeZone())}`),
   agents: () => request<AgentListDto>("/api/agents"),
   createAgent: (body: CreateAgentRequest) => post<CreateAgentResultDto>("/api/agents", body),
   deleteAgent: (agentId: string) => request<void>(`/api/agents/${encodeURIComponent(agentId)}`, { method: "DELETE" }),

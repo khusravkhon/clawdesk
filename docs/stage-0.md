@@ -304,3 +304,11 @@ Google для этого ключа выбираем Flash, сохраняем �
 
 **Сеть.** Pull 2 ГБ образа с ghcr.io рвался (`TLS handshake timeout`, `unexpected EOF`) — в `init.sh` добавлены
 ретраи и `OPENCLAW_IMAGE=openclaw/openclaw` (официальное зеркало Docker Hub) как запасной путь.
+
+**Продакшен-сборка панели (проверено 2026-10-12).** `deploy/panel.Dockerfile` собирается (≈420 МБ), в образе нет
+`.env` (было: `.dockerignore` исключал только корневой `.env`, `apps/bff/.env` с токеном попал бы в образ — теперь
+`**/.env`), шаблоны и веб на месте, процесс от `node`. Контейнер в namespace Gateway подключается без одобрения
+устройства (loopback), все эндпоинты 200, SPA и SSE работают, колбэки OAuth тоже.
+- Контейнеры живут в UTC: часовой пояс для графиков и новых расписаний берётся из браузера (`?tz=`, проверка IANA).
+- Риск: учётка FreeLLMAPI (`data/freellmapi/account.json`) хранится только в томе панели; потеря тома → панель не
+  войдёт в FreeLLMAPI («Setup already completed»). TODO: восстановление (сброс учётки FreeLLMAPI).
