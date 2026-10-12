@@ -57,7 +57,11 @@ onMounted(load);
 
       <n-spin :show="loading">
         <n-card v-if="main" :title="t('agents.main')">
-          <n-thing :title="`${main.emoji ?? '🧭'} ${main.name}`" :description="main.model ?? t('agents.noModel')" />
+          <n-thing :title="`${main.emoji ?? '🧭'} ${main.name}`" :description="main.model ?? t('agents.noModel')">
+            <template #header-extra>
+              <n-button size="small" secondary @click="$router.push('/assistant')">{{ t("assistant.configure") }}</n-button>
+            </template>
+          </n-thing>
         </n-card>
 
         <n-card :title="t('agents.juniors')" class="mt">

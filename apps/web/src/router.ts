@@ -5,6 +5,7 @@ export const router = createRouter({
   history: createWebHistory(),
   routes: [
     { path: "/", name: "dashboard", component: () => import("./views/DashboardView.vue") },
+    { path: "/assistant", name: "assistant", component: () => import("./views/AssistantView.vue") },
     { path: "/agents", name: "agents", component: () => import("./views/AgentsView.vue") },
     { path: "/agents/new", name: "agent-new", component: () => import("./views/AgentBuilderView.vue") },
     { path: "/free-models", name: "free-models", component: () => import("./views/FreeModelsView.vue") },

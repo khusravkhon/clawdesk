@@ -69,8 +69,14 @@ namespace Gateway (`network_mode: service:gateway`): Gateway слушает то
   `exec.approval.requested|resolved`. **Клиент должен объявить `caps: ["approvals", "exec-approvals"]`**, иначе
   получателя нет и запрос сразу отклоняется (`terminalReason: no-route`). `caps: ["tool-events"]` — события
   инструментов в `agent`. Проверка без модели: `pnpm --filter @clawdesk/bff approval-probe --wait`.
-- Память главного (`memory-core`) ищет ключ OpenAI для эмбеддингов (`sync failed … provider "openai"`) — настроить
-  на провайдера пользователя.
+- Память (`memory-core`) по умолчанию берёт эмбеддинги OpenAI даже без ключа (`sync failed … provider "openai"`).
+  **Сделано:** `memory.search.provider` = `gemini` (ключ берётся из профиля Google агента, `gemini-embedding-001`),
+  `openai` или `none` (поиск по словам). Смена — перезапуск Gateway внутри процесса (~1 с). Панель при старте
+  чинит сломанный вариант один раз; проверка: `openclaw memory status --deep` → `Embeddings: ready`.
+- **Ассистент (экран 4):** шаблон `personal/main` → `SOUL.md` целиком; `USER.md` — блок между метками
+  `<!-- clawdesk:start … -->`/`<!-- clawdesk:end -->` сверху (заготовка OpenClaw заменяется, выученное агентом
+  остаётся); `AGENTS.md` OpenClaw сохраняется, блок панели — в конце. Имя и эмодзи — `agents.update { name, emoji }`
+  (пишет и `IDENTITY.md`).
 
 ## Как запустить спайк (Windows / Linux)
 

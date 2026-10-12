@@ -8,6 +8,7 @@ import { ZodError } from "zod";
 import type { ApiErrorDto } from "@clawdesk/shared";
 import type { AiSetupService } from "./ai-setup/ai-setup-service.js";
 import type { ApprovalsService } from "./approvals/approvals-service.js";
+import type { AssistantService } from "./assistant/assistant-service.js";
 import type { SignInSessionManager } from "./ai-setup/signin-sessions.js";
 import { ChatService } from "./chat/chat-service.js";
 import { DashboardService } from "./dashboard/dashboard-service.js";
@@ -17,6 +18,7 @@ import { GatewayUnavailableError, type GatewayService } from "./gateway/gateway-
 import { registerAgentRoutes } from "./routes/agents.js";
 import { registerAiRoutes } from "./routes/ai.js";
 import { registerApprovalRoutes } from "./routes/approvals.js";
+import { registerAssistantRoutes } from "./routes/assistant.js";
 import { registerChatRoutes } from "./routes/chat.js";
 import { registerDashboardRoutes } from "./routes/dashboard.js";
 import { registerHealthRoutes } from "./routes/health.js";
@@ -40,6 +42,7 @@ export type AppDeps = {
   freeModels: FreeModelsService;
   sources: SourcesService;
   approvals: ApprovalsService;
+  assistant: AssistantService;
   webDist: string | undefined;
 };
 
@@ -70,6 +73,7 @@ export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
   registerFreeModelRoutes(app, deps);
   registerSourceRoutes(app, deps);
   registerApprovalRoutes(app, deps);
+  registerAssistantRoutes(app, deps);
   registerScheduleRoutes(app, { schedules: new ScheduleService(deps) });
   registerChatRoutes(app, { chat: new ChatService(deps.gateway) });
   registerDashboardRoutes(app, { dashboard: new DashboardService(deps) });

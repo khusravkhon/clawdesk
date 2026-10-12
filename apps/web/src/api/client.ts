@@ -6,6 +6,9 @@ import type {
   AiStatusDto,
   ApprovalDecision,
   ApprovalsDto,
+  AssistantDto,
+  AssistantProfile,
+  MemoryProvider,
   ExecMode,
   ChatHistoryDto,
   ApiErrorDto,
@@ -77,6 +80,12 @@ export const api = {
     status: () => request<FreeModelsStatusDto>("/api/free-models"),
     addKey: (platform: string, key: string) => post<FreeModelsStatusDto>("/api/free-models/keys", { platform, key }),
     removeKeys: (platform: string) => request<FreeModelsStatusDto>(`/api/free-models/keys/${encodeURIComponent(platform)}`, { method: "DELETE" }),
+  },
+  assistant: {
+    get: () => request<AssistantDto>("/api/assistant"),
+    save: (profile: AssistantProfile) =>
+      request<AssistantDto>("/api/assistant", { method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify(profile) }),
+    setMemory: (provider: MemoryProvider) => post<AssistantDto>("/api/assistant/memory", { provider }),
   },
   schedules: {
     list: () => request<ScheduleListDto>("/api/schedules"),

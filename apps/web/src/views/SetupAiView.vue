@@ -26,7 +26,7 @@ function onConnected(): void {
       <n-card>
         <AiConnect agent-id="main" @connected="onConnected" />
       </n-card>
-      <n-button v-if="done" type="primary" size="large" @click="router.push('/')">{{ t("setupAi.next") }}</n-button>
+      <n-button v-if="done" type="primary" size="large" @click="router.push('/assistant')">{{ t("setupAi.next") }}</n-button>
     </n-space>
   </div>
 </template>

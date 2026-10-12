@@ -10,7 +10,8 @@
     "sources": "Data sources",
     "chat": "Chat",
     "approvals": "Approvals",
-    "schedules": "Schedules"
+    "schedules": "Schedules",
+    "assistant": "Assistant"
   },
   "status": {
     "title": "System status",
@@ -475,6 +476,49 @@
       "mailPrompt": "Look at new mail and briefly sum up what matters: what needs a reply or action.",
       "evening": "Evening wrap-up",
       "eveningPrompt": "Sum up the day: what is done, what is left, what moves to tomorrow."
+    }
+  },
+  "assistant": {
+    "title": "Your assistant",
+    "subtitle": "Name, personality and what it should know about you",
+    "configure": "Set up",
+    "firstTitle": "Meet your assistant",
+    "firstText": "Give it a name and tell it about yourself — answers get more accurate and in your style.",
+    "whoTitle": "Who it is",
+    "name": "Name",
+    "namePlaceholder": "E.g. Asya",
+    "emoji": "Icon",
+    "character": "Personality and tone",
+    "characterPlaceholder": "E.g. friendly, to the point, no fluff",
+    "style": {
+      "friendly": "Friendly and warm.",
+      "business": "Businesslike and clear.",
+      "humor": "With a light sense of humour.",
+      "brief": "Keep answers short and to the point."
+    },
+    "aboutTitle": "What to know about me",
+    "aboutHint": "The assistant reads this in every conversation. Write what helps: who you are, what you do, what matters, how to address you.",
+    "aboutPlaceholder": "For example:\n— I am Khusrav, I live in Dushanbe.\n— I build ClawDesk, I work 10 to 7.\n— Write in English, briefly.\n— Important: health, morning workouts, family.",
+    "summaryLines": "Reply length to junior agents (lines)",
+    "save": "Save",
+    "saveHint": "Saved into the assistant’s files. What it learned about you itself is kept.",
+    "saved": "“{name}” updated",
+    "memory": {
+      "title": "Memory",
+      "lead": "The assistant remembers what matters from conversations and finds it later. Search by meaning works through the connected AI.",
+      "broken": "Memory is set to OpenAI without a key and does not work. Pick an option below.",
+      "opt": {
+        "gemini": "Google Gemini",
+        "openai": "OpenAI",
+        "none": "Keywords only"
+      },
+      "desc": {
+        "gemini": "Searches by meaning with your Google key. Free within the quota.",
+        "openai": "Searches by meaning with your OpenAI key.",
+        "none": "No AI: finds notes by matching words. Always works."
+      },
+      "saved": "Memory set up",
+      "restarting": "The agent server is restarting…"
     }
   }
 }

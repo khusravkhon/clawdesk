@@ -7,6 +7,7 @@ import { openDb } from "./db/client.js";
 import { createLogger } from "./lib/logger.js";
 import { createGatewayService } from "./runtime.js";
 import { ApprovalsService } from "./approvals/approvals-service.js";
+import { AssistantService } from "./assistant/assistant-service.js";
 import { getSetting, putSetting } from "./db/settings.js";
 import { BridgeClient } from "./gateway/bridge-client.js";
 import { SourcesService } from "./sources/sources-service.js";
@@ -26,7 +27,8 @@ const telegram = new TelegramService(gateway, db, logger.child({ component: "tel
 const freeModels = new FreeModelsService(gateway, logger.child({ component: "free-models" }), { ...config.freeModels, dataDir: config.dataDir });
 const sources = new SourcesService({ gateway, db, logger: logger.child({ component: "sources" }), files: config.files, bridge: new BridgeClient(config.bridgeUrl, config.gateway.sharedToken) });
 const approvals = new ApprovalsService(gateway, logger.child({ component: "approvals" }));
-const app = await buildApp({ logger, gateway, db, aiSetup, signIn, telegram, freeModels, sources, approvals, sandboxEnabled: config.sandboxEnabled, webDist: config.webDist });
+const assistant = new AssistantService({ gateway, db, logger: logger.child({ component: "assistant" }) });
+const app = await buildApp({ logger, gateway, db, aiSetup, signIn, telegram, freeModels, sources, approvals, assistant, sandboxEnabled: config.sandboxEnabled, webDist: config.webDist });
 
 gateway.start();
 await app.listen({ host: config.host, port: config.port });
@@ -38,6 +40,12 @@ void gateway
   .then(() => approvals.ensureDefault(getSetting<boolean>(db, EXEC_DEFAULT_SETTING) === true))
   .then((applied) => applied && putSetting(db, EXEC_DEFAULT_SETTING, true))
   .catch((error: Error) => logger.warn({ err: error }, "could not apply the default exec approval mode"));
+
+// Memory search: OpenClaw defaults to OpenAI embeddings even without an OpenAI key; use what works.
+void gateway
+  .waitUntilConnected(120_000)
+  .then(() => assistant.ensureMemoryWorks())
+  .catch((error: Error) => logger.warn({ err: error }, "could not check the memory provider"));
 
 let shuttingDown = false;
 async function shutdown(signal: string): Promise<void> {
