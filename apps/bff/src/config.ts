@@ -21,6 +21,12 @@ const Env = z.object({
   FREELLMAPI_URL: z.string().url().optional(),
   /** Host development only: FreeLLMAPI first-run code from its logs (the BFF is not on its loopback). */
   FREELLMAPI_SETUP_CODE: z.string().optional(),
+  /** Shared folder as the BFF sees it (read-only in the panel container, the host path in dev). */
+  FILES_DIR: z.string().optional(),
+  /** The same folder as the person sees it on their computer, shown in the UI. */
+  FILES_HOST_PATH: z.string().optional(),
+  /** ClawDesk bridge in the Gateway container (deploy/clawdesk-bridge.mjs); shares the Gateway's loopback. */
+  CLAWDESK_BRIDGE_URL: z.string().url().default("http://127.0.0.1:18790"),
 });
 
 export type AppConfig = {
@@ -34,6 +40,8 @@ export type AppConfig = {
   webDist: string | undefined;
   sandboxEnabled: boolean;
   freeModels: { baseUrl: string | undefined; setupCode: string | undefined };
+  files: { dir: string | undefined; hostPath: string | undefined };
+  bridgeUrl: string;
 };
 
 export function loadConfig(source: NodeJS.ProcessEnv = process.env): AppConfig {
@@ -50,5 +58,7 @@ export function loadConfig(source: NodeJS.ProcessEnv = process.env): AppConfig {
     webDist: env.WEB_DIST ? path.resolve(env.WEB_DIST) : undefined,
     sandboxEnabled: env.CLAWDESK_SANDBOX === "on",
     freeModels: { baseUrl: env.FREELLMAPI_URL?.replace(/\/$/, ""), setupCode: env.FREELLMAPI_SETUP_CODE || undefined },
+    files: { dir: env.FILES_DIR ? path.resolve(env.FILES_DIR) : undefined, hostPath: env.FILES_HOST_PATH || env.FILES_DIR || undefined },
+    bridgeUrl: env.CLAWDESK_BRIDGE_URL.replace(/\/$/, ""),
   };
 }

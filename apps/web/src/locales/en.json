@@ -6,7 +6,8 @@
     "status": "Status",
     "agents": "Agents",
     "overview": "Overview",
-    "freeModels": "Free models"
+    "freeModels": "Free models",
+    "sources": "Data sources"
   },
   "status": {
     "title": "System status",
@@ -281,6 +282,53 @@
       "auth": "No AI connected or the key was rejected. Check the agent’s AI access.",
       "rateLimit": "The AI provider limited requests (rate limit or quota). Try again later.",
       "timeout": "The AI provider did not answer in time."
+    }
+  },
+  "sources": {
+    "title": "Data sources",
+    "subtitle": "What the main assistant can read: Notion, files from this computer, Google later",
+    "connected": "connected",
+    "disconnect": "Disconnect",
+    "soon": "soon",
+    "privacy": "The key goes only to your server and is kept by OpenClaw. The panel does not store or show it again.",
+    "notion": {
+      "about": "Pages and databases in your Notion",
+      "signIn": "Sign in with Notion",
+      "signInHint": "Notion opens: sign in and choose which pages the assistant may see.",
+      "noBridge": "Sign-in with Notion is not available on this server — update ClawDesk or connect with an integration key.",
+      "useToken": "Connect with an integration key",
+      "step1": "Open",
+      "step2": "Click “New integration”, name it (e.g. ClawDesk), copy the “Internal Integration Secret”.",
+      "step3": "In Notion, on each page: “⋯” → “Connections” → add this integration. The assistant sees only those pages.",
+      "tokenPlaceholder": "ntn_…",
+      "connect": "Check and connect",
+      "tokenRejected": "Notion rejected the key. Make sure you copied all of it.",
+      "connectedToast": "Notion connected",
+      "disconnected": "Notion disconnected",
+      "denied": "Notion sign-in was cancelled",
+      "signInFailed": "Could not sign in to Notion ({reason}). Try again.",
+      "method": "Method",
+      "viaOAuth": "Notion sign-in",
+      "viaToken": "integration key",
+      "workspace": "Workspace",
+      "integration": "Integration",
+      "oauthHint": "The assistant sees the pages you chose at sign-in. Change them in Notion → Settings → Connections.",
+      "tokenHint": "The assistant sees only pages you added the integration to (“⋯” → “Connections”).",
+      "confirmDisconnect": "Disconnect Notion? The assistant will no longer see your pages."
+    },
+    "folder": {
+      "title": "Folder on this computer",
+      "about": "Files you put in this folder",
+      "copy": "Copy path",
+      "copied": "Path copied",
+      "hint": "Put files in this folder — the main assistant sees them in its “{path}” folder.",
+      "count": "Files: {n}",
+      "empty": "The folder is empty so far.",
+      "notMounted": "The folder is not connected to the server. Run deploy/scripts/init.sh again — it creates a ClawDesk folder in your home folder."
+    },
+    "google": {
+      "about": "Drive, Docs, Gmail",
+      "next": "Next: a step-by-step setup through your own Google Cloud project (about 10 minutes, free)."
     }
   }
 }

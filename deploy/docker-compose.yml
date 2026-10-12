@@ -52,6 +52,8 @@ services:
       - ${CLAWDESK_DATA_DIR:-/var/lib/clawdesk}/openclaw:${CLAWDESK_DATA_DIR:-/var/lib/clawdesk}/openclaw
       - openclaw-auth-secrets:/home/node/.config/openclaw
       - /var/run/docker.sock:/var/run/docker.sock
+      # Shared folder from the person's computer: files/ in the main agent's workspace.
+      - ${CLAWDESK_FILES_DIR:-./files}:${CLAWDESK_DATA_DIR:-/var/lib/clawdesk}/openclaw/workspace/files
     # Group owning the Docker socket on the host (detected by init.sh; 0 on Docker Desktop).
     group_add:
       - "${DOCKER_GID:-999}"
@@ -86,8 +88,12 @@ services:
       LOG_LEVEL: ${PANEL_LOG_LEVEL:-info}
       CLAWDESK_SANDBOX: ${CLAWDESK_SANDBOX:-on}
       FREELLMAPI_URL: http://127.0.0.1:3001
+      FILES_DIR: /files
+      FILES_HOST_PATH: ${CLAWDESK_FILES_DIR:-./files}
     volumes:
       - panel-data:/data
+      # Read-only, only to list what the agent can see.
+      - ${CLAWDESK_FILES_DIR:-./files}:/files:ro
     depends_on:
       gateway:
         condition: service_healthy

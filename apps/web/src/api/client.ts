@@ -15,6 +15,8 @@ import type {
   InstallProviderResultDto,
   SignInAnswerRequest,
   SignInStateDto,
+  SourcesDto,
+  StartNotionOAuthResultDto,
   StartSignInRequest,
   TelegramPairingRequestDto,
   TelegramStatusDto,
@@ -66,6 +68,12 @@ export const api = {
     status: () => request<FreeModelsStatusDto>("/api/free-models"),
     addKey: (platform: string, key: string) => post<FreeModelsStatusDto>("/api/free-models/keys", { platform, key }),
     removeKeys: (platform: string) => request<FreeModelsStatusDto>(`/api/free-models/keys/${encodeURIComponent(platform)}`, { method: "DELETE" }),
+  },
+  sources: {
+    status: () => request<SourcesDto>("/api/sources"),
+    notionToken: (token: string) => post<SourcesDto>("/api/sources/notion/token", { token }),
+    notionOAuth: () => post<StartNotionOAuthResultDto>("/api/sources/notion/oauth"),
+    notionDisconnect: () => post<SourcesDto>("/api/sources/notion/disconnect"),
   },
   templates: (mode: string) => request<TemplateDto[]>(`/api/templates?mode=${encodeURIComponent(mode)}&role=specialist`),
   ai: {

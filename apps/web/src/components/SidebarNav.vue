@@ -1,7 +1,7 @@
 <script setup lang="ts">
 // Sidebar body: brand, sections, theme and language. Shared by the desktop sidebar and the phone drawer.
 import type { Locale } from "@clawdesk/shared";
-import { Activity, Bot, LayoutDashboard, Moon, PanelLeftClose, PanelLeftOpen, Send, Sparkles, Sun } from "@lucide/vue";
+import { Activity, Bot, Database, LayoutDashboard, Moon, PanelLeftClose, PanelLeftOpen, Send, Sparkles, Sun } from "@lucide/vue";
 import { NButton, NMenu, NSelect, NTooltip, type MenuOption } from "naive-ui";
 import { computed, h, type Component } from "vue";
 import { useI18n } from "vue-i18n";
@@ -21,6 +21,7 @@ const link = (to: string, label: string) => () => h(RouterLink, { to, onClick: (
 const menu = computed<MenuOption[]>(() => [
   { key: "/", label: link("/", t("nav.overview")), icon: icon(LayoutDashboard) },
   { key: "/agents", label: link("/agents", t("nav.agents")), icon: icon(Bot) },
+  { key: "/sources", label: link("/sources", t("nav.sources")), icon: icon(Database) },
   { key: "/telegram", label: link("/telegram", "Telegram"), icon: icon(Send) },
   { key: "/free-models", label: link("/free-models", t("nav.freeModels")), icon: icon(Sparkles) },
   { key: "/status", label: link("/status", t("nav.status")), icon: icon(Activity) },

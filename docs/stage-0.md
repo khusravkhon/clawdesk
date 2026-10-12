@@ -249,6 +249,19 @@ Google для этого ключа выбираем Flash, сохраняем �
   ждёт возврат на `redirectUrl` (по умолчанию `http://127.0.0.1:8989/oauth/callback`, задаётся в конфиге сервера),
   либо `openclaw mcp login notion --code <code>`. RPC для входа нет — BFF зовёт CLI в контейнере Gateway.
   Пока не вошли, `doctor --lint` ругается: `MCP server "notion" requires OAuth authorization`.
+- **Сделано (2026-10-12):** `mcp login` видит только серверы из `mcp.servers` в конфиге (сервер плагина — нет),
+  поэтому панель пишет `mcp.servers.notion { url, transport: streamable-http, auth: oauth, oauth.redirectUrl }`
+  сама, плагин не нужен (удалён). Notion регистрирует клиент сам (DCR), `redirect_uri` = панель
+  `…/api/sources/notion/callback`. Статус входа: `mcp status --json -v` → `authStatus.hasTokens`.
+- **ClawDesk bridge** (`deploy/clawdesk-bridge.mjs`, стартует из `gateway-start.sh` рядом с Gateway): HTTP на
+  `127.0.0.1:18790` в namespace Gateway (панель там же; dev — проброс на loopback хоста), нужен токен Gateway,
+  только `mcp status / login start / login --code / logout`, аргументы — массивом без shell. `login start`
+  останавливается, как только CLI напечатал URL (ожидание его loopback-колбэка не нужно — код приходит в панель).
+  Панель принимает только тот `state`, который выдала сама.
+- **Notion ключом интеграции** (второй путь): `GET api.notion.com/v1/users/me` проверяет ключ → секрет
+  `clawdesk.notion.token` → `skills.entries.notion { enabled, apiKey: SecretRef }` (встроенный навык `notion`).
+- **Папка:** `CLAWDESK_FILES_DIR` (init.sh: `~/ClawDesk`) монтируется в Gateway как `workspace/files` главного
+  агента и в панель только на чтение (`/files`) — для списка файлов. Младшие в песочнице её не видят.
 - **Google:** плагинов OpenClaw нет; навык `gog` (нужен бинарь `gog` + `client_secret.json`), плагины сообщества и
   официальный Workspace MCP Google (`gmailmcp|drivemcp|docsmcp….googleapis.com/mcp/v1`, developer preview с 05.2026)
   — все требуют свой OAuth-клиент Google Cloud, автоматической регистрации нет. Решение: пошаговый мастер.

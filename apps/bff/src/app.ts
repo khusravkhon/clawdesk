@@ -17,8 +17,10 @@ import { registerDashboardRoutes } from "./routes/dashboard.js";
 import { registerHealthRoutes } from "./routes/health.js";
 import type { FreeModelsService } from "./free-models/free-models-service.js";
 import { registerFreeModelRoutes } from "./routes/free-models.js";
+import { registerSourceRoutes } from "./routes/sources.js";
 import { registerTelegramRoutes } from "./routes/telegram.js";
 import { registerTemplateRoutes } from "./routes/templates.js";
+import type { SourcesService } from "./sources/sources-service.js";
 import type { TelegramService } from "./telegram/telegram-service.js";
 
 export type AppDeps = {
@@ -30,6 +32,7 @@ export type AppDeps = {
   sandboxEnabled: boolean;
   telegram: TelegramService;
   freeModels: FreeModelsService;
+  sources: SourcesService;
   webDist: string | undefined;
 };
 
@@ -58,6 +61,7 @@ export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
   registerTemplateRoutes(app);
   registerTelegramRoutes(app, deps);
   registerFreeModelRoutes(app, deps);
+  registerSourceRoutes(app, deps);
   registerDashboardRoutes(app, { dashboard: new DashboardService(deps) });
 
   if (deps.webDist && fs.existsSync(path.join(deps.webDist, "index.html"))) {

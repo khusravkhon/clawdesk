@@ -16,6 +16,10 @@ services:
       - "127.0.0.1:${GATEWAY_DEV_PORT:-18789}:18789"
       # FreeLLMAPI for the host BFF (lives in this namespace).
       - "127.0.0.1:${FREELLMAPI_DEV_PORT:-3001}:3001"
+      # ClawDesk bridge for the host BFF (token-protected; see deploy/clawdesk-bridge.mjs).
+      - "127.0.0.1:${BRIDGE_DEV_PORT:-18790}:18790"
+    environment:
+      CLAWDESK_BRIDGE_HOST: 0.0.0.0
 
   freellmapi:
     # Must listen beyond loopback so the published port reaches it. A host caller is not

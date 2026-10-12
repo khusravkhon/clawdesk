@@ -2,15 +2,26 @@
 //
 //   pnpm --filter @clawdesk/bff notion-probe            install (with capability consent) + restart + inspect
 //   pnpm --filter @clawdesk/bff notion-probe --inspect  only inspect
+//   pnpm --filter @clawdesk/bff notion-probe --mcp-config http://localhost:5173/api/sources/notion/callback
+//        write mcp.servers.notion (OAuth, redirect to the panel) so `openclaw mcp login notion` can find it
 
-import { connectForScript, hasFlag, short } from "./_cli.js";
+import { patchConfig } from "../gateway/config-patch.js";
+import { connectForScript, flagValue, hasFlag, short } from "./_cli.js";
 
 const PACKAGE = "@openclaw/notion";
 const VERSION = "1.0.1";
 
 const { gateway, done } = await connectForScript();
 try {
-  if (!hasFlag("inspect")) {
+  const redirectUrl = flagValue("mcp-config");
+  if (redirectUrl) {
+    await patchConfig(
+      gateway,
+      { mcp: { servers: { notion: { url: "https://mcp.notion.com/mcp", transport: "streamable-http", auth: "oauth", oauth: { redirectUrl } } } } },
+      { note: "clawdesk: notion probe" },
+    );
+    console.log(`mcp.servers.notion written, redirect ${redirectUrl}`);
+  } else if (!hasFlag("inspect")) {
     const spec = { source: "clawhub", packageName: PACKAGE, version: VERSION };
     let result: { restartRequired?: boolean; plugin?: { id?: string; version?: string } };
     try {

@@ -51,6 +51,16 @@ if [[ -z "$(env_get FREELLMAPI_ENCRYPTION_KEY)" ]]; then
   echo "generated FREELLMAPI_ENCRYPTION_KEY"
 fi
 
+# Shared folder: the person drops files here, the main agent reads them as files/ in its workspace.
+if [[ -z "$(env_get CLAWDESK_FILES_DIR)" ]]; then
+  files_dir="$HOME/ClawDesk"
+  mkdir -p "$files_dir"
+  # Docker Desktop on Windows wants C:/Users/... rather than Git Bash's /c/Users/...
+  if command -v cygpath >/dev/null 2>&1; then files_dir="$(cygpath -m "$files_dir")"; fi
+  env_set CLAWDESK_FILES_DIR "$files_dir"
+  echo "shared files folder: $files_dir"
+fi
+
 step "Detecting Docker socket group (for agent sandboxes)"
 # The Gateway starts sandbox containers through the host socket; it needs the socket's group.
 DOCKER_GID="$(docker run --rm -v /var/run/docker.sock:/var/run/docker.sock debian:bookworm-slim stat -c %g /var/run/docker.sock)"

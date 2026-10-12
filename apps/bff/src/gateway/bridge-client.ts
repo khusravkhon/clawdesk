@@ -1,0 +1,65 @@
+// Client for the ClawDesk bridge in the Gateway container (deploy/clawdesk-bridge.mjs):
+// OpenClaw CLI steps that have no RPC, such as signing in to an OAuth MCP server.
+
+export class BridgeError extends Error {
+  constructor(
+    readonly code: string,
+    message: string,
+  ) {
+    super(message);
+  }
+}
+
+export type McpAuthStatus = { configured: boolean; hasTokens: boolean; state: string | null };
+
+export class BridgeClient {
+  constructor(
+    private readonly baseUrl: string,
+    private readonly token: string | undefined,
+    private readonly fetchImpl: typeof fetch = fetch,
+  ) {}
+
+  async available(): Promise<boolean> {
+    if (!this.token) return false;
+    try {
+      const res = await this.fetchImpl(`${this.baseUrl}/health`, { signal: AbortSignal.timeout(2_000) });
+      return res.ok;
+    } catch {
+      return false;
+    }
+  }
+
+  mcpStatus(server: string): Promise<McpAuthStatus> {
+    return this.#call("GET", `/mcp/status?server=${encodeURIComponent(server)}`);
+  }
+
+  mcpLoginStart(server: string): Promise<{ authorizationUrl?: string; authorized?: boolean }> {
+    return this.#call("POST", "/mcp/login/start", { server });
+  }
+
+  mcpLoginComplete(server: string, code: string): Promise<{ ok: true }> {
+    return this.#call("POST", "/mcp/login/complete", { server, code }, 120_000);
+  }
+
+  mcpLogout(server: string): Promise<{ ok: true }> {
+    return this.#call("POST", "/mcp/logout", { server });
+  }
+
+  async #call<T>(method: "GET" | "POST", path: string, body?: unknown, timeoutMs = 90_000): Promise<T> {
+    if (!this.token) throw new BridgeError("bridge_unavailable", "the Gateway token is not configured");
+    let res: Response;
+    try {
+      res = await this.fetchImpl(`${this.baseUrl}${path}`, {
+        method,
+        headers: { authorization: `Bearer ${this.token}`, ...(body ? { "content-type": "application/json" } : {}) },
+        body: body ? JSON.stringify(body) : undefined,
+        signal: AbortSignal.timeout(timeoutMs),
+      });
+    } catch (error) {
+      throw new BridgeError("bridge_unavailable", `ClawDesk bridge did not answer: ${(error as Error).message}`);
+    }
+    const data = (await res.json().catch(() => ({}))) as { error?: string; message?: string };
+    if (!res.ok) throw new BridgeError(data.error ?? "bridge_error", data.message ?? `bridge answered ${res.status}`);
+    return data as T;
+  }
+}
