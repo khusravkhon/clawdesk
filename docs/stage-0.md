@@ -287,6 +287,14 @@ Google для этого ключа выбираем Flash, сохраняем �
 - **Google:** плагинов OpenClaw нет; навык `gog` (нужен бинарь `gog` + `client_secret.json`), плагины сообщества и
   официальный Workspace MCP Google (`gmailmcp|drivemcp|docsmcp….googleapis.com/mcp/v1`, developer preview с 05.2026)
   — все требуют свой OAuth-клиент Google Cloud, автоматической регистрации нет. Решение: пошаговый мастер.
+- **Сделано (2026-10-12): мастер Google через `gog`** (`openclaw/gogcli` v0.42.0, в образе Gateway через
+  `ADD --checksum`; в архиве файл не под именем `gog` — распаковывать в папку). Окружение: `GOG_HOME` в каталоге
+  состояния, `GOG_KEYRING_BACKEND=file`, `GOG_KEYRING_PASSWORD` (init.sh). Клиент — тип **Desktop app**:
+  `gog auth credentials set -` (JSON через stdin). Вход: `gog auth add <email> --services … --remote --step 1 --json`
+  → `auth_url`; `--step 2 --auth-url <адрес возврата>` с теми же флагами. `--redirect-uri` переопределяет возврат —
+  панель на localhost ставит свой `/api/sources/google/callback`, иначе человек вставляет адрес. `--readonly` —
+  только чтение (по умолчанию). Навык: `skills.entries.gog { enabled, env: { GOG_ACCOUNT } }`.
+  Не проверено с настоящим проектом Google (принимает ли Google путь в loopback-адресе Desktop-клиента).
 
 **Сеть.** Pull 2 ГБ образа с ghcr.io рвался (`TLS handshake timeout`, `unexpected EOF`) — в `init.sh` добавлены
 ретраи и `OPENCLAW_IMAGE=openclaw/openclaw` (официальное зеркало Docker Hub) как запасной путь.

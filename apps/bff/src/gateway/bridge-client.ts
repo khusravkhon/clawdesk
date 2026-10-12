@@ -12,6 +12,13 @@ export class BridgeError extends Error {
 
 export type McpAuthStatus = { configured: boolean; hasTokens: boolean; state: string | null };
 
+export type GoogleLogin = { email: string; services: string[]; readonly: boolean; redirectUri?: string };
+export type GoogleBridgeStatus = {
+  installed: boolean;
+  clients: { client: string; default?: boolean; client_id?: string }[];
+  accounts: { email?: string; services?: string[]; scopes?: string[]; client?: string }[];
+};
+
 export class BridgeClient {
   constructor(
     private readonly baseUrl: string,
@@ -43,6 +50,26 @@ export class BridgeClient {
 
   mcpLogout(server: string): Promise<{ ok: true }> {
     return this.#call("POST", "/mcp/logout", { server });
+  }
+
+  googleStatus(): Promise<GoogleBridgeStatus> {
+    return this.#call("GET", "/google/status");
+  }
+
+  googleCredentials(json: string): Promise<{ ok: true; clientId: string; kind: "installed" | "web" }> {
+    return this.#call("POST", "/google/credentials", { json });
+  }
+
+  googleLoginStart(login: GoogleLogin): Promise<{ authorizationUrl: string }> {
+    return this.#call("POST", "/google/login/start", login);
+  }
+
+  googleLoginComplete(login: GoogleLogin & { authUrl: string }): Promise<{ ok: true }> {
+    return this.#call("POST", "/google/login/complete", login, 120_000);
+  }
+
+  googleRemove(email: string): Promise<{ ok: true }> {
+    return this.#call("POST", "/google/remove", { email });
   }
 
   async #call<T>(method: "GET" | "POST", path: string, body?: unknown, timeoutMs = 90_000): Promise<T> {

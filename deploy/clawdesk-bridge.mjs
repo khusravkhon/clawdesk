@@ -10,6 +10,11 @@
 //   POST /mcp/login/start    { server }     → { authorizationUrl } | { authorized: true }
 //   POST /mcp/login/complete { server, code }
 //   POST /mcp/logout         { server }
+//   GET  /google/status                     → { installed, clients, accounts }
+//   POST /google/credentials { json }       client_secret JSON of the person's own OAuth client
+//   POST /google/login/start { email, services, readonly, redirectUri? } → { authorizationUrl }
+//   POST /google/login/complete { …same, authUrl }
+//   POST /google/remove      { email }
 
 import { spawn } from "node:child_process";
 import { timingSafeEqual } from "node:crypto";
@@ -94,12 +99,115 @@ async function logout(server) {
   return { status: 400, body: { error: "logout_failed", message: tail(res.err || res.out) } };
 }
 
+// --- Google (gog CLI for OpenClaw's bundled gog skill)
+
+const GOG = "/usr/local/bin/gog";
+const EMAIL = /^[a-z0-9._%+-]{1,64}@[a-z0-9.-]{1,190}\.[a-z]{2,24}$/;
+const GOOGLE_SERVICES = new Set(["gmail", "drive", "docs", "sheets", "calendar"]);
+// Where Google sends the browser back to: the panel on loopback, or gog's own loopback default.
+const REDIRECT = /^http:\/\/(localhost|127\.0\.0\.1)(:\d{1,5})?\/[A-Za-z0-9/_.-]*$/;
+const AUTH_URL = /^http:\/\/(localhost|127\.0\.0\.1)(:\d{1,5})?\/\S{1,3900}$/;
+
+/** Runs gog with argv only; `input` goes to stdin (client JSON never touches the disk unencrypted). */
+function runGog(args, { input, timeoutMs = 60_000 } = {}) {
+  return new Promise((resolve) => {
+    const child = spawn(GOG, [...args, "--no-input", "--color", "never"], { env: process.env, stdio: ["pipe", "pipe", "pipe"] });
+    let out = "";
+    let err = "";
+    const timer = setTimeout(() => child.kill("SIGTERM"), timeoutMs);
+    child.stdout.on("data", (c) => (out += c));
+    child.stderr.on("data", (c) => (err += c));
+    child.on("close", (code) => {
+      clearTimeout(timer);
+      resolve({ code, out, err });
+    });
+    child.on("error", (e) => {
+      clearTimeout(timer);
+      resolve({ code: null, out, err: String(e) });
+    });
+    child.stdin.end(input ?? "");
+  });
+}
+
+const parseJson = (text) => {
+  const i = text.indexOf("{");
+  return i < 0 ? null : JSON.parse(text.slice(i));
+};
+
+function googleLoginArgs(body) {
+  if (typeof body.email !== "string" || !EMAIL.test(body.email)) return { error: "invalid_email" };
+  const services = Array.isArray(body.services) ? body.services : [];
+  if (!services.length || !services.every((s) => GOOGLE_SERVICES.has(s))) return { error: "invalid_services" };
+  if (body.redirectUri !== undefined && (typeof body.redirectUri !== "string" || !REDIRECT.test(body.redirectUri))) return { error: "invalid_redirect" };
+  const args = ["auth", "add", body.email, "--services", services.join(","), "--remote", "--force-consent"];
+  if (body.readonly !== false) args.push("--readonly");
+  if (body.redirectUri) args.push("--redirect-uri", body.redirectUri);
+  return { args };
+}
+
+async function googleStatus() {
+  if (!(await gogInstalled())) return { status: 200, body: { installed: false, clients: [], accounts: [] } };
+  const [clients, accounts] = await Promise.all([runGog(["auth", "credentials", "list", "--json"]), runGog(["auth", "list", "--json"])]);
+  if (clients.code !== 0 || accounts.code !== 0) return { status: 502, body: { error: "gog_failed", message: tail(clients.err || accounts.err) } };
+  return { status: 200, body: { installed: true, clients: parseJson(clients.out)?.clients ?? [], accounts: parseJson(accounts.out)?.accounts ?? [] } };
+}
+
+let gogPresent = null;
+async function gogInstalled() {
+  if (gogPresent === null) gogPresent = (await runGog(["--version"], { timeoutMs: 10_000 })).code === 0;
+  return gogPresent;
+}
+
+async function googleCredentials(body) {
+  let parsed;
+  try {
+    parsed = JSON.parse(String(body.json ?? ""));
+  } catch {
+    return { status: 400, body: { error: "invalid_client_json", message: "not JSON" } };
+  }
+  const c = parsed?.installed ?? parsed?.web;
+  if (!c || typeof c.client_id !== "string" || typeof c.client_secret !== "string") {
+    return { status: 400, body: { error: "invalid_client_json", message: "expected the client_secret JSON of an OAuth client" } };
+  }
+  // Only the fields an OAuth client needs; anything else in the upload is dropped.
+  const kind = parsed.installed ? "installed" : "web";
+  const clean = { [kind]: { client_id: c.client_id, client_secret: c.client_secret, project_id: c.project_id, auth_uri: c.auth_uri, token_uri: c.token_uri, redirect_uris: c.redirect_uris } };
+  const res = await runGog(["auth", "credentials", "set", "-"], { input: JSON.stringify(clean) });
+  if (res.code !== 0) return { status: 400, body: { error: "gog_failed", message: tail(res.err || res.out) } };
+  return { status: 200, body: { ok: true, clientId: c.client_id, kind } };
+}
+
+async function googleLoginStart(body) {
+  const { args, error } = googleLoginArgs(body);
+  if (error) return { status: 400, body: { error } };
+  const res = await runGog([...args, "--step", "1", "--json"]);
+  const url = res.code === 0 ? parseJson(res.out)?.auth_url : null;
+  if (!url) return { status: 502, body: { error: "gog_failed", message: tail(res.err || res.out) } };
+  return { status: 200, body: { authorizationUrl: url } };
+}
+
+async function googleLoginComplete(body) {
+  const { args, error } = googleLoginArgs(body);
+  if (error) return { status: 400, body: { error } };
+  if (typeof body.authUrl !== "string" || !AUTH_URL.test(body.authUrl)) return { status: 400, body: { error: "invalid_auth_url" } };
+  const res = await runGog([...args, "--step", "2", "--auth-url", body.authUrl, "--json"], { timeoutMs: 90_000 });
+  if (res.code !== 0) return { status: 400, body: { error: "login_failed", message: tail(res.err || res.out) } };
+  return { status: 200, body: { ok: true } };
+}
+
+async function googleRemove(body) {
+  if (typeof body.email !== "string" || !EMAIL.test(body.email)) return { status: 400, body: { error: "invalid_email" } };
+  const res = await runGog(["auth", "remove", body.email, "--force"]);
+  if (res.code !== 0) return { status: 400, body: { error: "gog_failed", message: tail(res.err || res.out) } };
+  return { status: 200, body: { ok: true } };
+}
+
 function readJson(req) {
   return new Promise((resolve, reject) => {
     let raw = "";
     req.on("data", (chunk) => {
       raw += chunk;
-      if (raw.length > 16_384) reject(new Error("body too large"));
+      if (raw.length > 32_768) reject(new Error("body too large"));
     });
     req.on("end", () => {
       try {
@@ -117,6 +225,7 @@ async function handle(req) {
   if (req.method === "GET" && url.pathname === "/health") return { status: 200, body: { ok: true } };
   if (!authorized(req)) return { status: 401, body: { error: "unauthorized", message: "missing or wrong token" } };
 
+  if (req.method === "GET" && url.pathname === "/google/status") return googleStatus();
   if (req.method === "GET" && url.pathname === "/mcp/status") {
     const server = url.searchParams.get("server") || "";
     if (!SERVER_NAME.test(server)) return { status: 400, body: { error: "invalid_server" } };
@@ -125,6 +234,17 @@ async function handle(req) {
   if (req.method !== "POST") return { status: 404, body: { error: "not_found" } };
 
   const body = await readJson(req);
+  if (!(await gogInstalled()) && url.pathname.startsWith("/google/")) return { status: 501, body: { error: "gog_missing", message: "gog is not in this Gateway image" } };
+  switch (url.pathname) {
+    case "/google/credentials":
+      return googleCredentials(body);
+    case "/google/login/start":
+      return googleLoginStart(body);
+    case "/google/login/complete":
+      return googleLoginComplete(body);
+    case "/google/remove":
+      return googleRemove(body);
+  }
   const server = typeof body.server === "string" ? body.server : "";
   if (!SERVER_NAME.test(server)) return { status: 400, body: { error: "invalid_server" } };
   switch (url.pathname) {

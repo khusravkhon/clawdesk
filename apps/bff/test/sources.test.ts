@@ -7,7 +7,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { openDb } from "../src/db/client.js";
 import type { BridgeClient } from "../src/gateway/bridge-client.js";
 import type { GatewayService } from "../src/gateway/gateway-service.js";
-import { SourcesError, SourcesService } from "../src/sources/sources-service.js";
+import { googleRedirectFor, SourcesError, SourcesService } from "../src/sources/sources-service.js";
 
 type Json = Record<string, unknown>;
 
@@ -106,6 +106,37 @@ describe("sources", () => {
     expect(calls.at(-1)).toBe("logout:notion");
     expect(state.config.mcp).toEqual({ servers: {} });
     expect(after.notion.connected).toBe(false);
+  });
+
+  it("Google comes back to the panel only on loopback", () => {
+    expect(googleRedirectFor("http://localhost:5173")).toBe("http://localhost:5173/api/sources/google/callback");
+    expect(googleRedirectFor("http://127.0.0.1:8080")).toBe("http://127.0.0.1:8080/api/sources/google/callback");
+    expect(googleRedirectFor("https://panel.example.com")).toBeUndefined();
+  });
+
+  it("Google sign-in: only our state completes, then the gog skill uses that account", async () => {
+    const { gateway, state } = fakeGateway();
+    const calls: unknown[] = [];
+    const bridge = {
+      available: async () => true,
+      googleStatus: async () => ({ installed: true, clients: [{ client: "default", default: true }], accounts: [] }),
+      googleLoginStart: async (login: unknown) => {
+        calls.push(["start", login]);
+        return { authorizationUrl: "https://accounts.google.com/o/oauth2/auth?client_id=c&state=g00gle" };
+      },
+      googleLoginComplete: async (login: unknown) => {
+        calls.push(["complete", login]);
+        return { ok: true };
+      },
+    } as unknown as BridgeClient;
+    const s = service(gateway, notionApi(200), undefined, bridge);
+    const started = await s.startGoogleLogin("me@gmail.com", ["gmail", "drive"], true, "http://localhost:5173");
+    expect(started.returnsToPanel).toBe(true);
+    await expect(s.completeGoogleLogin("http://localhost:5173/api/sources/google/callback?code=x&state=forged")).rejects.toMatchObject({ code: "oauth_state_mismatch" });
+    const back = "http://localhost:5173/api/sources/google/callback?code=4/abc&state=g00gle";
+    await s.completeGoogleLogin(back);
+    expect(calls[1]).toEqual(["complete", { email: "me@gmail.com", services: ["gmail", "drive"], readonly: true, redirectUri: "http://localhost:5173/api/sources/google/callback", authUrl: back }]);
+    expect((state.config.skills as Json).entries).toMatchObject({ gog: { enabled: true, env: { GOG_ACCOUNT: "me@gmail.com" } } });
   });
 
   it("refuses sign-in when the bridge is missing", async () => {

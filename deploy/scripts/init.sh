@@ -51,6 +51,11 @@ if [[ -z "$(env_get FREELLMAPI_ENCRYPTION_KEY)" ]]; then
   echo "generated FREELLMAPI_ENCRYPTION_KEY"
 fi
 
+if [[ -z "$(env_get GOG_KEYRING_PASSWORD)" ]]; then
+  env_set GOG_KEYRING_PASSWORD "$(random_token)"
+  echo "generated GOG_KEYRING_PASSWORD"
+fi
+
 # Shared folder: the person drops files here, the main agent reads them as files/ in its workspace.
 if [[ -z "$(env_get CLAWDESK_FILES_DIR)" ]]; then
   files_dir="$HOME/ClawDesk"

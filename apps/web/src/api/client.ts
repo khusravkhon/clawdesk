@@ -20,6 +20,7 @@ import type {
   SignInAnswerRequest,
   SignInStateDto,
   SourcesDto,
+  StartGoogleLoginResultDto,
   StartNotionOAuthResultDto,
   StartSignInRequest,
   TelegramPairingRequestDto,
@@ -91,6 +92,10 @@ export const api = {
     notionToken: (token: string) => post<SourcesDto>("/api/sources/notion/token", { token }),
     notionOAuth: () => post<StartNotionOAuthResultDto>("/api/sources/notion/oauth"),
     notionDisconnect: () => post<SourcesDto>("/api/sources/notion/disconnect"),
+    googleClient: (json: string) => post<SourcesDto>("/api/sources/google/client", { json }),
+    googleLogin: (email: string, services: string[], readonly: boolean) => post<StartGoogleLoginResultDto>("/api/sources/google/login", { email, services, readonly }),
+    googleComplete: (redirectUrl: string) => post<SourcesDto>("/api/sources/google/complete", { redirectUrl }),
+    googleRemove: (email: string) => post<SourcesDto>("/api/sources/google/remove", { email }),
   },
   templates: (mode: string) => request<TemplateDto[]>(`/api/templates?mode=${encodeURIComponent(mode)}&role=specialist`),
   ai: {

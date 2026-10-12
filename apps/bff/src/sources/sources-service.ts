@@ -1,10 +1,10 @@
 import fs from "node:fs/promises";
 import path from "node:path";
-import type { FolderSourceDto, NotionSourceDto, SourcesDto, StartNotionOAuthResultDto } from "@clawdesk/shared";
+import type { FolderSourceDto, GoogleService, GoogleSourceDto, NotionSourceDto, SourcesDto, StartGoogleLoginResultDto, StartNotionOAuthResultDto } from "@clawdesk/shared";
 import { eq } from "drizzle-orm";
 import type { Logger } from "pino";
 import type { Db } from "../db/client.js";
-import type { BridgeClient } from "../gateway/bridge-client.js";
+import type { BridgeClient, GoogleLogin } from "../gateway/bridge-client.js";
 import { dataSources } from "../db/schema.js";
 import { getConfig, patchConfig } from "../gateway/config-patch.js";
 import type { GatewayService } from "../gateway/gateway-service.js";
@@ -29,10 +29,17 @@ const NOTION_MCP = "notion";
 const NOTION_MCP_URL = "https://mcp.notion.com/mcp";
 export const NOTION_CALLBACK_PATH = "/api/sources/notion/callback";
 const OAUTH_PENDING_MS = 10 * 60_000;
+export const GOOGLE_CALLBACK_PATH = "/api/sources/google/callback";
+
+/** Google sends a Desktop-app sign-in back only to loopback; elsewhere the person pastes the address. */
+export function googleRedirectFor(panelOrigin: string): string | undefined {
+  const url = new URL(panelOrigin);
+  return url.protocol === "http:" && (url.hostname === "localhost" || url.hostname === "127.0.0.1") ? new URL(GOOGLE_CALLBACK_PATH, url).href : undefined;
+}
 
 export class SourcesError extends Error {
   constructor(
-    readonly code: "notion_token_rejected" | "notion_unreachable" | "oauth_unavailable" | "oauth_state_mismatch",
+    readonly code: "notion_token_rejected" | "notion_unreachable" | "oauth_unavailable" | "oauth_state_mismatch" | "google_unavailable",
     message: string,
   ) {
     super(message);
@@ -58,14 +65,16 @@ export class SourcesService {
   readonly #fetch: typeof fetch;
   /** OAuth state of the sign-in started from this panel; the callback must bring it back. */
   #pending: { state: string; expiresAt: number } | null = null;
+  /** Google sign-ins started here, by OAuth state. */
+  readonly #googlePending = new Map<string, GoogleLogin & { expiresAt: number }>();
 
   constructor(private readonly deps: SourcesDeps) {
     this.#fetch = deps.fetchImpl ?? fetch;
   }
 
   async status(): Promise<SourcesDto> {
-    const [notion, folder] = await Promise.all([this.#notion(), this.#folder()]);
-    return { notion, folder };
+    const [notion, folder, google] = await Promise.all([this.#notion(), this.#folder(), this.#google()]);
+    return { notion, folder, google };
   }
 
   /** Checks the secret with Notion first; nothing is stored when Notion refuses it. */
@@ -137,6 +146,78 @@ export class SourcesService {
     this.#pending = null;
     this.deps.logger.info("notion disconnected");
     return this.status();
+  }
+
+  // --- Google: the person's own OAuth client, signed in through gog for OpenClaw's gog skill.
+
+  async uploadGoogleClient(json: string): Promise<SourcesDto> {
+    await this.#bridgeFor("google").googleCredentials(json);
+    this.deps.logger.info("google oauth client stored");
+    return this.status();
+  }
+
+  async startGoogleLogin(email: string, services: GoogleService[], readonly: boolean, panelOrigin: string): Promise<StartGoogleLoginResultDto> {
+    const redirectUri = googleRedirectFor(panelOrigin);
+    const login: GoogleLogin = { email, services, readonly, ...(redirectUri ? { redirectUri } : {}) };
+    const { authorizationUrl } = await this.#bridgeFor("google").googleLoginStart(login);
+    const state = new URL(authorizationUrl).searchParams.get("state");
+    if (!state) throw new SourcesError("google_unavailable", "gog did not return a Google sign-in link");
+    this.#dropExpired();
+    this.#googlePending.set(state, { ...login, expiresAt: Date.now() + OAUTH_PENDING_MS });
+    return { authorizationUrl, returnsToPanel: !!redirectUri };
+  }
+
+  /** `returnedUrl`: where Google sent the browser (the panel callback, or a pasted localhost address). */
+  async completeGoogleLogin(returnedUrl: string): Promise<SourcesDto> {
+    this.#dropExpired();
+    const state = new URL(returnedUrl).searchParams.get("state") ?? "";
+    const login = this.#googlePending.get(state);
+    if (!login) throw new SourcesError("oauth_state_mismatch", "this Google sign-in was not started here or has expired; start it again");
+    this.#googlePending.delete(state);
+    const { expiresAt: _e, ...args } = login;
+    await this.#bridgeFor("google").googleLoginComplete({ ...args, authUrl: returnedUrl });
+    // The bundled skill uses this account by default; the agent sees Gmail/Drive/Docs through it.
+    await patchConfig(this.deps.gateway, { skills: { entries: { gog: { enabled: true, env: { GOG_ACCOUNT: login.email } } } } }, { note: "clawdesk: google source" });
+    this.deps.logger.info({ services: login.services, readonly: login.readonly }, "google account connected");
+    return this.status();
+  }
+
+  async removeGoogle(email: string): Promise<SourcesDto> {
+    await this.#bridgeFor("google").googleRemove(email);
+    const { config } = await getConfig<{ skills?: { entries?: Record<string, { env?: Record<string, string> }> } }>(this.deps.gateway);
+    if (config.skills?.entries?.gog?.env?.GOG_ACCOUNT === email) {
+      await patchConfig(this.deps.gateway, { skills: { entries: { gog: { enabled: false, env: { GOG_ACCOUNT: null } } } } }, { note: "clawdesk: google source removed" });
+    }
+    return this.status();
+  }
+
+  #bridgeFor(what: "google"): BridgeClient {
+    if (!this.deps.bridge) throw new SourcesError(`${what}_unavailable`, "the ClawDesk bridge is not configured");
+    return this.deps.bridge;
+  }
+
+  #dropExpired(): void {
+    const now = Date.now();
+    for (const [state, p] of this.#googlePending) if (p.expiresAt < now) this.#googlePending.delete(state);
+  }
+
+  async #google(): Promise<GoogleSourceDto> {
+    const empty: GoogleSourceDto = { available: false, clientConfigured: false, clientId: null, accounts: [], error: null };
+    const bridge = this.deps.bridge;
+    if (!bridge || !(await bridge.available())) return empty;
+    try {
+      const st = await bridge.googleStatus();
+      if (!st.installed) return empty;
+      return {
+        available: true,
+        clientConfigured: st.clients.length > 0,
+        clientId: st.clients.find((c) => c.default)?.client_id ?? st.clients[0]?.client_id ?? null,
+        accounts: st.accounts.filter((a) => a.email).map((a) => ({ email: a.email!, services: a.services ?? [] })),
+        error: null,
+      };
+    } catch (e) {
+      return { ...empty, available: true, error: (e as Error).message };
+    }
   }
 
   async #notionMe(token: string): Promise<NotionMe> {

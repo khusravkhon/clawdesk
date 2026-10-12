@@ -7,6 +7,7 @@ import { computed, onMounted, ref } from "vue";
 import { useI18n } from "vue-i18n";
 import { useRoute, useRouter } from "vue-router";
 import { api, ApiError } from "../api/client";
+import GoogleWizard from "../components/GoogleWizard.vue";
 import PageHeader from "../components/ui/PageHeader.vue";
 import { formatRelative, intlLocale } from "../format";
 
@@ -93,6 +94,16 @@ async function copyPath(): Promise<void> {
 
 const tokenValid = computed(() => /^(ntn_|secret_)[A-Za-z0-9]{20,}$/.test(token.value.trim()));
 const notion = computed(() => data.value?.notion ?? null);
+const google = computed(() => data.value?.google ?? null);
+
+async function removeGoogle(email: string): Promise<void> {
+  try {
+    data.value = await api.sources.googleRemove(email);
+    message.success(t("sources.google.removed"));
+  } catch (e) {
+    message.error(errText(e));
+  }
+}
 const folder = computed(() => data.value?.folder ?? null);
 
 const formatSize = (bytes: number) =>
@@ -106,7 +117,11 @@ onMounted(async () => {
   if (result === "connected") message.success(t("sources.notion.connectedToast"));
   else if (result === "denied") message.warning(t("sources.notion.denied"));
   else if (result === "error") message.error(t("sources.notion.signInFailed", { reason: String(route.query.reason ?? "") }));
-  if (result) void router.replace({ query: {} });
+  const g = route.query.google;
+  if (g === "connected") message.success(t("sources.google.connected"));
+  else if (g === "denied") message.warning(t("sources.google.denied"));
+  else if (g === "error") message.error(t("sources.google.failed", { reason: String(route.query.reason ?? "") }));
+  if (result || g) void router.replace({ query: {} });
   await load();
 });
 </script>
@@ -222,17 +237,34 @@ onMounted(async () => {
         <n-alert v-else type="warning" :bordered="false">{{ t("sources.folder.notMounted") }}</n-alert>
       </section>
 
-      <!-- Google (next) -->
-      <section class="card soon">
+      <!-- Google -->
+      <section class="card google-card">
         <header class="card-head">
           <div class="logo google">G</div>
           <div class="head-text">
             <h2>Google</h2>
             <p>{{ t("sources.google.about") }}</p>
           </div>
-          <span class="badge">{{ t("sources.soon") }}</span>
+          <span v-if="google?.accounts.length" class="badge ok"><check-circle-2 :size="13" /> {{ t("sources.connected") }}</span>
         </header>
-        <p class="hint">{{ t("sources.google.next") }}</p>
+        <n-skeleton v-if="!data" text :repeat="3" />
+        <template v-else-if="google?.accounts.length">
+          <ul class="accounts">
+            <li v-for="a in google.accounts" :key="a.email">
+              <span class="acc">{{ a.email }}</span>
+              <span class="muted small">{{ a.services.join(", ") }}</span>
+              <n-popconfirm @positive-click="removeGoogle(a.email)">
+                <template #trigger>
+                  <n-button size="tiny" secondary type="error">{{ t("sources.disconnect") }}</n-button>
+                </template>
+                {{ t("sources.google.confirmRemove") }}
+              </n-popconfirm>
+            </li>
+          </ul>
+          <p class="hint">{{ t("sources.google.connectedHint") }}</p>
+        </template>
+        <n-alert v-else-if="!google?.available" type="info" :bordered="false">{{ t("sources.google.noGog") }}</n-alert>
+        <google-wizard v-else :google="google" @updated="(d) => (data = d)" />
       </section>
     </div>
   </div>
@@ -255,8 +287,27 @@ onMounted(async () => {
   padding: 18px 20px 20px;
   min-width: 0;
 }
-.card.soon {
-  opacity: 0.75;
+.google-card {
+  grid-column: 1 / -1;
+}
+.accounts {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.accounts li {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 0;
+  font-size: 13px;
+}
+.acc {
+  font-weight: 500;
+}
+.small {
+  font-size: 12px;
+  flex: 1;
 }
 .card-head {
   display: flex;
