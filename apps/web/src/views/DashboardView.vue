@@ -247,11 +247,14 @@ const subtitle = computed(() => t("dash.subtitle", { days: range.value.replace("
       </n-card>
 
       <n-card :title="t('dash.schedules.title')">
+        <template #header-extra>
+          <n-button text size="small" @click="$router.push('/schedules')">{{ t("dash.all") }}</n-button>
+        </template>
         <n-alert v-if="data?.errors.schedules" type="warning" :bordered="false">{{ data.errors.schedules }}</n-alert>
         <template v-else-if="data?.schedules">
           <n-empty v-if="!data.schedules.upcoming.length" :description="t('dash.schedules.empty')" size="small" class="empty">
             <template #extra>
-              <n-button size="small" @click="$router.push('/agents/new')">{{ t("agents.create") }}</n-button>
+              <n-button size="small" @click="$router.push('/schedules')">{{ t("schedules.new") }}</n-button>
             </template>
           </n-empty>
           <template v-else>

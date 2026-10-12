@@ -9,7 +9,8 @@
     "freeModels": "Free models",
     "sources": "Data sources",
     "chat": "Chat",
-    "approvals": "Approvals"
+    "approvals": "Approvals",
+    "schedules": "Schedules"
   },
   "status": {
     "title": "System status",
@@ -430,5 +431,50 @@
     },
     "toastTitle": "An agent is waiting for your permission",
     "open": "Open"
+  },
+  "schedules": {
+    "title": "Schedules",
+    "subtitle": "What agents do on their own at set times · time zone {tz}",
+    "new": "New schedule",
+    "empty": "No schedules yet",
+    "agent": "Agent",
+    "name": "Name",
+    "namePlaceholder": "E.g. Daily plan",
+    "task": "What to do",
+    "taskPlaceholder": "E.g. Check my calendar and mail and send a short plan for the day",
+    "time": "Time",
+    "days": "Days",
+    "everyDay": "Every day",
+    "create": "Create",
+    "saveChanges": "Save",
+    "cancel": "Cancel",
+    "created": "Schedule created",
+    "saved": "Changes saved",
+    "removed": "Schedule removed",
+    "started": "“{name}” started — the result goes to the agent",
+    "next": "next run {when}",
+    "paused": "paused",
+    "turnOff": "Pause",
+    "turnOn": "Turn on",
+    "neverRan": "has not run yet",
+    "runNow": "Run now",
+    "history": "Run history",
+    "edit": "Edit",
+    "remove": "Delete",
+    "confirmRemove": "Delete the schedule “{name}”?",
+    "noRuns": "No runs yet",
+    "daily": "Every day at {time}",
+    "weekdays": "Weekdays at {time}",
+    "onDays": "{days} at {time}",
+    "every": "Every {n} min",
+    "presetsTitle": "Quick:",
+    "preset": {
+      "plan": "Daily plan",
+      "planPrompt": "Look at my calendar, mail and notes and send a short plan for today: 3–5 main things.",
+      "mail": "Mail digest",
+      "mailPrompt": "Look at new mail and briefly sum up what matters: what needs a reply or action.",
+      "evening": "Evening wrap-up",
+      "eveningPrompt": "Sum up the day: what is done, what is left, what moves to tomorrow."
+    }
   }
 }
