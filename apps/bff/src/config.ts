@@ -32,6 +32,8 @@ const Env = z.object({
    * for Caddy on the compose network. Empty: no proxy, the socket address is the client.
    */
   TRUST_PROXY: z.string().default(""),
+  /** Backups folder, read-only for the panel (the bridge writes it). Unset: no backups (host development). */
+  BACKUP_DIR: z.string().optional(),
 });
 
 export type AppConfig = {
@@ -48,6 +50,7 @@ export type AppConfig = {
   files: { dir: string | undefined; hostPath: string | undefined };
   bridgeUrl: string;
   trustProxy: string | false;
+  backupDir: string | undefined;
 };
 
 export function loadConfig(source: NodeJS.ProcessEnv = process.env): AppConfig {
@@ -67,5 +70,6 @@ export function loadConfig(source: NodeJS.ProcessEnv = process.env): AppConfig {
     files: { dir: env.FILES_DIR ? path.resolve(env.FILES_DIR) : undefined, hostPath: env.FILES_HOST_PATH || env.FILES_DIR || undefined },
     bridgeUrl: env.CLAWDESK_BRIDGE_URL.replace(/\/$/, ""),
     trustProxy: env.TRUST_PROXY.trim() || false,
+    backupDir: env.BACKUP_DIR ? path.resolve(env.BACKUP_DIR) : undefined,
   };
 }

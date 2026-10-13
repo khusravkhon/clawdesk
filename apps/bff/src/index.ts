@@ -9,6 +9,7 @@ import { createGatewayService } from "./runtime.js";
 import { ApprovalsService } from "./approvals/approvals-service.js";
 import { AssistantService } from "./assistant/assistant-service.js";
 import { AuthService } from "./auth/auth-service.js";
+import { BackupService } from "./backups/backup-service.js";
 import { getSetting, putSetting } from "./db/settings.js";
 import { BridgeClient } from "./gateway/bridge-client.js";
 import { SourcesService } from "./sources/sources-service.js";
@@ -36,10 +37,12 @@ const sources = new SourcesService({ gateway, db, logger: logger.child({ compone
 const approvals = new ApprovalsService(gateway, logger.child({ component: "approvals" }));
 const assistant = new AssistantService({ gateway, db, logger: logger.child({ component: "assistant" }) });
 const auth = new AuthService({ db, dataDir: config.dataDir, logger: logger.child({ component: "auth" }), telegram });
-const app = await buildApp({ logger, gateway, db, aiSetup, signIn, telegram, freeModels, sources, approvals, assistant, auth, sandboxEnabled: config.sandboxEnabled, webDist: config.webDist, trustProxy: config.trustProxy });
+const backups = new BackupService({ bridge, dir: config.backupDir, logger: logger.child({ component: "backups" }) });
+const app = await buildApp({ logger, gateway, db, aiSetup, signIn, telegram, freeModels, sources, approvals, assistant, auth, backups, sandboxEnabled: config.sandboxEnabled, webDist: config.webDist, trustProxy: config.trustProxy });
 
 gateway.start();
 await app.listen({ host: config.host, port: config.port });
+backups.startSchedule();
 
 // First run: nobody can claim the panel without this code (a new one: cli/owner-code).
 const ownerCode = auth.ownerCodeForFirstRun();
@@ -64,6 +67,7 @@ async function shutdown(signal: string): Promise<void> {
   if (shuttingDown) return;
   shuttingDown = true;
   logger.info({ signal }, "shutting down");
+  backups.stopSchedule();
   await app.close();
   await gateway.stop();
   closeDb();

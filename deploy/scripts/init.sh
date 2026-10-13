@@ -87,7 +87,9 @@ STATE_DIR="$DATA_DIR/openclaw"
 
 step "Preparing OpenClaw state at $STATE_DIR (same path on host and in the Gateway)"
 # Created through Docker so it works the same on Linux hosts and inside Docker Desktop's VM; owned by uid 1000 (node).
-docker run --rm --user 0 -v "$DATA_DIR:$DATA_DIR" debian:bookworm-slim   sh -c "mkdir -p '$STATE_DIR' && chown 1000:1000 '$STATE_DIR' && chmod 700 '$STATE_DIR'"
+# workspace/files is where the shared folder is mounted: made here, or Docker creates it (and workspace/) as root
+# and OpenClaw's onboarding cannot write the main workspace.
+docker run --rm --user 0 -v "$DATA_DIR:$DATA_DIR" debian:bookworm-slim   sh -c "mkdir -p '$STATE_DIR/workspace/files' '$DATA_DIR/backups' && chown 1000:1000 '$STATE_DIR' '$STATE_DIR/workspace' '$STATE_DIR/workspace/files' '$DATA_DIR/backups' && chmod 700 '$STATE_DIR' '$DATA_DIR/backups'"
 
 # A shared folder inside the data folder (servers: install.sh puts it there) belongs to the agent user too.
 FILES_DIR="$(env_get CLAWDESK_FILES_DIR)"

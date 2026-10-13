@@ -140,6 +140,17 @@ export class AuthService {
     return this.#issueSession(userAgent);
   }
 
+  /** Asks for the password again before something that cannot be undone (factory reset). */
+  async confirmPassword(password: string, client: string): Promise<void> {
+    this.#throttle(client);
+    const owner = this.#owner();
+    if (!owner?.passwordHash || !(await verifyPassword(password, owner.passwordHash))) {
+      this.#limiter.fail(client);
+      throw new AuthError("wrong_password", "wrong password");
+    }
+    this.#limiter.succeed(client);
+  }
+
   /** Valid session for this cookie token, renewed when it is a day old. */
   check(token: string | undefined): SessionCheck | null {
     if (!token) return null;

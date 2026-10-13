@@ -33,3 +33,20 @@ export function formatDay(date: string, locale: string): string {
   const [y, m, d] = date.split("-").map(Number);
   return new Intl.DateTimeFormat(intlLocale(locale), { day: "numeric", month: "short", timeZone: "UTC" }).format(Date.UTC(y!, m! - 1, d!));
 }
+
+/** File size, e.g. "12,4 МБ". */
+export function formatBytes(bytes: number, locale: string): string {
+  const units = ["byte", "kilobyte", "megabyte", "gigabyte"] as const;
+  let value = bytes;
+  let i = 0;
+  while (value >= 1024 && i < units.length - 1) {
+    value /= 1024;
+    i++;
+  }
+  return new Intl.NumberFormat(intlLocale(locale), { style: "unit", unit: units[i], unitDisplay: "short", maximumFractionDigits: 1 }).format(value);
+}
+
+/** Date and time in the person's time zone, e.g. "13 окт., 03:30". */
+export function formatDateTime(iso: string, locale: string): string {
+  return new Intl.DateTimeFormat(intlLocale(locale), { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }).format(new Date(iso));
+}

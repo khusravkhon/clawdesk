@@ -11,7 +11,8 @@
     "chat": "Chat",
     "approvals": "Approvals",
     "schedules": "Schedules",
-    "assistant": "Assistant"
+    "assistant": "Assistant",
+    "system": "System"
   },
   "status": {
     "title": "System status",
@@ -559,5 +560,39 @@
       "telegram_unavailable": "Could not send the code to Telegram",
       "no_owner": "The owner password is not set yet"
     }
+  },
+  "system": {
+    "title": "System",
+    "subtitle": "Backups and resetting the panel",
+    "backups": "Backups",
+    "backupNow": "Back up now",
+    "backupMade": "Backup made",
+    "backupsAbout": "Every night (03:00–06:00) the server makes a backup; the last 7 are kept. A backup has everything: agents, chats, AI keys, Telegram, Google and Notion connections, the panel password and the shared files folder.",
+    "unavailable": "Backups work in the panel installed on a server. Development mode has none.",
+    "noBackups": "No backups yet. The first comes tonight — or press “Back up now”.",
+    "lastError": "The last backup failed: {error}",
+    "kind": {
+      "daily": "Nightly",
+      "manual": "Manual",
+      "before-reset": "Before reset"
+    },
+    "download": "Download",
+    "downloadTitle": "Download a copy",
+    "downloadAbout": "A backup holds every key and token, so the copy is encrypted with a password. Remember it: the copy cannot be opened without it, and it is not stored anywhere.",
+    "copyPassword": "Password for the copy",
+    "restoreHint": "To restore a backup (from the server or a downloaded copy), run on the server:",
+    "file": "file",
+    "resetTitle": "Reset everything",
+    "resetAbout": "The panel goes back to how it was right after installation: agents, chats, schedules, AI keys, Telegram, Google and Notion connections, the panel password and the shared files are deleted. A backup is made first.",
+    "resetButton": "Reset everything…",
+    "resetWarning": "This cannot be undone — the data comes back only from a backup.",
+    "resetWord": "RESET",
+    "typeWord": "To confirm, type {word} and the panel password.",
+    "resetConfirm": "Back up and reset",
+    "resetBackingUp": "Backing up…",
+    "resettingTitle": "Resetting",
+    "resettingText": "The server is wiping the data and restarting — 1–3 minutes. Then the new password screen opens. Your owner code:",
+    "resettingHint": "Write the code down: if the page does not open by itself, open the panel and enter it on the password screen.",
+    "openSetup": "Open the password screen"
   }
 }

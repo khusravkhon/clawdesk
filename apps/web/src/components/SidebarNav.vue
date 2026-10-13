@@ -1,7 +1,7 @@
 <script setup lang="ts">
 // Sidebar body: brand, sections, theme and language. Shared by the desktop sidebar and the phone drawer.
 import type { Locale } from "@clawdesk/shared";
-import { Activity, Bot, CalendarClock, Database, LayoutDashboard, LogOut, MessagesSquare, ShieldCheck, UserRound, Moon, PanelLeftClose, PanelLeftOpen, Send, Sparkles, Sun } from "@lucide/vue";
+import { Activity, Bot, CalendarClock, Database, HardDrive, LayoutDashboard, LogOut, MessagesSquare, ShieldCheck, UserRound, Moon, PanelLeftClose, PanelLeftOpen, Send, Sparkles, Sun } from "@lucide/vue";
 import { NButton, NMenu, NSelect, NTooltip, type MenuOption } from "naive-ui";
 import { computed, h, type Component } from "vue";
 import { useI18n } from "vue-i18n";
@@ -35,6 +35,7 @@ const menu = computed<MenuOption[]>(() => [
   { key: "/telegram", label: link("/telegram", "Telegram"), icon: icon(Send) },
   { key: "/free-models", label: link("/free-models", t("nav.freeModels")), icon: icon(Sparkles) },
   { key: "/status", label: link("/status", t("nav.status")), icon: icon(Activity) },
+  { key: "/system", label: link("/system", t("nav.system")), icon: icon(HardDrive) },
 ]);
 
 // Nested pages (e.g. /agents/new) light up their section.

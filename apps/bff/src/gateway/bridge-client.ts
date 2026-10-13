@@ -12,6 +12,8 @@ export class BridgeError extends Error {
 
 export type McpAuthStatus = { configured: boolean; hasTokens: boolean; state: string | null };
 
+export type BridgeBackup = { name: string; kind: "daily" | "manual" | "before-reset"; createdAt: string; size: number };
+
 export type GoogleLogin = { email: string; services: string[]; readonly: boolean; redirectUri?: string };
 export type GoogleBridgeStatus = {
   installed: boolean;
@@ -75,6 +77,16 @@ export class BridgeClient {
   /** Recovers FreeLLMAPI's single account (one-time code from its log) and sets this password. */
   freellmapiReset(newPassword: string): Promise<{ ok: true }> {
     return this.#call("POST", "/freellmapi/reset", { newPassword }, 60_000);
+  }
+
+  /** Makes a backup archive in the server's backups folder; takes minutes for large workspaces. */
+  backupCreate(kind: BridgeBackup["kind"]): Promise<BridgeBackup> {
+    return this.#call("POST", "/backup/create", { kind }, 20 * 60_000);
+  }
+
+  /** Starts the factory reset; the Gateway and the panel stop shortly after this returns. */
+  factoryReset(ownerCode: string): Promise<{ started: true }> {
+    return this.#call("POST", "/reset", { ownerCode }, 60_000);
   }
 
   async #call<T>(method: "GET" | "POST", path: string, body?: unknown, timeoutMs = 90_000): Promise<T> {

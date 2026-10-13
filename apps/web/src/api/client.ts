@@ -9,6 +9,9 @@ import type {
   AssistantDto,
   AssistantProfile,
   AuthStateDto,
+  BackupDto,
+  BackupsDto,
+  FactoryResetResultDto,
   MemoryProvider,
   ExecMode,
   ChatHistoryDto,
@@ -80,6 +83,21 @@ export const api = {
     logout: () => post<{ ok: true }>("/api/auth/logout"),
     telegramSend: (locale: string) => post<{ ok: true }>("/api/auth/telegram/send", { locale }),
     telegramReset: (code: string, password: string) => post<AuthStateDto>("/api/auth/telegram/reset", { code, password }),
+  },
+  system: {
+    backups: () => request<BackupsDto>("/api/system/backups"),
+    createBackup: () => post<BackupDto>("/api/system/backups"),
+    /** The encrypted copy as a file; the password never goes into a URL. */
+    downloadBackup: async (name: string, password: string): Promise<Blob> => {
+      const res = await fetch(`/api/system/backups/${encodeURIComponent(name)}/download`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ password }),
+      });
+      if (!res.ok) throw new ApiError(res.status, (await res.json().catch(() => ({ error: "bad_response", message: res.statusText }))) as ApiErrorDto);
+      return res.blob();
+    },
+    reset: (password: string) => post<FactoryResetResultDto>("/api/system/reset", { password, confirm: true }),
   },
   health: () => request<HealthDto>("/api/health"),
   dashboard: (range: DashboardRange) => request<DashboardDto>(`/api/dashboard?range=${range}&tz=${encodeURIComponent(browserTimeZone())}`),

@@ -65,6 +65,10 @@ services:
       - /var/run/docker.sock:/var/run/docker.sock
       # Shared folder from the person's computer: files/ in the main agent's workspace.
       - ${CLAWDESK_FILES_DIR:-./files}:${CLAWDESK_DATA_DIR:-/var/lib/clawdesk}/openclaw/workspace/files
+      # Backups (the bridge writes them, see clawdesk-backup.mjs) and the other services' data they include.
+      - ${CLAWDESK_DATA_DIR:-/var/lib/clawdesk}/backups:${CLAWDESK_DATA_DIR:-/var/lib/clawdesk}/backups
+      - panel-data:/var/lib/clawdesk-sources/panel
+      - freellmapi-data:/var/lib/clawdesk-sources/freellmapi
     # Group owning the Docker socket on the host (detected by init.sh; 0 on Docker Desktop).
     group_add:
       - "${DOCKER_GID:-999}"
@@ -104,8 +108,11 @@ services:
       FILES_HOST_PATH: ${CLAWDESK_FILES_DIR:-./files}
       # Caddy reaches the panel over the compose network; local access comes from the Docker bridge.
       TRUST_PROXY: loopback,uniquelocal
+      # Read-only: the panel lists and hands out backups; the bridge makes them.
+      BACKUP_DIR: /backups
     volumes:
       - panel-data:/data
+      - ${CLAWDESK_DATA_DIR:-/var/lib/clawdesk}/backups:/backups:ro
       # Read-only, only to list what the agent can see.
       - ${CLAWDESK_FILES_DIR:-./files}:/files:ro
     depends_on:

@@ -16,10 +16,14 @@
 //   POST /google/login/complete { …same, authUrl }
 //   POST /google/remove      { email }
 //   POST /freellmapi/reset   { newPassword }   recover FreeLLMAPI's account (code from its log)
+//   GET  /backup/list                       → { backups: [{ name, kind, createdAt, size }] }
+//   POST /backup/create      { kind }        daily | manual | before-reset (see clawdesk-backup.mjs)
+//   POST /reset              { ownerCode }   factory reset in a helper container; the stack restarts
 
 import { spawn } from "node:child_process";
 import { timingSafeEqual } from "node:crypto";
 import http from "node:http";
+import { BackupError, createBackup, listBackups, startReset } from "./clawdesk-backup.mjs";
 
 const HOST = process.env.CLAWDESK_BRIDGE_HOST || "127.0.0.1";
 const PORT = Number(process.env.CLAWDESK_BRIDGE_PORT || 18790);
@@ -287,6 +291,7 @@ async function handle(req) {
   if (!authorized(req)) return { status: 401, body: { error: "unauthorized", message: "missing or wrong token" } };
 
   if (req.method === "GET" && url.pathname === "/google/status") return googleStatus();
+  if (req.method === "GET" && url.pathname === "/backup/list") return { status: 200, body: { backups: await listBackups() } };
   if (req.method === "GET" && url.pathname === "/mcp/status") {
     const server = url.searchParams.get("server") || "";
     if (!SERVER_NAME.test(server)) return { status: 400, body: { error: "invalid_server" } };
@@ -297,6 +302,16 @@ async function handle(req) {
   const body = await readJson(req);
   if (!(await gogInstalled()) && url.pathname.startsWith("/google/")) return { status: 501, body: { error: "gog_missing", message: "gog is not in this Gateway image" } };
   if (url.pathname === "/freellmapi/reset") return freellmapiReset(body);
+  if (url.pathname === "/backup/create" || url.pathname === "/reset") {
+    try {
+      const result = url.pathname === "/reset" ? await startReset(body.ownerCode) : await createBackup(body.kind);
+      log(url.pathname === "/reset" ? "factory reset started" : "backup created", url.pathname === "/reset" ? {} : { name: result.name, size: result.size });
+      return { status: 200, body: result };
+    } catch (error) {
+      if (error instanceof BackupError) return { status: error.status, body: { error: error.code, message: error.message } };
+      throw error;
+    }
+  }
   switch (url.pathname) {
     case "/google/credentials":
       return googleCredentials(body);
@@ -337,5 +352,7 @@ if (!TOKEN) {
       res.writeHead(result.status, { "content-type": "application/json" });
       res.end(JSON.stringify(result.body));
     })
+    // A backup of a large workspace takes minutes.
+    .setTimeout(20 * 60_000)
     .listen(PORT, HOST, () => log("listening", { host: HOST, port: PORT }));
 }

@@ -13,7 +13,8 @@ import { registerAuthRoutes } from "../src/routes/auth.js";
 const PASSWORD = "correct horse battery";
 const UA = "vitest";
 
-describe("panel sign-in", () => {
+// scrypt is slow on purpose; under a parallel run these tests need more than the default 5 s.
+describe("panel sign-in", { timeout: 30_000 }, () => {
   let dir: string;
   let close: () => void;
   let db: ReturnType<typeof openDb>["db"];

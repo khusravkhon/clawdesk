@@ -85,7 +85,7 @@ const STATUS: Record<AuthError["code"], number> = {
   telegram_unavailable: 503,
 };
 
-async function withAuthErrors<T>(reply: FastifyReply, run: () => Promise<T>): Promise<T | ApiErrorDto> {
+export async function withAuthErrors<T>(reply: FastifyReply, run: () => Promise<T>): Promise<T | ApiErrorDto> {
   try {
     return await run();
   } catch (error) {
