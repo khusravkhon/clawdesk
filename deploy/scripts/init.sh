@@ -50,7 +50,7 @@ env_set() {
 }
 
 # Values from install.sh (or the person) win over what .env had; set-but-empty clears (e.g. --no-https).
-for name in CLAWDESK_DOMAIN CLAWDESK_FILES_DIR CLAWDESK_TZ; do
+for name in CLAWDESK_DOMAIN CLAWDESK_FILES_DIR CLAWDESK_TZ CLAWDESK_VERSION; do
   if [[ -n "${!name+set}" ]]; then env_set "$name" "${!name}"; fi
 done
 
@@ -103,9 +103,22 @@ if [[ -n "$DOMAIN" && $DEV == 0 ]]; then
   echo "HTTPS for $DOMAIN through Caddy (ports 80 and 443)"
 fi
 
-step "Building the Gateway image (OpenClaw + Docker CLI) and the agent sandbox image"
-built=0
+VERSION="$(env_get CLAWDESK_VERSION)"
+pulled=0
+if [[ -n "$VERSION" && "$VERSION" != "dev" && $DEV == 0 ]]; then
+  step "Pulling ClawDesk $VERSION images"
+  registry="ghcr.io/khusravkhon"
+  if "${COMPOSE[@]}" pull gateway panel && docker pull "$registry/clawdesk-sandbox:$VERSION"     && docker tag "$registry/clawdesk-sandbox:$VERSION" openclaw-sandbox:bookworm-slim; then
+    pulled=1
+  else
+    echo "Could not pull the $VERSION images (private packages need: docker login ghcr.io). Building instead."
+  fi
+fi
+
+built=$pulled
+[[ $pulled == 0 ]] && step "Building the Gateway image (OpenClaw + Docker CLI) and the agent sandbox image"
 for attempt in 1 2 3; do
+  [[ $built == 1 ]] && break
   if "${COMPOSE[@]}" build gateway && docker build -q -t openclaw-sandbox:bookworm-slim -f sandbox.Dockerfile . >/dev/null; then built=1; break; fi
   echo "build failed (attempt $attempt/3), retrying in 5s…"
   sleep 5
@@ -143,8 +156,8 @@ if [[ $DEV == 1 ]]; then
   echo
   echo "Gateway is up on ws://127.0.0.1:18789. Next: pnpm --filter @clawdesk/bff rpc-inventory"
 else
-  step "Building and starting panel + gateway"
-  "${COMPOSE[@]}" up -d --build
+  step "Starting panel + gateway"
+  if [[ $pulled == 1 ]]; then "${COMPOSE[@]}" up -d; else "${COMPOSE[@]}" up -d --build; fi
   port="$(grep '^PANEL_PORT=' .env | cut -d= -f2-)"
   url="http://127.0.0.1:${port:-8080}"
   if [[ -n "$DOMAIN" ]]; then

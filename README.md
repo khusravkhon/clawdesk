@@ -47,7 +47,11 @@ pnpm dev:bff                             # BFF на :8787
 pnpm dev:web                             # админка на :5173 (проксирует /api на BFF)
 ```
 
-Проверки: `pnpm typecheck`, `pnpm test`, `pnpm build`.
+Проверки: `pnpm typecheck`, `pnpm test`, `pnpm build` (то же делает CI на каждый пуш в `main`).
+
+Релиз: тег `v0.1.0` → GitHub Actions публикует образы `clawdesk-panel`, `clawdesk-gateway`, `clawdesk-sandbox` в ghcr.io.
+На сервере `CLAWDESK_VERSION=0.1.0` в `deploy/.env` — установка скачает их вместо сборки (для приватных пакетов
+нужен `docker login ghcr.io`, иначе соберёт сама).
 
 ## Установка на сервер
 

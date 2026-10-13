@@ -1,0 +1,28 @@
+# Every push to main and every pull request: build, typecheck, tests, and the install scripts.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      # pnpm version comes from packageManager in package.json.
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm -r build
+      - run: pnpm typecheck
+      - run: pnpm test
+      - name: Install scripts
+        run: shellcheck -S warning deploy/install.sh deploy/scripts/*.sh

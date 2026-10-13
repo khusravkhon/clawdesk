@@ -37,7 +37,8 @@ services:
       args:
         OPENCLAW_IMAGE: ${OPENCLAW_IMAGE:-ghcr.io/openclaw/openclaw}
         OPENCLAW_VERSION: ${OPENCLAW_VERSION:-2026.8.1}
-    image: clawdesk-gateway:${OPENCLAW_VERSION:-2026.8.1}
+    # Released images come from ghcr.io (CLAWDESK_VERSION); "dev" is built here.
+    image: ghcr.io/khusravkhon/clawdesk-gateway:${CLAWDESK_VERSION:-dev}
     env_file:
       - path: .env
         required: false

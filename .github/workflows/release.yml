@@ -1,0 +1,58 @@
+# A tag v1.2.3 publishes the images an install pulls instead of building them on the server:
+#   ghcr.io/<owner>/clawdesk-panel, clawdesk-gateway (pinned OpenClaw + ClawDesk bridge), clawdesk-sandbox.
+# Set CLAWDESK_VERSION=1.2.3 in deploy/.env to use them (deploy/scripts/init.sh pulls, or builds if it cannot).
+name: Release images
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Image tag (e.g. 0.1.0)
+        required: true
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  images:
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - image: clawdesk-panel
+            context: .
+            file: deploy/panel.Dockerfile
+          - image: clawdesk-gateway
+            context: deploy
+            file: deploy/gateway.Dockerfile
+          - image: clawdesk-sandbox
+            context: deploy
+            file: deploy/sandbox.Dockerfile
+    steps:
+      - uses: actions/checkout@v4
+      - id: version
+        run: |
+          v="${{ inputs.version || github.ref_name }}"
+          echo "tag=${v#v}" >> "$GITHUB_OUTPUT"
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - uses: docker/build-push-action@v6
+        with:
+          context: ${{ matrix.context }}
+          file: ${{ matrix.file }}
+          # The Gateway image bundles x86-64 binaries (gog).
+          platforms: linux/amd64
+          push: true
+          tags: |
+            ghcr.io/${{ github.repository_owner }}/${{ matrix.image }}:${{ steps.version.outputs.tag }}
+            ghcr.io/${{ github.repository_owner }}/${{ matrix.image }}:latest
+          cache-from: type=gha,scope=${{ matrix.image }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.image }}
