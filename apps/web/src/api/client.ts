@@ -10,6 +10,7 @@ import type {
   AssistantProfile,
   AuthStateDto,
   AuditPageDto,
+  UsageDto,
   CreateSpaceRequest,
   CreateTeamRequest,
   PullRequestDto,
@@ -123,6 +124,7 @@ export const api = {
     audit: (q: { before?: number; cursor?: string }) =>
       request<AuditPageDto>(`/api/system/audit?${new URLSearchParams(Object.entries(q).filter(([, v]) => v !== undefined).map(([k, v]) => [k, String(v)])).toString()}`),
   },
+  usage: (range: DashboardRange) => request<UsageDto>(`/api/usage?range=${range}&tz=${encodeURIComponent(browserTimeZone())}`),
   health: () => request<HealthDto>("/api/health"),
   dashboard: (range: DashboardRange) => request<DashboardDto>(`/api/dashboard?range=${range}&tz=${encodeURIComponent(browserTimeZone())}`),
   agents: () => request<AgentListDto>("/api/agents"),

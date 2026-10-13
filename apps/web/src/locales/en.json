@@ -13,7 +13,8 @@
     "schedules": "Schedules",
     "assistant": "Assistant",
     "system": "System",
-    "teams": "Teams"
+    "teams": "Teams",
+    "usage": "Usage"
   },
   "status": {
     "title": "System status",
@@ -760,5 +761,15 @@
         "telegram": "Team Telegram group linked"
       }
     }
+  },
+  "usage": {
+    "title": "Usage",
+    "subtitle": "Tokens and money by agent and day",
+    "byDay": "By day",
+    "byAgent": "By agent",
+    "agentDays": "Agents by day",
+    "agent": "Agent",
+    "noAgents": "Agents have spent nothing yet",
+    "costLowerBound": "at least: some models have no price"
   }
 }

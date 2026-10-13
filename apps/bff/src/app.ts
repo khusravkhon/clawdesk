@@ -37,6 +37,8 @@ import { registerSystemRoutes } from "./routes/system.js";
 import { registerSpaceRoutes } from "./routes/space.js";
 import { registerTeamRoutes } from "./routes/teams.js";
 import { registerAuditRoutes } from "./routes/audit.js";
+import { registerUsageRoutes } from "./routes/usage.js";
+import { UsageService } from "./dashboard/usage-service.js";
 import { registerTelegramRoutes } from "./routes/telegram.js";
 import { registerTemplateRoutes } from "./routes/templates.js";
 import type { SourcesService } from "./sources/sources-service.js";
@@ -103,6 +105,7 @@ export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
   registerSpaceRoutes(app, deps);
   registerTeamRoutes(app, deps);
   registerAuditRoutes(app, deps);
+  registerUsageRoutes(app, { usage: new UsageService(deps) });
 
   if (deps.webDist && fs.existsSync(path.join(deps.webDist, "index.html"))) {
     await app.register(fastifyStatic, { root: deps.webDist, wildcard: false });

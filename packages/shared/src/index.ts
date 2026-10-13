@@ -15,3 +15,4 @@ export * from "./system.js";
 export * from "./space.js";
 export * from "./teams.js";
 export * from "./audit.js";
+export * from "./usage.js";
