@@ -27,6 +27,8 @@ export type CreateAgentDeps = {
   telegramDelivery?: { mode: "announce"; channel: string; to: string; bestEffort: boolean } | null;
   /** Makes the agent's folder in the shared files folder (the ClawDesk bridge). */
   folders?: { ensureFolder(name: string): Promise<{ hostPath: string; gatewayPath: string }> };
+  /** A project team member (screen 11): its team, the project values its template needs, extra sandbox binds. */
+  team?: { id: string; values: Record<string, string>; binds: string[] };
 };
 
 /** Where a sandboxed junior sees its folder: inside its workspace, where OpenClaw's file tools work. */
@@ -44,10 +46,10 @@ export class CreateAgentError extends Error {
 
 export async function createJuniorAgent(deps: CreateAgentDeps, req: CreateAgentRequest): Promise<CreateAgentResultDto> {
   const { gateway, db, logger } = deps;
-  const template = loadJuniorTemplate(req);
+  const template = loadJuniorTemplate(req, !!deps.team);
   let files: ReturnType<typeof renderTemplateFiles>;
   try {
-    files = renderTemplateFiles(template, req.values);
+    files = renderTemplateFiles(template, { ...req.values, ...deps.team?.values });
   } catch (error) {
     throw new CreateAgentError("invalid_values", (error as Error).message);
   }
@@ -56,7 +58,7 @@ export async function createJuniorAgent(deps: CreateAgentDeps, req: CreateAgentR
 
   const list = await gateway.request<AgentsList>("agents.list", {});
   const taken = new Set(list.agents.map((a) => a.id));
-  const base = slugBase(template, displayName);
+  const base = deps.team ? `${deps.team.id}-${template.id}` : slugBase(template, displayName);
   let agentId = uniqueSlug(base, taken);
   const mainModel = list.agents.find((a) => a.id === "main")?.model?.primary ?? null;
   // Free models only for personal-mode juniors; company teams and the main agent never get them.
@@ -118,7 +120,7 @@ export async function createJuniorAgent(deps: CreateAgentDeps, req: CreateAgentR
           if (!req.canAskMain) entry.tools = { deny: CROSS_AGENT_TOOLS };
           if (sandboxApplied) {
             // Only this folder of the person's files; the rest of the shared folder stays outside the sandbox.
-            const binds = folder ? [`${folder.hostPath}:${folder.agentPath}:rw`] : [];
+            const binds = [...(folder ? [`${folder.hostPath}:${folder.agentPath}:rw`] : []), ...(deps.team?.binds ?? [])];
             entry.sandbox = { mode: "all", scope: "agent", workspaceAccess: "rw", ...(binds.length ? { docker: { binds } } : {}) };
           }
           const patch: Record<string, unknown> = { agents: { entries: { [agentId]: entry } } };
@@ -161,8 +163,9 @@ export async function createJuniorAgent(deps: CreateAgentDeps, req: CreateAgentR
             tx.insert(agents)
               .values({
                 id: agentId,
-                role: "specialist",
+                role: deps.team ? "team_member" : "specialist",
                 parentId: "main",
+                teamId: deps.team?.id ?? null,
                 templateId: template.id,
                 displayName,
                 avatar: template.emoji ?? null,
@@ -251,7 +254,7 @@ export function dataAccessBlock(agentPath: string, folderName: string, canAskMai
   ].join("\n");
 }
 
-function loadJuniorTemplate(req: CreateAgentRequest): LoadedTemplate {
+function loadJuniorTemplate(req: CreateAgentRequest, forTeam: boolean): LoadedTemplate {
   let template: LoadedTemplate;
   try {
     template = loadTemplate(req.mode, req.templateId);
@@ -259,6 +262,8 @@ function loadJuniorTemplate(req: CreateAgentRequest): LoadedTemplate {
     throw new CreateAgentError("invalid_template", `template ${req.mode}/${req.templateId} not found`);
   }
   if (template.role === "main") throw new CreateAgentError("invalid_template", "the main-agent template cannot create a junior agent");
+  // Team roles only through a team (they need its repository and project values), and the other way round.
+  if ((template.role === "team_member") !== forTeam) throw new CreateAgentError("invalid_template", forTeam ? "not a team role" : "team roles are created with a team");
   return template;
 }
 

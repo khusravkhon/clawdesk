@@ -12,7 +12,8 @@
     "approvals": "Approvals",
     "schedules": "Schedules",
     "assistant": "Assistant",
-    "system": "System"
+    "system": "System",
+    "teams": "Teams"
   },
   "status": {
     "title": "System status",
@@ -623,5 +624,59 @@
     "timezone": "Time zone",
     "once": "The mode is chosen once. It changes only through System → Reset everything.",
     "continue": "Next — connect an AI"
+  },
+  "teams": {
+    "title": "Project teams",
+    "subtitle": "A GitHub repository and a team of agents: PM, developer, reviewer",
+    "new": "New team",
+    "name": "Project name",
+    "repoUrl": "GitHub repository",
+    "token": "GitHub token for this repository only",
+    "tokenHint": "Fine-grained token: this repository only, Contents — Read and write, Pull requests — Read and write.",
+    "tokenCreate": "Create a token",
+    "brief": "About the project",
+    "briefPlaceholder": "What the project is, its goals, where the spec is — agents read this first.",
+    "roles": "Roles",
+    "role": {
+      "pm": "PM",
+      "developer": "Developer",
+      "reviewer": "Reviewer"
+    },
+    "howItWorks": "The panel downloads the repository to the server. The developer works on its own branch with no internet and no token; you push the branch and open the pull request with a button. Only people merge.",
+    "create": "Create the team",
+    "creating": "Downloading the repository and creating agents…",
+    "cancel": "Cancel",
+    "created": "Team created",
+    "empty": "No teams yet. Create the first one for your repository.",
+    "remove": "Delete the team",
+    "removeConfirm": "Delete the team? Its agents and the server's copy of the repository are removed; nothing changes on GitHub, the docs folder stays.",
+    "removed": "Team deleted",
+    "docs": "Project docs: folder “{folder}” in the shared ClawDesk folder",
+    "branch": "Branch",
+    "ahead": "new commits: {n}",
+    "uncommitted": "has uncommitted changes",
+    "repoUnknown": "Repository state unavailable",
+    "fetch": "Update from GitHub",
+    "push": "Push branch and open PR",
+    "prCreated": "Pull request opened:",
+    "prUpdated": "Pull request updated:",
+    "telegram": "Link a Telegram group",
+    "telegramChange": "Change the Telegram group",
+    "telegramSave": "Link",
+    "telegramLinked": "Group linked",
+    "tgStep1": "Create a Telegram group and turn on Topics in its settings.",
+    "tgStep2": "Add your bot and make it an admin.",
+    "tgStep3": "Create topics: {topics}.",
+    "tgStep4": "In each topic press “Copy link” and paste the links below. Only you can write to the agents in the group.",
+    "errors": {
+      "token_rejected": "GitHub did not accept this token. Check it is copied whole and not expired.",
+      "repo_not_found": "The token cannot see this repository: check the address and that the token was made for it.",
+      "no_push_permission": "The token cannot write: Contents must be Read and write in its settings.",
+      "github_unreachable": "GitHub did not answer: {detail}",
+      "nothing_to_push": "The developer has no new commits — nothing to push.",
+      "no_owner": "Connect the Telegram bot and approve yourself in it first.",
+      "telegram_links": "The links must be topics of one group: {detail}",
+      "git_failed": "Git: {detail}"
+    }
   }
 }

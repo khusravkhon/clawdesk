@@ -166,6 +166,45 @@ export class TelegramService {
     return this.status();
   }
 
+  /**
+   * A team's Telegram group: each topic answered by one agent. Group chat stays limited to listed groups
+   * and to the owner as sender (groupPolicy allowlist). Restarts the Gateway.
+   */
+  async linkGroup(chatId: string, topics: { topicId: string; agentId: string }[]): Promise<void> {
+    const owner = this.#owner();
+    if (!owner?.peerId) throw new TelegramError("no_owner", "approve yourself in the bot first");
+    const { config } = await getConfig<{ channels?: { telegram?: { groupAllowFrom?: string[] } } }>(this.gateway);
+    const allowFrom = [...new Set([...(config.channels?.telegram?.groupAllowFrom ?? []), owner.peerId])];
+    const generation = this.gateway.generation;
+    await this.#patchMaybeRestarting(
+      {
+        channels: {
+          telegram: {
+            groupPolicy: "allowlist",
+            groupAllowFrom: allowFrom,
+            groups: {
+              [chatId]: {
+                enabled: true,
+                requireMention: false,
+                topics: Object.fromEntries(topics.map((t) => [t.topicId, { agentId: t.agentId, requireMention: false }])),
+              },
+            },
+          },
+        },
+      },
+      generation,
+    );
+    if (this.gateway.generation === generation) await this.#restart("clawdesk: team telegram group");
+    this.logger.info({ chatId, topics: topics.length }, "telegram group linked");
+  }
+
+  /** Removes a team's group (its agents are gone or the team is unlinked). */
+  async unlinkGroup(chatId: string): Promise<void> {
+    const generation = this.gateway.generation;
+    await this.#patchMaybeRestarting({ channels: { telegram: { groups: { [chatId]: null } } } }, generation);
+    if (this.gateway.generation === generation) await this.#restart("clawdesk: team telegram group removed");
+  }
+
   /** The owner approved themselves in the bot, so the panel can write to them. */
   hasOwner(): boolean {
     return !!this.#owner()?.peerId;

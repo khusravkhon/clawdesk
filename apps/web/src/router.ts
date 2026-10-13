@@ -21,6 +21,7 @@ export const router = createRouter({
     { path: "/setup/mode", name: "setup-mode", component: () => import("./views/SetupModeView.vue"), meta: { bare: true } },
     { path: "/setup/ai", name: "setup-ai", component: () => import("./views/SetupAiView.vue"), meta: { bare: true } },
     { path: "/status", name: "status", component: () => import("./views/StatusView.vue"), meta: { aiOptional: true } },
+    { path: "/teams", name: "teams", component: () => import("./views/TeamsView.vue") },
     { path: "/system", name: "system", component: () => import("./views/SystemView.vue"), meta: { aiOptional: true } },
   ],
 });

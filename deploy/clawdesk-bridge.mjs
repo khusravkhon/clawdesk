@@ -17,6 +17,8 @@
 //   POST /google/remove      { email }
 //   POST /freellmapi/reset   { newPassword }   recover FreeLLMAPI's account (code from its log)
 //   POST /files/folder       { name }        a junior agent's folder in the shared files folder → { hostPath, gatewayPath }
+//   POST /teams/clone        { teamId, repoUrl, token }   project team repository (see clawdesk-teams.mjs)
+//   POST /teams/fetch | /teams/push { teamId, … }  GET /teams/status?teamId=…  POST /teams/remove { teamId }
 //   GET  /backup/list                       → { backups: [{ name, kind, createdAt, size }] }
 //   POST /backup/create      { kind }        daily | manual | before-reset (see clawdesk-backup.mjs)
 //   POST /reset              { ownerCode }   factory reset in a helper container; the stack restarts
@@ -27,6 +29,7 @@ import http from "node:http";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { BackupError, createBackup, listBackups, startReset } from "./clawdesk-backup.mjs";
+import { cloneTeamRepo, fetchTeamRepo, pushTeamBranch, removeTeamRepo, TeamError, teamRepoStatus } from "./clawdesk-teams.mjs";
 
 const HOST = process.env.CLAWDESK_BRIDGE_HOST || "127.0.0.1";
 const PORT = Number(process.env.CLAWDESK_BRIDGE_PORT || 18790);
@@ -247,6 +250,15 @@ async function ensureFolder(body) {
   return { status: 200, body: { hostPath: `${source.replace(/\/$/, "")}/${name}`, gatewayPath: path.join(FILES_IN_GATEWAY, name) } };
 }
 
+async function teamCall(run) {
+  try {
+    return { status: 200, body: await run() };
+  } catch (error) {
+    if (error instanceof TeamError) return { status: error.status, body: { error: error.code, message: error.message } };
+    throw error;
+  }
+}
+
 // --- FreeLLMAPI account recovery
 //
 // The panel keeps FreeLLMAPI's single account password in its own volume. If that volume is lost,
@@ -332,6 +344,7 @@ async function handle(req) {
 
   if (req.method === "GET" && url.pathname === "/google/status") return googleStatus();
   if (req.method === "GET" && url.pathname === "/backup/list") return { status: 200, body: { backups: await listBackups() } };
+  if (req.method === "GET" && url.pathname === "/teams/status") return teamCall(() => teamRepoStatus({ teamId: url.searchParams.get("teamId") }));
   if (req.method === "GET" && url.pathname === "/mcp/status") {
     const server = url.searchParams.get("server") || "";
     if (!SERVER_NAME.test(server)) return { status: 400, body: { error: "invalid_server" } };
@@ -343,6 +356,8 @@ async function handle(req) {
   if (!(await gogInstalled()) && url.pathname.startsWith("/google/")) return { status: 501, body: { error: "gog_missing", message: "gog is not in this Gateway image" } };
   if (url.pathname === "/freellmapi/reset") return freellmapiReset(body);
   if (url.pathname === "/files/folder") return ensureFolder(body);
+  const teamOps = { "/teams/clone": cloneTeamRepo, "/teams/fetch": fetchTeamRepo, "/teams/push": pushTeamBranch, "/teams/remove": removeTeamRepo };
+  if (teamOps[url.pathname]) return teamCall(() => teamOps[url.pathname](body));
   if (url.pathname === "/backup/create" || url.pathname === "/reset") {
     try {
       const result = url.pathname === "/reset" ? await startReset(body.ownerCode) : await createBackup(body.kind);

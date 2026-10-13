@@ -1,3 +1,5 @@
+import type { PullRequestDto, TeamRepoStatusDto } from "@clawdesk/shared";
+
 // Client for the ClawDesk bridge in the Gateway container (deploy/clawdesk-bridge.mjs):
 // OpenClaw CLI steps that have no RPC, such as signing in to an OAuth MCP server.
 
@@ -82,6 +84,28 @@ export class BridgeClient {
   /** Makes (or finds) a junior agent's folder in the shared files folder. */
   ensureFolder(name: string): Promise<{ hostPath: string; gatewayPath: string }> {
     return this.#call("POST", "/files/folder", { name });
+  }
+
+  /** Clones a team's repository (a read-only copy and the developer's branch); the token stays aside. */
+  teamClone(teamId: string, repoUrl: string, token: string): Promise<{ defaultBranch: string; branch: string; repoPath: string; devPath: string }> {
+    return this.#call("POST", "/teams/clone", { teamId, repoUrl, token }, 10 * 60_000);
+  }
+
+  teamStatus(teamId: string): Promise<TeamRepoStatusDto> {
+    return this.#call("GET", `/teams/status?teamId=${encodeURIComponent(teamId)}`);
+  }
+
+  teamFetch(teamId: string): Promise<TeamRepoStatusDto> {
+    return this.#call("POST", "/teams/fetch", { teamId }, 5 * 60_000);
+  }
+
+  /** Pushes the developer's branch and opens (or finds) its pull request. */
+  teamPush(teamId: string, repoUrl: string, title: string, body: string): Promise<PullRequestDto> {
+    return this.#call("POST", "/teams/push", { teamId, repoUrl, title, body }, 5 * 60_000);
+  }
+
+  teamRemove(teamId: string): Promise<{ ok: true }> {
+    return this.#call("POST", "/teams/remove", { teamId });
   }
 
   /** Makes a backup archive in the server's backups folder; takes minutes for large workspaces. */

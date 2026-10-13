@@ -21,7 +21,7 @@ COPY --from=docker-cli /usr/local/bin/docker /usr/local/libexec/docker
 COPY --chmod=0755 docker-mountpoints.sh /usr/local/bin/docker
 COPY --from=gog /usr/local/bin/gog /usr/local/bin/gog
 # ClawDesk bridge: OpenClaw CLI steps without an RPC (MCP sign-in), for the panel, on loopback.
-COPY --chmod=0644 clawdesk-bridge.mjs clawdesk-backup.mjs /usr/local/lib/
+COPY --chmod=0644 clawdesk-bridge.mjs clawdesk-backup.mjs clawdesk-teams.mjs /usr/local/lib/
 COPY --chmod=0755 gateway-start.sh /usr/local/bin/clawdesk-gateway-start
 # Mount points of the panel's and FreeLLMAPI's volumes (backups read them). Owned by node: when the
 # Gateway is the first to mount a fresh volume, Docker gives the volume this ownership, and the

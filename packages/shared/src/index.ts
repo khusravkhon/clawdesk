@@ -13,3 +13,4 @@ export * from "./assistant.js";
 export * from "./auth.js";
 export * from "./system.js";
 export * from "./space.js";
+export * from "./teams.js";

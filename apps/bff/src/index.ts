@@ -11,6 +11,7 @@ import { AssistantService } from "./assistant/assistant-service.js";
 import { AuthService } from "./auth/auth-service.js";
 import { BackupService } from "./backups/backup-service.js";
 import { SpaceService } from "./space/space-service.js";
+import { TeamService } from "./teams/team-service.js";
 import { getSetting, putSetting } from "./db/settings.js";
 import { BridgeClient } from "./gateway/bridge-client.js";
 import { SourcesService } from "./sources/sources-service.js";
@@ -40,7 +41,8 @@ const approvals = new ApprovalsService(gateway, logger.child({ component: "appro
 const assistant = new AssistantService({ gateway, db, logger: logger.child({ component: "assistant" }), mode: () => space.mode() });
 const auth = new AuthService({ db, dataDir: config.dataDir, logger: logger.child({ component: "auth" }), telegram });
 const backups = new BackupService({ bridge, dir: config.backupDir, logger: logger.child({ component: "backups" }) });
-const app = await buildApp({ logger, gateway, db, aiSetup, signIn, telegram, freeModels, sources, approvals, assistant, auth, backups, bridge, space, sandboxEnabled: config.sandboxEnabled, webDist: config.webDist, trustProxy: config.trustProxy });
+const teams = new TeamService({ gateway, db, logger: logger.child({ component: "teams" }), bridge, space, telegram, sandboxEnabled: config.sandboxEnabled });
+const app = await buildApp({ logger, gateway, db, aiSetup, signIn, telegram, freeModels, sources, approvals, assistant, auth, backups, bridge, space, teams, sandboxEnabled: config.sandboxEnabled, webDist: config.webDist, trustProxy: config.trustProxy });
 
 gateway.start();
 await app.listen({ host: config.host, port: config.port });
