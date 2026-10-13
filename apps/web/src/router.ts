@@ -1,6 +1,7 @@
 import type { AuthStateDto } from "@clawdesk/shared";
 import { createRouter, createWebHistory } from "vue-router";
 import { api } from "./api/client";
+import { useSpaceStore } from "./stores/space";
 
 export const router = createRouter({
   history: createWebHistory(),
@@ -17,6 +18,7 @@ export const router = createRouter({
     { path: "/telegram", name: "telegram", component: () => import("./views/TelegramView.vue") },
     { path: "/login", name: "login", component: () => import("./views/LoginView.vue"), meta: { bare: true, public: true } },
     { path: "/setup", name: "setup", component: () => import("./views/OwnerSetupView.vue"), meta: { bare: true, public: true } },
+    { path: "/setup/mode", name: "setup-mode", component: () => import("./views/SetupModeView.vue"), meta: { bare: true } },
     { path: "/setup/ai", name: "setup-ai", component: () => import("./views/SetupAiView.vue"), meta: { bare: true } },
     { path: "/status", name: "status", component: () => import("./views/StatusView.vue"), meta: { aiOptional: true } },
     { path: "/system", name: "system", component: () => import("./views/SystemView.vue"), meta: { aiOptional: true } },
@@ -61,7 +63,17 @@ router.beforeEach(async (to) => {
     if (auth.state === "setup") return { name: "setup" };
     if (auth.state === "login") return { name: "login", query: { next: to.fullPath } };
   }
-  if (to.name === "setup-ai" || to.meta.aiOptional || aiConnected === true || devSkipsAiGuard()) return true;
+  // Screen 2 comes before connecting an AI: the mode decides the main agent's template.
+  const space = useSpaceStore();
+  if (!space.loaded) {
+    try {
+      await space.load();
+    } catch {
+      return true;
+    }
+  }
+  if (!space.space && to.name !== "setup-mode" && !to.meta.aiOptional) return { name: "setup-mode" };
+  if (to.name === "setup-mode" || to.name === "setup-ai" || to.meta.aiOptional || aiConnected === true || devSkipsAiGuard()) return true;
   if (aiConnected === null) {
     try {
       aiConnected = (await api.ai.status("main")).connected;

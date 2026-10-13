@@ -9,6 +9,8 @@ import type {
   AssistantDto,
   AssistantProfile,
   AuthStateDto,
+  CreateSpaceRequest,
+  SpaceDto,
   BackupDto,
   BackupsDto,
   FactoryResetResultDto,
@@ -83,6 +85,10 @@ export const api = {
     logout: () => post<{ ok: true }>("/api/auth/logout"),
     telegramSend: (locale: string) => post<{ ok: true }>("/api/auth/telegram/send", { locale }),
     telegramReset: (code: string, password: string) => post<AuthStateDto>("/api/auth/telegram/reset", { code, password }),
+  },
+  space: {
+    get: () => request<{ space: SpaceDto | null }>("/api/space"),
+    create: (body: CreateSpaceRequest) => post<SpaceDto>("/api/space", body),
   },
   system: {
     backups: () => request<BackupsDto>("/api/system/backups"),

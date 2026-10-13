@@ -51,6 +51,10 @@ export type AgentTemplate = z.infer<typeof AgentTemplate>;
 
 export type LoadedTemplate = AgentTemplate & { files: Record<WorkspaceFile, string> };
 
+/** Values a team role (role "team_member") gets from its team, not from the person: the project it works on. */
+export const TEAM_VALUES = ["projectName", "projectBrief", "repoUrl", "repoPath", "docsPath", "branch"] as const;
+export type TeamValues = Record<(typeof TEAM_VALUES)[number], string>;
+
 export function listTemplates(root = TEMPLATES_ROOT): LoadedTemplate[] {
   const out: LoadedTemplate[] = [];
   for (const mode of fs.readdirSync(root)) {

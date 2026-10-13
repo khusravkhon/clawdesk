@@ -1,4 +1,4 @@
-import type { AssistantDto, AssistantProfile, MemoryProvider } from "@clawdesk/shared";
+import type { AssistantDto, AssistantProfile, MemoryProvider, SpaceMode } from "@clawdesk/shared";
 import { loadTemplate, renderTemplateFiles } from "@clawdesk/templates";
 import type { Logger } from "pino";
 import type { Db } from "../db/client.js";
@@ -6,7 +6,7 @@ import { getSetting, putSetting } from "../db/settings.js";
 import { getConfig, patchConfig } from "../gateway/config-patch.js";
 import type { GatewayService } from "../gateway/gateway-service.js";
 
-// Main assistant (screen 4). The panel template (personal/main) gives the assistant its persona
+// Main assistant (screen 4). The panel template (<mode>/main) gives the assistant its persona
 // (SOUL.md) and what to know about the owner (USER.md). OpenClaw's own working instructions in
 // AGENTS.md stay; the panel adds its part between markers, and keeps what the assistant itself
 // learned about the owner in USER.md.
@@ -51,7 +51,12 @@ export function memoryBroken(current: string | null, providers: string[]): boole
 }
 
 export class AssistantService {
-  constructor(private readonly deps: { gateway: GatewayService; db: Db; logger: Logger }) {}
+  /** `mode`: the Space mode (screen 2) picks personal/main or company/main; personal when not given. */
+  constructor(private readonly deps: { gateway: GatewayService; db: Db; logger: Logger; mode?: () => SpaceMode }) {}
+
+  #template() {
+    return loadTemplate(this.deps.mode?.() ?? "personal", "main");
+  }
 
   async get(): Promise<AssistantDto> {
     const [list, auth, { config }] = await Promise.all([
@@ -71,7 +76,7 @@ export class AssistantService {
   }
 
   async save(profile: AssistantProfile): Promise<AssistantDto> {
-    const template = loadTemplate("personal", "main");
+    const template = this.#template();
     const files = renderTemplateFiles(template, {
       agentName: profile.name,
       character: profile.character,
@@ -131,7 +136,7 @@ export class AssistantService {
   }
 
   #defaults(name: string | undefined, emoji: string | undefined): AssistantProfile {
-    const template = loadTemplate("personal", "main");
+    const template = this.#template();
     const field = (key: string) => template.fields.find((f) => f.key === key)?.default ?? "";
     return {
       name: name && name !== MAIN ? name : field("agentName") || "Ассистент",

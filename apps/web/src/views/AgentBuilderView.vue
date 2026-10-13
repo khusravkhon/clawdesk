@@ -27,6 +27,7 @@ import { useRouter } from "vue-router";
 import { api, ApiError } from "../api/client";
 import AiConnect from "../components/AiConnect.vue";
 import { useLocalized } from "../localized";
+import { useSpaceStore } from "../stores/space";
 
 type ScheduleRow = { presetId: string | null; label: string; time: string; days: string; prompt: string; enabled: boolean };
 
@@ -34,6 +35,7 @@ const { t, locale } = useI18n();
 const tx = useLocalized();
 const router = useRouter();
 const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
+const space = useSpaceStore();
 
 const step = ref(1);
 const templates = ref<TemplateDto[]>([]);
@@ -66,7 +68,7 @@ const enabledSchedules = computed(() => schedules.value.filter((s) => s.enabled 
 async function load(): Promise<void> {
   loading.value = true;
   try {
-    const [list, agents, ai] = await Promise.all([api.templates("personal"), api.agents(), api.ai.status("main")]);
+    const [list, agents, ai] = await Promise.all([api.templates(space.mode), api.agents(), api.ai.status("main")]);
     templates.value = list;
     mainModel.value = agents.agents.find((a) => a.role === "main")?.model ?? null;
     sandboxEnabled.value = agents.sandboxEnabled;

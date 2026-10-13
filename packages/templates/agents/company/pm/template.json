@@ -1,0 +1,19 @@
+{
+  "id": "pm",
+  "mode": "company",
+  "role": "team_member",
+  "emoji": "📋",
+  "title": { "ru": "PM проекта", "en": "Project PM", "tg": "PM-и лоиҳа" },
+  "description": {
+    "ru": "Разбивает ТЗ на задачи, ведёт ежедневный статус, следит за блокерами.",
+    "en": "Breaks the spec into tasks, keeps a daily status, watches blockers.",
+    "tg": "Супоришро ба вазифаҳо тақсим мекунад, ҳолати ҳаррӯзаро пеш мебарад."
+  },
+  "fields": [{ "key": "agentName", "type": "text", "label": { "ru": "Имя", "en": "Name", "tg": "Ном" }, "default": "PM" }],
+  "sources": ["github", "folder"],
+  "cronPresets": [
+    { "id": "daily-status", "label": { "ru": "Пн–Пт 10:00 статус", "en": "Mon–Fri 10:00 status" }, "cron": "0 10 * * 1,2,3,4,5", "prompt": "Статус проекта: что сделано со вчера, что в работе, блокеры, что ждёт решения людей. Коротко." }
+  ],
+  "canAskMain": true,
+  "sandbox": true
+}

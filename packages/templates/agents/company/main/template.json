@@ -1,0 +1,24 @@
+{
+  "id": "main",
+  "mode": "company",
+  "role": "main",
+  "emoji": "🏢",
+  "title": { "ru": "Главный агент компании", "en": "Company main agent", "tg": "Агенти асосии ширкат" },
+  "description": {
+    "ru": "Знает, где что лежит: репозитории, ТЗ, дизайн, заметки. Ведёт сводку по проектам и отвечает командам короткими выжимками.",
+    "en": "Knows where everything is: repositories, specs, design, notes. Keeps a project summary and answers teams with short summaries.",
+    "tg": "Медонад, ки чӣ дар куҷост: репозиторийҳо, супоришҳо, дизайн. Хулосаи лоиҳаҳоро пеш мебарад."
+  },
+  "fields": [
+    { "key": "agentName", "type": "text", "label": { "ru": "Имя агента", "en": "Agent name", "tg": "Номи агент" }, "default": "Главный агент" },
+    { "key": "character", "type": "textarea", "label": { "ru": "Характер и стиль общения", "en": "Personality and tone", "tg": "Хислат ва услуби муошират" }, "default": "Деловой, конкретный, без воды." },
+    { "key": "aboutUser", "type": "textarea", "label": { "ru": "О компании и проектах", "en": "About the company and projects", "tg": "Дар бораи ширкат ва лоиҳаҳо" } },
+    { "key": "summaryMaxLines", "type": "text", "label": { "ru": "Длина ответа командам (строк)", "en": "Max lines in replies to teams", "tg": "Дарозии ҷавоб ба гурӯҳҳо (сатр)" }, "default": "10" }
+  ],
+  "sources": ["github", "gdrive", "notion", "figma", "folder"],
+  "cronPresets": [
+    { "id": "projects-summary", "label": { "ru": "Пн–Пт 09:00 сводка по проектам", "en": "Mon–Fri 09:00 projects summary" }, "cron": "0 9 * * 1,2,3,4,5", "prompt": "Сводка по всем проектам: что сделано вчера, что в работе, где блокеры. Коротко, по проекту на абзац." }
+  ],
+  "canAskMain": false,
+  "sandbox": false
+}

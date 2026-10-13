@@ -10,6 +10,7 @@ import { SagaError } from "../provision/saga.js";
 import type { TelegramService } from "../telegram/telegram-service.js";
 import type { FreeModelsService } from "../free-models/free-models-service.js";
 import type { BridgeClient } from "../gateway/bridge-client.js";
+import type { SpaceService } from "../space/space-service.js";
 import { agentSourceGrants, dataSources } from "../db/schema.js";
 import { eq } from "drizzle-orm";
 
@@ -31,6 +32,7 @@ export type AgentRouteDeps = {
   telegram: TelegramService;
   freeModels: FreeModelsService;
   bridge: BridgeClient;
+  space: SpaceService;
 };
 
 // OpenClaw is the source of truth for which agents exist; our rows add role/parent.
@@ -72,6 +74,10 @@ export function registerAgentRoutes(app: FastifyInstance, deps: AgentRouteDeps):
 
   app.post("/api/agents", async (request, reply): Promise<CreateAgentResultDto | ApiErrorDto> => {
     const body = CreateAgentRequest.parse(request.body);
+    if (body.mode !== deps.space.mode()) {
+      reply.status(400);
+      return { error: "wrong_mode", message: `this install is in ${deps.space.mode()} mode` };
+    }
     if (body.ai === "free" && !(await deps.freeModels.status()).ready) {
       reply.status(400);
       return { error: "free_models_not_ready", message: "add at least one free provider key first" };

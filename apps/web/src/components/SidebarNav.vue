@@ -9,6 +9,7 @@ import { RouterLink, useRoute } from "vue-router";
 import { api } from "../api/client";
 import { setLocale, supportedLocales } from "../i18n";
 import { useApprovalsStore } from "../stores/approvals";
+import { useSpaceStore } from "../stores/space";
 import { themeMode, toggleTheme } from "../theme";
 
 const props = defineProps<{ collapsed?: boolean; collapsible?: boolean }>();
@@ -17,6 +18,7 @@ const emit = defineEmits<{ toggle: []; navigate: [] }>();
 const { t, locale } = useI18n();
 const route = useRoute();
 const approvals = useApprovalsStore();
+const space = useSpaceStore();
 
 const icon = (c: Component) => () => h(c, { size: 18, strokeWidth: 1.75 });
 const link = (to: string, label: string, badge?: () => number) => () =>
@@ -33,7 +35,8 @@ const menu = computed<MenuOption[]>(() => [
   { key: "/sources", label: link("/sources", t("nav.sources")), icon: icon(Database) },
   { key: "/approvals", label: link("/approvals", t("nav.approvals"), () => approvals.count), icon: icon(ShieldCheck) },
   { key: "/telegram", label: link("/telegram", "Telegram"), icon: icon(Send) },
-  { key: "/free-models", label: link("/free-models", t("nav.freeModels")), icon: icon(Sparkles) },
+  // Free models are for personal assistants only.
+  ...(space.mode === "personal" ? [{ key: "/free-models", label: link("/free-models", t("nav.freeModels")), icon: icon(Sparkles) }] : []),
   { key: "/status", label: link("/status", t("nav.status")), icon: icon(Activity) },
   { key: "/system", label: link("/system", t("nav.system")), icon: icon(HardDrive) },
 ]);

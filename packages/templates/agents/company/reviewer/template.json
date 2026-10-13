@@ -1,0 +1,17 @@
+{
+  "id": "reviewer",
+  "mode": "company",
+  "role": "team_member",
+  "emoji": "🔍",
+  "title": { "ru": "Ревьюер", "en": "Reviewer", "tg": "Тафтишгар" },
+  "description": {
+    "ru": "Проверяет изменения до человека: ошибки, тесты, безопасность. Только читает репозиторий.",
+    "en": "Reviews changes before a human: bugs, tests, security. Reads the repository only.",
+    "tg": "Тағйиротро пеш аз инсон месанҷад. Репозиторийро танҳо мехонад."
+  },
+  "fields": [{ "key": "agentName", "type": "text", "label": { "ru": "Имя", "en": "Name", "tg": "Ном" }, "default": "Ревьюер" }],
+  "sources": ["github"],
+  "cronPresets": [],
+  "canAskMain": true,
+  "sandbox": true
+}

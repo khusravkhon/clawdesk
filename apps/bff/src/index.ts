@@ -10,6 +10,7 @@ import { ApprovalsService } from "./approvals/approvals-service.js";
 import { AssistantService } from "./assistant/assistant-service.js";
 import { AuthService } from "./auth/auth-service.js";
 import { BackupService } from "./backups/backup-service.js";
+import { SpaceService } from "./space/space-service.js";
 import { getSetting, putSetting } from "./db/settings.js";
 import { BridgeClient } from "./gateway/bridge-client.js";
 import { SourcesService } from "./sources/sources-service.js";
@@ -34,11 +35,12 @@ const freeModels = new FreeModelsService(gateway, logger.child({ component: "fre
   bridge,
 });
 const sources = new SourcesService({ gateway, db, logger: logger.child({ component: "sources" }), files: config.files, bridge });
+const space = new SpaceService({ db, logger: logger.child({ component: "space" }) });
 const approvals = new ApprovalsService(gateway, logger.child({ component: "approvals" }));
-const assistant = new AssistantService({ gateway, db, logger: logger.child({ component: "assistant" }) });
+const assistant = new AssistantService({ gateway, db, logger: logger.child({ component: "assistant" }), mode: () => space.mode() });
 const auth = new AuthService({ db, dataDir: config.dataDir, logger: logger.child({ component: "auth" }), telegram });
 const backups = new BackupService({ bridge, dir: config.backupDir, logger: logger.child({ component: "backups" }) });
-const app = await buildApp({ logger, gateway, db, aiSetup, signIn, telegram, freeModels, sources, approvals, assistant, auth, backups, bridge, sandboxEnabled: config.sandboxEnabled, webDist: config.webDist, trustProxy: config.trustProxy });
+const app = await buildApp({ logger, gateway, db, aiSetup, signIn, telegram, freeModels, sources, approvals, assistant, auth, backups, bridge, space, sandboxEnabled: config.sandboxEnabled, webDist: config.webDist, trustProxy: config.trustProxy });
 
 gateway.start();
 await app.listen({ host: config.host, port: config.port });

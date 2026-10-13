@@ -12,6 +12,7 @@ import type { AssistantService } from "./assistant/assistant-service.js";
 import type { AuthService } from "./auth/auth-service.js";
 import type { BackupService } from "./backups/backup-service.js";
 import type { BridgeClient } from "./gateway/bridge-client.js";
+import type { SpaceService } from "./space/space-service.js";
 import type { SignInSessionManager } from "./ai-setup/signin-sessions.js";
 import { ChatService } from "./chat/chat-service.js";
 import { DashboardService } from "./dashboard/dashboard-service.js";
@@ -31,6 +32,7 @@ import { registerFreeModelRoutes } from "./routes/free-models.js";
 import { registerScheduleRoutes } from "./routes/schedules.js";
 import { registerSourceRoutes } from "./routes/sources.js";
 import { registerSystemRoutes } from "./routes/system.js";
+import { registerSpaceRoutes } from "./routes/space.js";
 import { registerTelegramRoutes } from "./routes/telegram.js";
 import { registerTemplateRoutes } from "./routes/templates.js";
 import type { SourcesService } from "./sources/sources-service.js";
@@ -51,6 +53,7 @@ export type AppDeps = {
   auth: AuthService;
   backups: BackupService;
   bridge: BridgeClient;
+  space: SpaceService;
   webDist: string | undefined;
   /** Fastify trustProxy: client address and HTTPS come from the proxy's headers (Caddy). */
   trustProxy?: string | false;
@@ -90,6 +93,7 @@ export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
   registerChatRoutes(app, { chat: new ChatService(deps.gateway) });
   registerDashboardRoutes(app, { dashboard: new DashboardService(deps) });
   registerSystemRoutes(app, deps);
+  registerSpaceRoutes(app, deps);
 
   if (deps.webDist && fs.existsSync(path.join(deps.webDist, "index.html"))) {
     await app.register(fastifyStatic, { root: deps.webDist, wildcard: false });
