@@ -9,6 +9,7 @@ import type {
   AssistantDto,
   AssistantProfile,
   AuthStateDto,
+  AuditPageDto,
   CreateSpaceRequest,
   CreateTeamRequest,
   PullRequestDto,
@@ -119,6 +120,8 @@ export const api = {
       return res.blob();
     },
     reset: (password: string) => post<FactoryResetResultDto>("/api/system/reset", { password, confirm: true }),
+    audit: (q: { before?: number; cursor?: string }) =>
+      request<AuditPageDto>(`/api/system/audit?${new URLSearchParams(Object.entries(q).filter(([, v]) => v !== undefined).map(([k, v]) => [k, String(v)])).toString()}`),
   },
   health: () => request<HealthDto>("/api/health"),
   dashboard: (range: DashboardRange) => request<DashboardDto>(`/api/dashboard?range=${range}&tz=${encodeURIComponent(browserTimeZone())}`),

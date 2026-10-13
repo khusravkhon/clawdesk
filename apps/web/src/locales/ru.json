@@ -678,5 +678,87 @@
       "telegram_links": "Ссылки должны быть на темы одной группы: {detail}",
       "git_failed": "Git: {detail}"
     }
+  },
+  "audit": {
+    "title": "Журнал действий",
+    "about": "Что делали в панели (кто, что, получилось ли) и что делали агенты. Пароли и ключи сюда не попадают.",
+    "panelTab": "Действия в панели",
+    "agentsTab": "Агенты",
+    "empty": "Пока пусто",
+    "ok": "готово",
+    "failed": "ошибка {code}",
+    "anonymous": "без входа",
+    "more": "Показать ещё",
+    "run": "ход агента",
+    "tool": "инструмент {tool}",
+    "action": {
+      "auth": {
+        "setup": "Задан пароль владельца",
+        "login": "Вход в панель",
+        "logout": "Выход",
+        "telegramCode": "Запрошен код сброса в Telegram",
+        "telegramReset": "Пароль сменён по коду из Telegram"
+      },
+      "space": {
+        "create": "Выбран режим"
+      },
+      "agent": {
+        "create": "Создан агент",
+        "delete": "Удалён агент"
+      },
+      "ai": {
+        "connect": "Подключён ИИ",
+        "signIn": "Вход в ИИ по подписке",
+        "installProvider": "Установлен провайдер ИИ"
+      },
+      "assistant": {
+        "save": "Изменён ассистент",
+        "memory": "Изменена память ассистента"
+      },
+      "approval": {
+        "resolve": "Решение по одобрению",
+        "mode": "Изменён режим одобрений",
+        "allowedRemove": "Удалено постоянное разрешение"
+      },
+      "schedule": {
+        "create": "Создано расписание",
+        "update": "Изменено расписание",
+        "delete": "Удалено расписание",
+        "run": "Расписание запущено вручную"
+      },
+      "telegram": {
+        "connect": "Подключён Telegram-бот",
+        "disconnect": "Отключён Telegram",
+        "approveOwner": "Подтверждён владелец в Telegram",
+        "approvals": "Изменены одобрения в Telegram"
+      },
+      "source": {
+        "notionConnect": "Подключён Notion (ключ)",
+        "notionSignIn": "Начат вход в Notion",
+        "notionSignedIn": "Вход в Notion завершён",
+        "notionDisconnect": "Отключён Notion",
+        "googleClient": "Сохранён OAuth-клиент Google",
+        "googleConnect": "Подключён Google",
+        "googleRemove": "Отключён Google"
+      },
+      "freeModels": {
+        "addKey": "Добавлен ключ бесплатных моделей",
+        "removeKey": "Удалён ключ бесплатных моделей"
+      },
+      "backup": {
+        "create": "Сделан бэкап",
+        "download": "Скачана копия бэкапа"
+      },
+      "system": {
+        "reset": "Сброс всего"
+      },
+      "team": {
+        "create": "Создана команда",
+        "delete": "Удалена команда",
+        "fetch": "Команда обновлена из GitHub",
+        "push": "Ветка отправлена, PR открыт",
+        "telegram": "Привязана Telegram-группа команды"
+      }
+    }
   }
 }

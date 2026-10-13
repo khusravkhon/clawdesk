@@ -678,5 +678,87 @@
       "telegram_links": "The links must be topics of one group: {detail}",
       "git_failed": "Git: {detail}"
     }
+  },
+  "audit": {
+    "title": "Action log",
+    "about": "What was done in the panel (who, what, whether it worked) and what agents did. Passwords and keys never get here.",
+    "panelTab": "Panel actions",
+    "agentsTab": "Agents",
+    "empty": "Nothing yet",
+    "ok": "done",
+    "failed": "error {code}",
+    "anonymous": "signed out",
+    "more": "Show more",
+    "run": "agent turn",
+    "tool": "tool {tool}",
+    "action": {
+      "auth": {
+        "setup": "Owner password set",
+        "login": "Sign-in",
+        "logout": "Sign-out",
+        "telegramCode": "Reset code requested in Telegram",
+        "telegramReset": "Password changed with a Telegram code"
+      },
+      "space": {
+        "create": "Mode chosen"
+      },
+      "agent": {
+        "create": "Agent created",
+        "delete": "Agent deleted"
+      },
+      "ai": {
+        "connect": "AI connected",
+        "signIn": "AI subscription sign-in",
+        "installProvider": "AI provider installed"
+      },
+      "assistant": {
+        "save": "Assistant changed",
+        "memory": "Assistant memory changed"
+      },
+      "approval": {
+        "resolve": "Approval decided",
+        "mode": "Approval mode changed",
+        "allowedRemove": "Standing permission removed"
+      },
+      "schedule": {
+        "create": "Schedule created",
+        "update": "Schedule changed",
+        "delete": "Schedule deleted",
+        "run": "Schedule run by hand"
+      },
+      "telegram": {
+        "connect": "Telegram bot connected",
+        "disconnect": "Telegram disconnected",
+        "approveOwner": "Telegram owner approved",
+        "approvals": "Telegram approvals changed"
+      },
+      "source": {
+        "notionConnect": "Notion connected (key)",
+        "notionSignIn": "Notion sign-in started",
+        "notionSignedIn": "Notion sign-in finished",
+        "notionDisconnect": "Notion disconnected",
+        "googleClient": "Google OAuth client saved",
+        "googleConnect": "Google connected",
+        "googleRemove": "Google disconnected"
+      },
+      "freeModels": {
+        "addKey": "Free models key added",
+        "removeKey": "Free models key removed"
+      },
+      "backup": {
+        "create": "Backup made",
+        "download": "Backup copy downloaded"
+      },
+      "system": {
+        "reset": "Everything reset"
+      },
+      "team": {
+        "create": "Team created",
+        "delete": "Team deleted",
+        "fetch": "Team updated from GitHub",
+        "push": "Branch pushed, PR opened",
+        "telegram": "Team Telegram group linked"
+      }
+    }
   }
 }

@@ -678,5 +678,87 @@
       "telegram_links": "Истинодҳо бояд ба мавзӯъҳои як гурӯҳ бошанд: {detail}",
       "git_failed": "Git: {detail}"
     }
+  },
+  "audit": {
+    "title": "Дафтари амалҳо",
+    "about": "Дар панел чӣ кор карданд (кӣ, чӣ, натиҷа) ва агентҳо чӣ карданд. Паролҳо ва калидҳо ба ин ҷо намеоянд.",
+    "panelTab": "Амалҳо дар панел",
+    "agentsTab": "Агентҳо",
+    "empty": "Ҳоло холӣ",
+    "ok": "иҷро шуд",
+    "failed": "хато {code}",
+    "anonymous": "бе воридшавӣ",
+    "more": "Бештар нишон додан",
+    "run": "гардиши агент",
+    "tool": "асбоби {tool}",
+    "action": {
+      "auth": {
+        "setup": "Пароли соҳиб гузошта шуд",
+        "login": "Воридшавӣ",
+        "logout": "Баромад",
+        "telegramCode": "Рамзи бозоғозӣ дар Telegram пурсида шуд",
+        "telegramReset": "Парол бо рамзи Telegram иваз шуд"
+      },
+      "space": {
+        "create": "Реҷа интихоб шуд"
+      },
+      "agent": {
+        "create": "Агент сохта шуд",
+        "delete": "Агент нест шуд"
+      },
+      "ai": {
+        "connect": "ИИ пайваст шуд",
+        "signIn": "Воридшавии ИИ бо обуна",
+        "installProvider": "Провайдери ИИ насб шуд"
+      },
+      "assistant": {
+        "save": "Ёрдамчӣ тағйир ёфт",
+        "memory": "Хотираи ёрдамчӣ тағйир ёфт"
+      },
+      "approval": {
+        "resolve": "Қарор оид ба иҷозат",
+        "mode": "Реҷаи иҷозатҳо тағйир ёфт",
+        "allowedRemove": "Иҷозати доимӣ нест шуд"
+      },
+      "schedule": {
+        "create": "Ҷадвал сохта шуд",
+        "update": "Ҷадвал тағйир ёфт",
+        "delete": "Ҷадвал нест шуд",
+        "run": "Ҷадвал дастӣ иҷро шуд"
+      },
+      "telegram": {
+        "connect": "Боти Telegram пайваст шуд",
+        "disconnect": "Telegram ҷудо шуд",
+        "approveOwner": "Соҳиб дар Telegram тасдиқ шуд",
+        "approvals": "Иҷозатҳо дар Telegram тағйир ёфт"
+      },
+      "source": {
+        "notionConnect": "Notion пайваст шуд (калид)",
+        "notionSignIn": "Воридшавӣ ба Notion оғоз шуд",
+        "notionSignedIn": "Воридшавӣ ба Notion анҷом ёфт",
+        "notionDisconnect": "Notion ҷудо шуд",
+        "googleClient": "Мизоҷи OAuth-и Google нигоҳ дошта шуд",
+        "googleConnect": "Google пайваст шуд",
+        "googleRemove": "Google ҷудо шуд"
+      },
+      "freeModels": {
+        "addKey": "Калиди моделҳои ройгон илова шуд",
+        "removeKey": "Калиди моделҳои ройгон нест шуд"
+      },
+      "backup": {
+        "create": "Нусхаи эҳтиётӣ гирифта шуд",
+        "download": "Нусха боргирӣ шуд"
+      },
+      "system": {
+        "reset": "Ҳама бозоғозӣ шуд"
+      },
+      "team": {
+        "create": "Гурӯҳ сохта шуд",
+        "delete": "Гурӯҳ нест шуд",
+        "fetch": "Гурӯҳ аз GitHub навсозӣ шуд",
+        "push": "Шоха фиристода шуд, PR кушода шуд",
+        "telegram": "Гурӯҳи Telegram-и даста пайваст шуд"
+      }
+    }
   }
 }

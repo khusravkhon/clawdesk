@@ -14,6 +14,7 @@ import type { BackupService } from "./backups/backup-service.js";
 import type { BridgeClient } from "./gateway/bridge-client.js";
 import type { SpaceService } from "./space/space-service.js";
 import type { TeamService } from "./teams/team-service.js";
+import type { AuditService } from "./audit/audit-service.js";
 import type { SignInSessionManager } from "./ai-setup/signin-sessions.js";
 import { ChatService } from "./chat/chat-service.js";
 import { DashboardService } from "./dashboard/dashboard-service.js";
@@ -35,6 +36,7 @@ import { registerSourceRoutes } from "./routes/sources.js";
 import { registerSystemRoutes } from "./routes/system.js";
 import { registerSpaceRoutes } from "./routes/space.js";
 import { registerTeamRoutes } from "./routes/teams.js";
+import { registerAuditRoutes } from "./routes/audit.js";
 import { registerTelegramRoutes } from "./routes/telegram.js";
 import { registerTemplateRoutes } from "./routes/templates.js";
 import type { SourcesService } from "./sources/sources-service.js";
@@ -57,6 +59,7 @@ export type AppDeps = {
   bridge: BridgeClient;
   space: SpaceService;
   teams: TeamService;
+  audit: AuditService;
   webDist: string | undefined;
   /** Fastify trustProxy: client address and HTTPS come from the proxy's headers (Caddy). */
   trustProxy?: string | false;
@@ -81,6 +84,7 @@ export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
     return send(status, { error: status >= 500 ? "internal_error" : "request_error", message: status >= 500 ? "internal error" : (error as Error).message });
   });
 
+  deps.audit.attach(app);
   // First: its guard stands in front of every other /api route.
   registerAuthRoutes(app, deps);
   registerHealthRoutes(app, deps);
@@ -98,6 +102,7 @@ export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
   registerSystemRoutes(app, deps);
   registerSpaceRoutes(app, deps);
   registerTeamRoutes(app, deps);
+  registerAuditRoutes(app, deps);
 
   if (deps.webDist && fs.existsSync(path.join(deps.webDist, "index.html"))) {
     await app.register(fastifyStatic, { root: deps.webDist, wildcard: false });

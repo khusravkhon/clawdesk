@@ -14,3 +14,4 @@ export * from "./auth.js";
 export * from "./system.js";
 export * from "./space.js";
 export * from "./teams.js";
+export * from "./audit.js";

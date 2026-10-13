@@ -7,6 +7,7 @@ import { computed, onMounted, onUnmounted, ref } from "vue";
 import { useI18n } from "vue-i18n";
 import { api, ApiError } from "../api/client";
 import { authErrorText, usePasswordPair } from "../auth";
+import AuditLog from "../components/AuditLog.vue";
 import PageHeader from "../components/ui/PageHeader.vue";
 import { formatBytes, formatDateTime } from "../format";
 
@@ -161,6 +162,8 @@ onUnmounted(() => window.clearInterval(poll));
           <code class="command">sudo bash deploy/scripts/restore.sh &lt;{{ t("system.file") }}&gt;</code>
         </template>
       </n-card>
+
+      <audit-log />
 
       <n-card class="danger">
         <div class="danger-head">
