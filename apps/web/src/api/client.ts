@@ -111,6 +111,7 @@ export const api = {
     pairing: () => request<TelegramPairingRequestDto[]>("/api/telegram/pairing"),
     approve: (requestId: string, accountId: string) => post<ApproveTelegramResultDto>("/api/telegram/pairing/approve", { requestId, accountId }),
     test: (text: string) => post<void>("/api/telegram/test", { text }),
+    approvals: (enabled: boolean) => post<TelegramStatusDto>("/api/telegram/approvals", { enabled }),
   },
   freeModels: {
     status: () => request<FreeModelsStatusDto>("/api/free-models"),

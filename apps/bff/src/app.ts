@@ -11,6 +11,7 @@ import type { ApprovalsService } from "./approvals/approvals-service.js";
 import type { AssistantService } from "./assistant/assistant-service.js";
 import type { AuthService } from "./auth/auth-service.js";
 import type { BackupService } from "./backups/backup-service.js";
+import type { BridgeClient } from "./gateway/bridge-client.js";
 import type { SignInSessionManager } from "./ai-setup/signin-sessions.js";
 import { ChatService } from "./chat/chat-service.js";
 import { DashboardService } from "./dashboard/dashboard-service.js";
@@ -49,6 +50,7 @@ export type AppDeps = {
   assistant: AssistantService;
   auth: AuthService;
   backups: BackupService;
+  bridge: BridgeClient;
   webDist: string | undefined;
   /** Fastify trustProxy: client address and HTTPS come from the proxy's headers (Caddy). */
   trustProxy?: string | false;

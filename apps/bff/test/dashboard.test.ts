@@ -18,6 +18,7 @@ const agent = (id: string, extra: Partial<AgentListItemDto> = {}): AgentListItem
   purpose: null,
   canAskMain: null,
   sandbox: null,
+  folder: null,
   ...extra,
 });
 

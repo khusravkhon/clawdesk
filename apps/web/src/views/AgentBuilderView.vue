@@ -1,6 +1,6 @@
 <script setup lang="ts">
-// Junior-agent builder (screen 8): template → about → schedule → AI access → create.
-import type { CreateAgentResultDto, ScheduleInput, TemplateDto } from "@clawdesk/shared";
+// Junior-agent builder (screen 8): template → about → data → schedule → AI access → create.
+import { FolderName, type CreateAgentResultDto, type ScheduleInput, type TemplateDto } from "@clawdesk/shared";
 import {
   NAlert,
   NButton,
@@ -42,6 +42,11 @@ const loadError = ref<string | null>(null);
 const template = ref<TemplateDto | null>(null);
 const values = reactive<Record<string, string>>({});
 const canAskMain = ref(true);
+/** The agent's own folder in the shared files folder; empty name = none. */
+const useFolder = ref(false);
+const folderName = ref("");
+const filesHostPath = ref<string | null>(null);
+const folderOk = computed(() => !useFolder.value || FolderName.safeParse(folderName.value).success);
 const schedules = ref<ScheduleRow[]>([]);
 const aiMode = ref<"inherit" | "own" | "free">("inherit");
 const freeReady = ref(false);
@@ -68,6 +73,7 @@ async function load(): Promise<void> {
     mainConnected.value = ai.connected;
     if (!ai.connected) aiMode.value = "own";
     freeReady.value = (await api.freeModels.status().catch(() => null))?.ready ?? false;
+    filesHostPath.value = (await api.sources.status().catch(() => null))?.folder.hostPath ?? null;
     const tg = await api.telegram.status().catch(() => null);
     telegramReady.value = !!tg?.connected && !!tg.owner;
     deliverToTelegram.value = telegramReady.value;
@@ -83,6 +89,8 @@ function pick(tpl: TemplateDto): void {
   for (const key of Object.keys(values)) delete values[key];
   for (const field of tpl.fields) values[field.key] = field.default ?? "";
   canAskMain.value = tpl.canAskMain;
+  useFolder.value = !!tpl.folder;
+  folderName.value = tpl.folder ? tx(tpl.folder) : "";
   // Preset labels start with their time ("06:30 тренировка дня"); keep only the words so editing the time cannot contradict them.
   schedules.value = tpl.cronPresets.map((p) => ({ presetId: p.id, label: tx(p.label).replace(/^(\S+\s)?\d{1,2}:\d{2}\s*/, ""), ...parseCron(p.cron), prompt: p.prompt, enabled: true }));
   step.value = 2;
@@ -112,8 +120,9 @@ async function create(): Promise<void> {
       schedules: payload,
       timezone,
       deliverToTelegram: telegramReady.value && deliverToTelegram.value,
+      folder: useFolder.value ? folderName.value.trim() : null,
     });
-    step.value = 5;
+    step.value = 6;
   } catch (error) {
     createError.value = errorText(error);
   } finally {
@@ -158,9 +167,10 @@ onMounted(load);
       <n-button quaternary @click="router.push('/agents')">{{ t("builder.backToList") }}</n-button>
     </page-header>
     <n-space vertical size="large">
-      <n-steps :current="Math.min(step, 4)" size="small">
+      <n-steps :current="Math.min(step, 5)" size="small">
         <n-step :title="t('builder.stepTemplate')" />
         <n-step :title="t('builder.stepAbout')" />
+        <n-step :title="t('builder.stepData')" />
         <n-step :title="t('builder.stepSchedule')" />
         <n-step :title="t('builder.stepAi')" />
       </n-steps>
@@ -190,12 +200,6 @@ onMounted(load);
                 placeholder=""
               />
             </n-form-item>
-            <n-form-item :label="t('builder.canAskMain')">
-              <n-space align="center">
-                <n-switch v-model:value="canAskMain" />
-                <n-text depth="3">{{ canAskMain ? t("builder.canAskMainOn") : t("builder.canAskMainOff") }}</n-text>
-              </n-space>
-            </n-form-item>
           </n-form>
           <n-space>
             <n-button @click="step = 1">{{ t("builder.back") }}</n-button>
@@ -204,8 +208,39 @@ onMounted(load);
           <n-text v-if="missingRequired.length" depth="3" class="hint">{{ t("builder.fillRequired", { fields: missingRequired.join(", ") }) }}</n-text>
         </n-card>
 
-        <!-- 3. schedule -->
-        <n-card v-else-if="step === 3" :title="t('builder.stepSchedule')">
+        <!-- 3. data: the agent's own folder, and whether it may ask the main agent for the rest -->
+        <n-card v-else-if="step === 3 && template" :title="t('builder.stepData')">
+          <p class="hint">{{ t("builder.dataLead") }}</p>
+          <n-space vertical size="large">
+            <div>
+              <n-space align="center">
+                <n-switch v-model:value="useFolder" />
+                <n-text>{{ t("builder.ownFolder") }}</n-text>
+              </n-space>
+              <template v-if="useFolder">
+                <n-input v-model:value="folderName" :placeholder="t('builder.folderName')" class="mt-s folder" :status="folderOk ? undefined : 'error'" />
+                <n-text depth="3" class="hint block-s">
+                  {{ folderOk ? t("builder.folderHint", { path: `${filesHostPath ?? "ClawDesk"}/${folderName.trim()}` }) : t("builder.folderInvalid") }}
+                </n-text>
+              </template>
+            </div>
+            <div>
+              <n-space align="center">
+                <n-switch v-model:value="canAskMain" />
+                <n-text>{{ t("builder.canAskMain") }}</n-text>
+              </n-space>
+              <n-text depth="3" class="hint block-s">{{ canAskMain ? t("builder.canAskMainOn") : t("builder.canAskMainOff") }}</n-text>
+            </div>
+            <n-alert v-if="!sandboxEnabled" type="warning" :show-icon="false">{{ t("builder.folderNoSandbox") }}</n-alert>
+          </n-space>
+          <n-space class="mt">
+            <n-button @click="step = 2">{{ t("builder.back") }}</n-button>
+            <n-button type="primary" :disabled="!folderOk" @click="step = 4">{{ t("builder.next") }}</n-button>
+          </n-space>
+        </n-card>
+
+        <!-- 4. schedule -->
+        <n-card v-else-if="step === 4" :title="t('builder.stepSchedule')">
           <p class="hint">{{ t("builder.scheduleHint", { tz: timezone }) }}</p>
           <n-space vertical size="large">
             <div v-for="(s, i) in schedules" :key="i" class="schedule">
@@ -227,13 +262,13 @@ onMounted(load);
             <n-text v-else depth="3">{{ t("builder.telegramLater") }}</n-text>
           </n-space>
           <n-space class="mt">
-            <n-button @click="step = 2">{{ t("builder.back") }}</n-button>
-            <n-button type="primary" @click="step = 4">{{ t("builder.next") }}</n-button>
+            <n-button @click="step = 3">{{ t("builder.back") }}</n-button>
+            <n-button type="primary" @click="step = 5">{{ t("builder.next") }}</n-button>
           </n-space>
         </n-card>
 
-        <!-- 4. AI access + create -->
-        <n-card v-else-if="step === 4" :title="t('builder.stepAi')">
+        <!-- 5. AI access + create -->
+        <n-card v-else-if="step === 5" :title="t('builder.stepAi')">
           <n-radio-group v-model:value="aiMode" class="block">
             <n-space vertical>
               <n-radio value="inherit" :disabled="!mainConnected">
@@ -252,13 +287,13 @@ onMounted(load);
           <n-alert v-if="!sandboxEnabled" type="warning" :show-icon="false" class="block">{{ t("agents.noSandbox") }}</n-alert>
           <n-alert v-if="createError" type="error" class="block">{{ createError }}</n-alert>
           <n-space>
-            <n-button :disabled="creating" @click="step = 3">{{ t("builder.back") }}</n-button>
+            <n-button :disabled="creating" @click="step = 4">{{ t("builder.back") }}</n-button>
             <n-button type="primary" :loading="creating" @click="create">{{ t("builder.create") }}</n-button>
           </n-space>
         </n-card>
 
-        <!-- 5. created; connect own AI if chosen -->
-        <n-card v-else-if="step === 5 && created">
+        <!-- 6. created; connect own AI if chosen -->
+        <n-card v-else-if="step === 6 && created">
           <n-alert type="success" :title="t('builder.created', { name: created.displayName })" class="block">
             {{ t(deliverToTelegram && telegramReady ? "builder.createdDetailTelegram" : "builder.createdDetail", { n: created.cronJobIds.length }) }}
           </n-alert>
@@ -321,5 +356,12 @@ onMounted(load);
 }
 .mt-s {
   margin-top: 8px;
+}
+.block-s {
+  display: block;
+  margin-top: 6px;
+}
+.folder {
+  max-width: 320px;
 }
 </style>

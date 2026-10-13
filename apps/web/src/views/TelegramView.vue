@@ -2,7 +2,7 @@
 // Telegram screen (6): connect a bot, approve yourself as the owner, then
 // schedules and the main assistant talk to you in Telegram.
 import type { TelegramPairingRequestDto, TelegramStatusDto } from "@clawdesk/shared";
-import { NA, NAlert, NButton, NCard, NInput, NPopconfirm, NSpace, NSpin, NStep, NSteps, NTag, NText, useMessage } from "naive-ui";
+import { NA, NAlert, NButton, NCard, NInput, NPopconfirm, NSpace, NSpin, NStep, NSteps, NSwitch, NTag, NText, useMessage } from "naive-ui";
 import { computed, onBeforeUnmount, onMounted, ref } from "vue";
 import { useI18n } from "vue-i18n";
 import PageHeader from "../components/ui/PageHeader.vue";
@@ -19,6 +19,7 @@ const connecting = ref(false);
 const requests = ref<TelegramPairingRequestDto[]>([]);
 const approving = ref<string | null>(null);
 const testing = ref(false);
+const approvalsSaving = ref(false);
 let pollTimer: ReturnType<typeof setInterval> | undefined;
 
 const step = computed(() => (!status.value?.connected ? 1 : !status.value.owner ? 2 : 3));
@@ -93,6 +94,18 @@ async function sendTest(): Promise<void> {
     error.value = errorText(e);
   } finally {
     testing.value = false;
+  }
+}
+
+/** Restarts the Gateway (about 10 s): approval buttons are an OpenClaw channel setting. */
+async function setApprovals(enabled: boolean): Promise<void> {
+  approvalsSaving.value = true;
+  try {
+    status.value = await api.telegram.approvals(enabled);
+  } catch (e) {
+    error.value = errorText(e);
+  } finally {
+    approvalsSaving.value = false;
   }
 }
 
@@ -182,6 +195,13 @@ onBeforeUnmount(() => clearInterval(pollTimer));
             </n-space>
             <n-alert v-if="status.lastError" type="error" :show-icon="false">{{ status.lastError }}</n-alert>
             <p class="hint">{{ t("telegram.doneHint") }}</p>
+            <div>
+              <n-space align="center">
+                <n-switch :value="status.approvals" :loading="approvalsSaving" @update:value="setApprovals" />
+                <span>{{ t("telegram.approvals") }}</span>
+              </n-space>
+              <p class="hint">{{ t("telegram.approvalsHint") }}</p>
+            </div>
             <n-space>
               <n-button :loading="testing" @click="sendTest">{{ t("telegram.sendTest") }}</n-button>
               <n-popconfirm @positive-click="disconnect">

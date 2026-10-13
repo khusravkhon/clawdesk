@@ -16,6 +16,7 @@
 //   POST /google/login/complete { …same, authUrl }
 //   POST /google/remove      { email }
 //   POST /freellmapi/reset   { newPassword }   recover FreeLLMAPI's account (code from its log)
+//   POST /files/folder       { name }        a junior agent's folder in the shared files folder → { hostPath, gatewayPath }
 //   GET  /backup/list                       → { backups: [{ name, kind, createdAt, size }] }
 //   POST /backup/create      { kind }        daily | manual | before-reset (see clawdesk-backup.mjs)
 //   POST /reset              { ownerCode }   factory reset in a helper container; the stack restarts
@@ -23,6 +24,8 @@
 import { spawn } from "node:child_process";
 import { timingSafeEqual } from "node:crypto";
 import http from "node:http";
+import fs from "node:fs/promises";
+import path from "node:path";
 import { BackupError, createBackup, listBackups, startReset } from "./clawdesk-backup.mjs";
 
 const HOST = process.env.CLAWDESK_BRIDGE_HOST || "127.0.0.1";
@@ -207,6 +210,43 @@ async function googleRemove(body) {
   return { status: 200, body: { ok: true } };
 }
 
+// --- Junior agents' folders
+//
+// The shared files folder is mounted into the main workspace (deploy/docker-compose.yml). A junior agent gets
+// one subfolder bound into its sandbox; the bind needs the folder as the Docker daemon names it, which is the
+// source of that mount (on Docker Desktop not the path the person typed).
+
+const FILES_IN_GATEWAY = path.join(process.env.OPENCLAW_STATE_DIR || "/var/lib/clawdesk/openclaw", "workspace", "files");
+// Same rule as FolderName in packages/shared: ends up in "src:dst:rw" and in paths.
+const FOLDER = /^[\p{L}\p{N}][\p{L}\p{N} ._-]{0,59}$/u;
+let filesSource;
+
+async function filesHostSource() {
+  if (filesSource) return filesSource;
+  const res = await new Promise((resolve) => {
+    const child = spawn("docker", ["inspect", process.env.HOSTNAME ?? "", "--format", "{{json .Mounts}}"], { stdio: ["ignore", "pipe", "pipe"] });
+    let out = "";
+    child.stdout.on("data", (c) => (out += c));
+    child.on("close", (code) => resolve(code === 0 ? out : null));
+    child.on("error", () => resolve(null));
+  });
+  const mount = res ? JSON.parse(res).find((m) => m.Destination === FILES_IN_GATEWAY) : null;
+  // Docker Desktop may report the Windows path ("C:/Users/…"); its daemon knows that folder as /run/desktop/mnt/host/c/….
+  const source = mount?.Source ?? null;
+  const win = source ? /^([A-Za-z]):[\\/](.*)$/.exec(source) : null;
+  filesSource = win ? `/run/desktop/mnt/host/${win[1].toLowerCase()}/${win[2].replace(/\\/g, "/")}` : source;
+  return filesSource;
+}
+
+async function ensureFolder(body) {
+  const name = typeof body.name === "string" ? body.name.trim() : "";
+  if (!FOLDER.test(name)) return { status: 400, body: { error: "invalid_folder", message: "unsupported folder name" } };
+  const source = await filesHostSource();
+  if (!source) return { status: 409, body: { error: "no_shared_folder", message: "the shared files folder is not mounted into the Gateway" } };
+  await fs.mkdir(path.join(FILES_IN_GATEWAY, name), { recursive: true });
+  return { status: 200, body: { hostPath: `${source.replace(/\/$/, "")}/${name}`, gatewayPath: path.join(FILES_IN_GATEWAY, name) } };
+}
+
 // --- FreeLLMAPI account recovery
 //
 // The panel keeps FreeLLMAPI's single account password in its own volume. If that volume is lost,
@@ -302,6 +342,7 @@ async function handle(req) {
   const body = await readJson(req);
   if (!(await gogInstalled()) && url.pathname.startsWith("/google/")) return { status: 501, body: { error: "gog_missing", message: "gog is not in this Gateway image" } };
   if (url.pathname === "/freellmapi/reset") return freellmapiReset(body);
+  if (url.pathname === "/files/folder") return ensureFolder(body);
   if (url.pathname === "/backup/create" || url.pathname === "/reset") {
     try {
       const result = url.pathname === "/reset" ? await startReset(body.ownerCode) : await createBackup(body.kind);

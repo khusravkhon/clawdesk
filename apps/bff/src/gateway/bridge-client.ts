@@ -79,6 +79,11 @@ export class BridgeClient {
     return this.#call("POST", "/freellmapi/reset", { newPassword }, 60_000);
   }
 
+  /** Makes (or finds) a junior agent's folder in the shared files folder. */
+  ensureFolder(name: string): Promise<{ hostPath: string; gatewayPath: string }> {
+    return this.#call("POST", "/files/folder", { name });
+  }
+
   /** Makes a backup archive in the server's backups folder; takes minutes for large workspaces. */
   backupCreate(kind: BridgeBackup["kind"]): Promise<BridgeBackup> {
     return this.#call("POST", "/backup/create", { kind }, 20 * 60_000);

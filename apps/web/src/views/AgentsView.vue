@@ -76,6 +76,7 @@ onMounted(load);
                 <template #header-extra>
                   <n-space size="small" align="center">
                     <n-tag v-if="agent.canAskMain" size="small" type="info">{{ t("agents.canAskMain") }}</n-tag>
+                    <n-tag v-if="agent.folder" size="small">📁 {{ agent.folder }}</n-tag>
                     <n-tag v-if="agent.role === null" size="small">{{ t("status.notInPanel") }}</n-tag>
                     <n-popconfirm @positive-click="remove(agent)">
                       <template #trigger>

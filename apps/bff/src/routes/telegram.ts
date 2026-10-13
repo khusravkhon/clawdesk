@@ -1,6 +1,7 @@
 import {
   ApproveTelegramRequest,
   ConnectTelegramRequest,
+  TelegramApprovalsRequest,
   type ApiErrorDto,
   type ApproveTelegramResultDto,
   type TelegramPairingRequestDto,
@@ -30,6 +31,11 @@ export function registerTelegramRoutes(app: FastifyInstance, deps: { telegram: T
   app.post("/api/telegram/pairing/approve", async (request): Promise<ApproveTelegramResultDto> => {
     const { requestId, accountId } = ApproveTelegramRequest.parse(request.body);
     return deps.telegram.approve(requestId, accountId);
+  });
+
+  app.post("/api/telegram/approvals", async (request, reply): Promise<TelegramStatusDto | ApiErrorDto> => {
+    const { enabled } = TelegramApprovalsRequest.parse(request.body);
+    return withTelegramErrors(reply, () => deps.telegram.setApprovals(enabled));
   });
 
   app.post("/api/telegram/test", async (request, reply) => {

@@ -15,6 +15,7 @@
     { "key": "style", "type": "textarea", "label": { "ru": "Стиль подачи", "en": "Presentation style", "tg": "Услуби пешниҳод" }, "required": false, "default": "живо, без воды" }
   ],
   "sources": ["folder"],
+  "folder": {"ru": "Идеи для YouTube", "en": "YouTube ideas", "tg": "Ғояҳо барои YouTube"},
   "cronPresets": [],
   "canAskMain": true,
   "sandbox": true

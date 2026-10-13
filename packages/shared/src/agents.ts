@@ -25,6 +25,8 @@ export const TemplateDto = z.object({
   cronPresets: z.array(z.object({ id: z.string(), label: LocalizedText, cron: z.string(), prompt: z.string() })),
   canAskMain: z.boolean(),
   sandbox: z.boolean(),
+  /** Suggested name of the agent's own folder; null when the template does not use one. */
+  folder: LocalizedText.nullable(),
 });
 export type TemplateDto = z.infer<typeof TemplateDto>;
 
@@ -40,6 +42,16 @@ export const ScheduleInput = z.object({
   prompt: z.string().min(1).max(4000),
 });
 export type ScheduleInput = z.infer<typeof ScheduleInput>;
+
+/**
+ * A folder inside the shared files folder. It ends up in a Docker bind ("src:dst:rw") and in paths,
+ * so no slashes, colons or commas, and no leading dot.
+ */
+export const FolderName = z
+  .string()
+  .trim()
+  .regex(/^[\p{L}\p{N}][\p{L}\p{N} ._-]{0,59}$/u,"use letters, digits, spaces, dots, dashes; up to 60 characters");
+export type FolderName = z.infer<typeof FolderName>;
 
 export const CreateAgentRequest = z.object({
   templateId: z.string().regex(/^[a-z0-9-]+$/),
@@ -57,6 +69,8 @@ export const CreateAgentRequest = z.object({
   timezone: z.string().min(1).max(64),
   /** Deliver schedule results to the owner's Telegram chat (only when Telegram is connected). */
   deliverToTelegram: z.boolean().default(false),
+  /** The agent's own folder (read and write); everything else it asks the main agent for. Null: none. */
+  folder: FolderName.nullable().default(null),
 });
 export type CreateAgentRequest = z.infer<typeof CreateAgentRequest>;
 

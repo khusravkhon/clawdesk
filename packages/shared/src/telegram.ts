@@ -11,6 +11,8 @@ export const TelegramStatusDto = z.object({
   bot: z.object({ id: z.number(), username: z.string(), name: z.string() }).nullable(),
   /** The approved owner (direct chat with the bot). */
   owner: z.object({ id: z.string(), label: z.string().nullable() }).nullable(),
+  /** Approval requests (commands of the agents) come to the owner's chat with Allow / Deny buttons. */
+  approvals: z.boolean(),
   lastError: z.string().nullable(),
 });
 export type TelegramStatusDto = z.infer<typeof TelegramStatusDto>;
@@ -45,3 +47,6 @@ export const ApproveTelegramResultDto = z.object({
   schedulesRouted: z.number(),
 });
 export type ApproveTelegramResultDto = z.infer<typeof ApproveTelegramResultDto>;
+
+export const TelegramApprovalsRequest = z.object({ enabled: z.boolean() });
+export type TelegramApprovalsRequest = z.infer<typeof TelegramApprovalsRequest>;

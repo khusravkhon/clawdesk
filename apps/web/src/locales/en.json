@@ -146,7 +146,14 @@
     "createdDetailTelegram": "Schedules: {n}. Results will arrive in your Telegram.",
     "aiFree": "Free models (experimental)",
     "aiFreeHint": "lower quality, for simple tasks",
-    "aiFreeSetup": "Set up free models"
+    "aiFreeSetup": "Set up free models",
+    "stepData": "Data",
+    "dataLead": "A junior agent sees only its own folder. Anything else — mail, Notion, Google, other agents' files — it can ask the main assistant for, which answers briefly and to the point.",
+    "ownFolder": "Own folder",
+    "folderName": "Folder name",
+    "folderHint": "Put files for the agent here: {path}. The agent reads them and saves its results there.",
+    "folderInvalid": "Letters, digits, spaces, dots and dashes, up to 60 characters; no slashes, colons or commas.",
+    "folderNoSandbox": "Sandboxes are off on this server: the agent works with its folder but could technically see other server files too."
   },
   "telegram": {
     "stepBot": "Bot",
@@ -180,7 +187,9 @@
       "no_owner": "Approve yourself first: message the bot and press \"It's me\".",
       "invalid_request": "This does not look like a bot token. It looks like 123456789:AA…"
     },
-    "subtitle": "Agents message you in Telegram: plans, reminders, answers"
+    "subtitle": "Agents message you in Telegram: plans, reminders, answers",
+    "approvals": "Approvals in Telegram",
+    "approvalsHint": "When an agent wants to run a command on the server, the bot sends you Allow and Deny buttons in a private chat. Only you can decide. Switching restarts the system (about 10 seconds)."
   },
   "free": {
     "title": "Free models (experimental)",

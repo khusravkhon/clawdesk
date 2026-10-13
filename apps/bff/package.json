@@ -26,7 +26,8 @@
     "chat-probe": "tsx --conditions=source src/scripts/chat-probe.ts",
     "gemini-fallbacks": "tsx --conditions=source src/scripts/gemini-fallbacks.ts",
     "approval-probe": "tsx --conditions=source src/scripts/approval-probe.ts",
-    "owner-code": "tsx --conditions=source src/cli/owner-code.ts"
+    "owner-code": "tsx --conditions=source src/cli/owner-code.ts",
+    "folder-probe": "tsx --conditions=source src/scripts/folder-probe.ts"
   },
   "dependencies": {
     "@clawdesk/shared": "workspace:*",

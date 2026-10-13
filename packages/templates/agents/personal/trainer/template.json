@@ -15,6 +15,7 @@
     { "key": "limits", "type": "textarea", "label": { "ru": "Травмы и ограничения", "en": "Injuries and limits", "tg": "Ҷароҳатҳо ва маҳдудиятҳо" }, "required": false, "default": "нет" }
   ],
   "sources": ["folder"],
+  "folder": {"ru": "Тренировки", "en": "Training", "tg": "Машқҳо"},
   "cronPresets": [
     { "id": "workout", "label": { "ru": "06:30 тренировка дня", "en": "06:30 workout of the day" }, "cron": "30 6 * * *", "prompt": "Составь тренировку на сегодня с учётом дневника нагрузок." },
     { "id": "evening", "label": { "ru": "21:00 что сделал", "en": "21:00 what I did" }, "cron": "0 21 * * *", "prompt": "Спроси, что удалось сделать из тренировки, и запиши в дневник нагрузок." }

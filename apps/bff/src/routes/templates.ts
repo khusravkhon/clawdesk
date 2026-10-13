@@ -18,6 +18,7 @@ export function registerTemplateRoutes(app: FastifyInstance): void {
     cronPresets: t.cronPresets,
     canAskMain: t.canAskMain,
     sandbox: t.sandbox,
+    folder: t.folder ?? null,
   }));
   // Custom goes last; the rest keep a stable alphabetical order.
   all.sort((a, b) => Number(a.id === "custom") - Number(b.id === "custom") || a.id.localeCompare(b.id));

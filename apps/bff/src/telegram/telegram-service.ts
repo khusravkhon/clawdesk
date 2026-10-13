@@ -16,7 +16,7 @@ const BOT_SETTING = "telegram.bot";
 const OWNER_LABEL_SETTING = "telegram.ownerLabel";
 
 type BotInfo = { id: number; username: string; name: string };
-type TelegramConfig = { enabled?: boolean; botToken?: unknown };
+type TelegramConfig = { enabled?: boolean; botToken?: unknown; execApprovals?: { enabled?: boolean | string; approvers?: string[] } };
 type RouteBinding = { type?: string; agentId: string; match?: { channel?: string; accountId?: string; peer?: unknown } };
 type PairingList = {
   requests: { requestId: string; channel: string; accountId: string; senderId: string; senderLabel: string; createdAt: string; expiresAt: string }[];
@@ -61,6 +61,7 @@ export class TelegramService {
       running,
       bot: connected ? this.#bot() : null,
       owner: owner ? { id: owner.peerId!, label: this.#getSetting<string>(OWNER_LABEL_SETTING) } : null,
+      approvals: connected && tg?.execApprovals?.enabled === true,
       lastError,
     };
   }
@@ -131,6 +132,8 @@ export class TelegramService {
       .run();
     if (label) this.#putSetting(OWNER_LABEL_SETTING, label);
     const schedulesRouted = await this.routeSchedules(res.senderId);
+    // Dangerous commands then reach the owner as Allow / Deny buttons, not only the panel's approvals screen.
+    await this.setApprovals(true).catch((error: Error) => this.logger.warn({ err: error }, "could not turn on Telegram approvals"));
     this.logger.info({ schedulesRouted }, "telegram owner approved");
     return { ownerId: res.senderId, schedulesRouted };
   }
@@ -146,6 +149,21 @@ export class TelegramService {
       routed++;
     }
     return routed;
+  }
+
+  /**
+   * Approval requests (exec commands of any agent) as Allow / Deny buttons in the owner's private chat:
+   * OpenClaw's native Telegram approvals, with the owner as the only approver. Applying it restarts the Gateway.
+   */
+  async setApprovals(enabled: boolean): Promise<TelegramStatusDto> {
+    const owner = this.#owner();
+    if (enabled && !owner?.peerId) throw new TelegramError("no_owner", "approve yourself in the bot first");
+    const generation = this.gateway.generation;
+    const execApprovals = enabled ? { enabled: true, approvers: [owner!.peerId!], target: "dm" } : { enabled: false };
+    await this.#patchMaybeRestarting({ channels: { telegram: { execApprovals } } }, generation);
+    if (this.gateway.generation === generation) await this.#restart("clawdesk: telegram approvals");
+    this.logger.info({ enabled }, "telegram approvals changed");
+    return this.status();
   }
 
   /** The owner approved themselves in the bot, so the panel can write to them. */
@@ -200,9 +218,9 @@ export class TelegramService {
     }
   }
 
-  async #restart(): Promise<void> {
+  async #restart(reason = "clawdesk: telegram plugin enabled"): Promise<void> {
     const generation = this.gateway.generation;
-    await this.gateway.request("gateway.restart.request", { reason: "clawdesk: telegram plugin enabled" }).catch(() => undefined);
+    await this.gateway.request("gateway.restart.request", { reason }).catch(() => undefined);
     await this.gateway.waitForReconnect(generation);
   }
 

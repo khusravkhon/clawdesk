@@ -45,6 +45,8 @@ export const AgentListItemDto = z.object({
   purpose: z.string().nullable(),
   canAskMain: z.boolean().nullable(),
   sandbox: z.boolean().nullable(),
+  /** The agent's own folder in the shared files folder (granted in the builder). */
+  folder: z.string().nullable(),
 });
 export type AgentListItemDto = z.infer<typeof AgentListItemDto>;
 

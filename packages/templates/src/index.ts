@@ -41,6 +41,8 @@ export const AgentTemplate = z.object({
   fields: z.array(TemplateField).default([]),
   skills: z.array(z.string()).default([]),
   sources: z.array(DataSourceKind).default([]),
+  /** Default name of the agent's own folder inside the shared files folder (sources: folder). */
+  folder: LocalizedText.optional(),
   cronPresets: z.array(CronPreset).default([]),
   canAskMain: z.boolean().default(false),
   sandbox: z.boolean().default(true),

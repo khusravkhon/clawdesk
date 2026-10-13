@@ -3,7 +3,7 @@ import { loadTemplate, renderTemplateFiles, WORKSPACE_FILES, type LoadedTemplate
 import { eq } from "drizzle-orm";
 import type { Logger } from "pino";
 import type { Db } from "../db/client.js";
-import { agents, schedules } from "../db/schema.js";
+import { agents, agentSourceGrants, dataSources, schedules } from "../db/schema.js";
 import { getConfig, patchConfig } from "../gateway/config-patch.js";
 import type { GatewayService } from "../gateway/gateway-service.js";
 import { runSaga } from "./saga.js";
@@ -25,7 +25,12 @@ export type CreateAgentDeps = {
   sandboxEnabled: boolean;
   /** Owner chat delivery when Telegram is connected and approved; null otherwise. */
   telegramDelivery?: { mode: "announce"; channel: string; to: string; bestEffort: boolean } | null;
+  /** Makes the agent's folder in the shared files folder (the ClawDesk bridge). */
+  folders?: { ensureFolder(name: string): Promise<{ hostPath: string; gatewayPath: string }> };
 };
+
+/** Where a sandboxed junior sees its folder: inside its workspace, where OpenClaw's file tools work. */
+export const SANDBOX_FOLDERS = "/workspace/folders";
 
 export class CreateAgentError extends Error {
   constructor(
@@ -60,10 +65,22 @@ export async function createJuniorAgent(deps: CreateAgentDeps, req: CreateAgentR
   const sandboxApplied = deps.sandboxEnabled && template.sandbox;
   const cronJobIds: string[] = [];
   const delivery = req.deliverToTelegram && deps.telegramDelivery ? deps.telegramDelivery : null;
+  let folder: { name: string; hostPath: string; agentPath: string } | null = null;
+  if (req.folder && !deps.folders) throw new CreateAgentError("invalid_values", "folders need the ClawDesk bridge");
 
   await runSaga(
     {},
     [
+      {
+        // Kept on rollback: the folder may already hold the person's files.
+        name: "folder",
+        run: async () => {
+          if (!req.folder) return;
+          const made = await deps.folders!.ensureFolder(req.folder);
+          folder = { name: req.folder, hostPath: made.hostPath, agentPath: sandboxApplied ? `${SANDBOX_FOLDERS}/${req.folder}` : made.gatewayPath };
+          files["AGENTS.md"] = `${files["AGENTS.md"].trimEnd()}\n\n${dataAccessBlock(folder.agentPath, req.folder, req.canAskMain)}\n`;
+        },
+      },
       {
         name: "agents.create",
         // OpenClaw ids are ASCII; the Cyrillic display name is set right after.
@@ -99,7 +116,11 @@ export async function createJuniorAgent(deps: CreateAgentDeps, req: CreateAgentR
           if (template.skills.length) entry.skills = template.skills;
           if (model) entry.model = model;
           if (!req.canAskMain) entry.tools = { deny: CROSS_AGENT_TOOLS };
-          if (sandboxApplied) entry.sandbox = { mode: "all", scope: "agent", workspaceAccess: "rw" };
+          if (sandboxApplied) {
+            // Only this folder of the person's files; the rest of the shared folder stays outside the sandbox.
+            const binds = folder ? [`${folder.hostPath}:${folder.agentPath}:rw`] : [];
+            entry.sandbox = { mode: "all", scope: "agent", workspaceAccess: "rw", ...(binds.length ? { docker: { binds } } : {}) };
+          }
           const patch: Record<string, unknown> = { agents: { entries: { [agentId]: entry } } };
           if (req.canAskMain) {
             // Targets reachable over agent_to_agent: the main agent (and this junior, so main can reply/delegate).
@@ -152,6 +173,11 @@ export async function createJuniorAgent(deps: CreateAgentDeps, req: CreateAgentR
                 status: "ready",
               })
               .run();
+            if (folder) {
+              const sourceId = `folder:${folder.name}`;
+              tx.insert(dataSources).values({ id: sourceId, kind: "folder", connectorRef: folder.name, scope: folder.hostPath, status: "connected" }).onConflictDoNothing().run();
+              tx.insert(agentSourceGrants).values({ agentId, sourceId, access: "write" }).run();
+            }
             for (const [i, schedule] of req.schedules.entries()) {
               tx.insert(schedules)
                 .values({
@@ -176,7 +202,7 @@ export async function createJuniorAgent(deps: CreateAgentDeps, req: CreateAgentR
     logger,
   );
 
-  logger.info({ agentId, templateId: template.id, ai: req.ai, schedules: cronJobIds.length, sandboxApplied }, "junior agent created");
+  logger.info({ agentId, templateId: template.id, ai: req.ai, schedules: cronJobIds.length, sandboxApplied, folder: req.folder }, "junior agent created");
   return { agentId, displayName, model, cronJobIds, sandboxApplied };
 }
 
@@ -209,6 +235,20 @@ export async function deleteJuniorAgent(deps: Pick<CreateAgentDeps, "gateway" | 
   }
   deps.db.delete(agents).where(eq(agents.id, agentId)).run();
   deps.logger.info({ agentId }, "junior agent deleted");
+}
+
+/** Appended to the junior's AGENTS.md: where its data is and how to get the rest (architecture rules 1–2). */
+export function dataAccessBlock(agentPath: string, folderName: string, canAskMain: boolean): string {
+  return [
+    "## Твоя папка (ClawDesk)",
+    "",
+    `Твоя папка: \`${agentPath}\`. Это папка «${folderName}» в общей папке владельца ClawDesk: туда он кладёт файлы для тебя,`,
+    "туда же сохраняй свои результаты (планы, списки, заметки). Других папок владельца у тебя нет.",
+    "",
+    canAskMain
+      ? "Почту, Notion, Google и файлы других агентов ты не видишь — спрашивай главного ассистента конкретный факт или путь."
+      : "Почту, Notion, Google и файлы других агентов ты не видишь и спросить главного не можешь: работай с тем, что есть.",
+  ].join("\n");
 }
 
 function loadJuniorTemplate(req: CreateAgentRequest): LoadedTemplate {

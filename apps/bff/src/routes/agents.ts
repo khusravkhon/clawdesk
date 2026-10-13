@@ -9,6 +9,9 @@ import { CreateAgentError, createJuniorAgent, deleteJuniorAgent } from "../provi
 import { SagaError } from "../provision/saga.js";
 import type { TelegramService } from "../telegram/telegram-service.js";
 import type { FreeModelsService } from "../free-models/free-models-service.js";
+import type { BridgeClient } from "../gateway/bridge-client.js";
+import { agentSourceGrants, dataSources } from "../db/schema.js";
+import { eq } from "drizzle-orm";
 
 type GatewayAgentSummary = {
   id: string;
@@ -27,6 +30,7 @@ export type AgentRouteDeps = {
   sandboxEnabled: boolean;
   telegram: TelegramService;
   freeModels: FreeModelsService;
+  bridge: BridgeClient;
 };
 
 // OpenClaw is the source of truth for which agents exist; our rows add role/parent.
@@ -34,6 +38,15 @@ export type AgentRouteDeps = {
 export async function listAgents(deps: { gateway: GatewayService; db: Db; sandboxEnabled: boolean }): Promise<AgentListDto> {
   const result = await deps.gateway.request<AgentsListResult>("agents.list", {});
   const meta = new Map(deps.db.select().from(agents).all().map((row) => [row.id, row]));
+  const folders = new Map(
+    deps.db
+      .select({ agentId: agentSourceGrants.agentId, name: dataSources.connectorRef })
+      .from(agentSourceGrants)
+      .innerJoin(dataSources, eq(agentSourceGrants.sourceId, dataSources.id))
+      .where(eq(dataSources.kind, "folder"))
+      .all()
+      .map((g) => [g.agentId, g.name]),
+  );
   const items: AgentListItemDto[] = result.agents.map((agent) => {
     const row = meta.get(agent.id);
     return {
@@ -48,6 +61,7 @@ export async function listAgents(deps: { gateway: GatewayService; db: Db; sandbo
       purpose: row?.purpose ?? null,
       canAskMain: row?.canAskMain ?? null,
       sandbox: row?.sandbox ?? null,
+      folder: folders.get(agent.id) ?? null,
     };
   });
   return { defaultId: result.defaultId, agents: items, sandboxEnabled: deps.sandboxEnabled };
@@ -63,7 +77,7 @@ export function registerAgentRoutes(app: FastifyInstance, deps: AgentRouteDeps):
       return { error: "free_models_not_ready", message: "add at least one free provider key first" };
     }
     try {
-      const result = await createJuniorAgent({ ...deps, telegramDelivery: deps.telegram.ownerDelivery() }, body);
+      const result = await createJuniorAgent({ ...deps, telegramDelivery: deps.telegram.ownerDelivery(), folders: deps.bridge }, body);
       reply.status(201);
       return result;
     } catch (error) {

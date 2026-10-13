@@ -15,6 +15,7 @@
     { "key": "restrictions", "type": "textarea", "label": { "ru": "Ограничения и аллергии", "en": "Restrictions and allergies", "tg": "Маҳдудиятҳо ва аллергия" }, "required": false, "default": "нет" }
   ],
   "sources": ["folder"],
+  "folder": {"ru": "Питание", "en": "Nutrition", "tg": "Ғизо"},
   "cronPresets": [
     { "id": "daily-menu", "label": { "ru": "07:30 меню и покупки", "en": "07:30 menu and shopping" }, "cron": "30 7 * * *", "prompt": "Составь меню на сегодня и список того, что нужно купить." }
   ],
