@@ -23,6 +23,8 @@ COPY --from=gog /usr/local/bin/gog /usr/local/bin/gog
 # ClawDesk bridge: OpenClaw CLI steps without an RPC (MCP sign-in), for the panel, on loopback.
 COPY --chmod=0644 clawdesk-bridge.mjs clawdesk-backup.mjs clawdesk-teams.mjs /usr/local/lib/
 COPY --chmod=0755 gateway-start.sh /usr/local/bin/clawdesk-gateway-start
+# ClawDesk's own skills (Figma), loaded through skills.load.extraDirs when the owner connects them.
+COPY skills /usr/local/share/clawdesk/skills
 # Mount points of the panel's and FreeLLMAPI's volumes (backups read them). Owned by node: when the
 # Gateway is the first to mount a fresh volume, Docker gives the volume this ownership, and the
 # panel (node) must still be able to write its data there.

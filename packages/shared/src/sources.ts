@@ -47,10 +47,57 @@ export const GoogleSourceDto = z.object({
 });
 export type GoogleSourceDto = z.infer<typeof GoogleSourceDto>;
 
+/** GitHub for the main agent: OpenClaw's own GitHub sign-in (device code), stored inside OpenClaw. */
+export const GitHubSourceDto = z.object({
+  connected: z.boolean(),
+  /** GitHub login of the connected account. */
+  account: z.string().nullable(),
+  error: z.string().nullable(),
+});
+export type GitHubSourceDto = z.infer<typeof GitHubSourceDto>;
+
+export const StartGitHubSignInResultDto = z.object({
+  requestId: z.string(),
+  /** Typed by the person at verificationUri. */
+  userCode: z.string(),
+  verificationUri: z.string(),
+  expiresAt: z.number(),
+  pollAfterMs: z.number(),
+});
+export type StartGitHubSignInResultDto = z.infer<typeof StartGitHubSignInResultDto>;
+
+export const PollGitHubSignInRequest = z.object({ requestId: z.string().regex(/^github-device-[a-f0-9]{32}$/) });
+export type PollGitHubSignInRequest = z.infer<typeof PollGitHubSignInRequest>;
+
+export const PollGitHubSignInResultDto = z.object({
+  status: z.enum(["pending", "success", "access_denied", "expired", "failed"]),
+  retryAfterMs: z.number(),
+});
+export type PollGitHubSignInResultDto = z.infer<typeof PollGitHubSignInResultDto>;
+
+/** Figma: a personal access token for ClawDesk's read-only figma skill (Figma's MCP sign-in admits only approved apps). */
+export const FigmaSourceDto = z.object({
+  connected: z.boolean(),
+  /** Figma handle of the token's owner. */
+  handle: z.string().nullable(),
+  error: z.string().nullable(),
+});
+export type FigmaSourceDto = z.infer<typeof FigmaSourceDto>;
+
+export const ConnectFigmaRequest = z.object({
+  token: z
+    .string()
+    .trim()
+    .regex(/^figd_[A-Za-z0-9_-]{20,}$/, "this does not look like a Figma personal access token"),
+});
+export type ConnectFigmaRequest = z.infer<typeof ConnectFigmaRequest>;
+
 export const SourcesDto = z.object({
   notion: NotionSourceDto,
   folder: FolderSourceDto,
   google: GoogleSourceDto,
+  github: GitHubSourceDto,
+  figma: FigmaSourceDto,
 });
 export type SourcesDto = z.infer<typeof SourcesDto>;
 

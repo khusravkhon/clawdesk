@@ -44,6 +44,10 @@ const ACTIONS: Record<string, string> = {
   "POST /api/sources/google/complete": "source.googleConnect",
   "GET /api/sources/google/callback": "source.googleConnect",
   "POST /api/sources/google/remove": "source.googleRemove",
+  "POST /api/sources/github/start": "source.githubSignIn",
+  "POST /api/sources/github/disconnect": "source.githubDisconnect",
+  "POST /api/sources/figma/token": "source.figmaConnect",
+  "POST /api/sources/figma/disconnect": "source.figmaDisconnect",
   "POST /api/free-models/keys": "freeModels.addKey",
   "DELETE /api/free-models/keys/:platform": "freeModels.removeKey",
   "POST /api/system/backups": "backup.create",
@@ -57,7 +61,7 @@ const ACTIONS: Record<string, string> = {
 };
 
 /** Too frequent to be worth a line each; their effects show in the agents' log. */
-const SKIP = new Set(["POST /api/chat/:agentId/send", "POST /api/chat/:agentId/abort", "POST /api/ai/signin/:sessionId/answer", "DELETE /api/ai/signin/:sessionId"]);
+const SKIP = new Set(["POST /api/sources/github/poll", "POST /api/chat/:agentId/send", "POST /api/chat/:agentId/abort", "POST /api/ai/signin/:sessionId/answer", "DELETE /api/ai/signin/:sessionId"]);
 
 const KEEP_ROWS = 20_000;
 const PAGE = 50;

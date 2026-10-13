@@ -1,5 +1,7 @@
 import {
   CompleteGoogleLoginRequest,
+  ConnectFigmaRequest,
+  PollGitHubSignInRequest,
   ConnectNotionTokenRequest,
   StartGoogleLoginRequest,
   UploadGoogleClientRequest,
@@ -84,6 +86,17 @@ export function registerSourceRoutes(app: FastifyInstance, deps: { sources: Sour
   });
 
   app.post("/api/sources/notion/disconnect", async (): Promise<SourcesDto> => deps.sources.disconnectNotion());
+
+  // GitHub: the person types the code OpenClaw got from GitHub at github.com/login/device; the panel polls.
+  app.post("/api/sources/github/start", async () => deps.sources.startGitHubSignIn());
+  app.post("/api/sources/github/poll", async (request) => deps.sources.pollGitHubSignIn(PollGitHubSignInRequest.parse(request.body).requestId));
+  app.post("/api/sources/github/disconnect", async (): Promise<SourcesDto> => deps.sources.disconnectGitHub());
+
+  app.post("/api/sources/figma/token", async (request, reply): Promise<SourcesDto | ApiErrorDto> => {
+    const { token } = ConnectFigmaRequest.parse(request.body);
+    return withSourceErrors(reply, () => deps.sources.connectFigmaToken(token));
+  });
+  app.post("/api/sources/figma/disconnect", async (): Promise<SourcesDto> => deps.sources.disconnectFigma());
 }
 
 async function withSourceErrors<T>(reply: FastifyReply, run: () => Promise<T>): Promise<T | ApiErrorDto> {
@@ -96,7 +109,7 @@ async function withSourceErrors<T>(reply: FastifyReply, run: () => Promise<T>): 
       return { error: error.code, message: error.message };
     }
     if (error instanceof SourcesError) {
-      reply.status(error.code === "notion_token_rejected" || error.code === "oauth_state_mismatch" ? 400 : 502);
+      reply.status(error.code === "notion_token_rejected" || error.code === "figma_token_rejected" || error.code === "oauth_state_mismatch" ? 400 : 502);
       return { error: error.code, message: error.message };
     }
     throw error;

@@ -1,6 +1,18 @@
 import fs from "node:fs/promises";
 import path from "node:path";
-import type { FolderSourceDto, GoogleService, GoogleSourceDto, NotionSourceDto, SourcesDto, StartGoogleLoginResultDto, StartNotionOAuthResultDto } from "@clawdesk/shared";
+import type {
+  FigmaSourceDto,
+  FolderSourceDto,
+  GitHubSourceDto,
+  GoogleService,
+  GoogleSourceDto,
+  NotionSourceDto,
+  PollGitHubSignInResultDto,
+  SourcesDto,
+  StartGitHubSignInResultDto,
+  StartGoogleLoginResultDto,
+  StartNotionOAuthResultDto,
+} from "@clawdesk/shared";
 import { eq } from "drizzle-orm";
 import type { Logger } from "pino";
 import type { Db } from "../db/client.js";
@@ -30,6 +42,9 @@ const NOTION_MCP_URL = "https://mcp.notion.com/mcp";
 export const NOTION_CALLBACK_PATH = "/api/sources/notion/callback";
 const OAUTH_PENDING_MS = 10 * 60_000;
 export const GOOGLE_CALLBACK_PATH = "/api/sources/google/callback";
+const FIGMA_TOKEN_SECRET = "clawdesk.figma.token";
+/** ClawDesk's own skills in the Gateway image (deploy/skills). */
+const CLAWDESK_SKILLS = "/usr/local/share/clawdesk/skills";
 
 /** Google sends a Desktop-app sign-in back only to loopback; elsewhere the person pastes the address. */
 export function googleRedirectFor(panelOrigin: string): string | undefined {
@@ -39,7 +54,7 @@ export function googleRedirectFor(panelOrigin: string): string | undefined {
 
 export class SourcesError extends Error {
   constructor(
-    readonly code: "notion_token_rejected" | "notion_unreachable" | "oauth_unavailable" | "oauth_state_mismatch" | "google_unavailable",
+    readonly code: "notion_token_rejected" | "notion_unreachable" | "oauth_unavailable" | "oauth_state_mismatch" | "google_unavailable" | "figma_token_rejected" | "figma_unreachable",
     message: string,
   ) {
     super(message);
@@ -48,7 +63,8 @@ export class SourcesError extends Error {
 
 type NotionMe = { name?: string | null; bot?: { workspace_name?: string | null } };
 type SkillEntry = { enabled?: boolean; apiKey?: unknown };
-type SourcesConfig = { skills?: { entries?: Record<string, SkillEntry> }; mcp?: { servers?: Record<string, unknown> } };
+type SourcesConfig = { skills?: { entries?: Record<string, SkillEntry>; load?: { extraDirs?: string[] } }; mcp?: { servers?: Record<string, unknown> } };
+type GitHubStatus = { selected?: { configured?: boolean; identity?: { credentialState?: string; account?: { login?: string } | null } | null } };
 
 export type SourcesDeps = {
   gateway: GatewayService;
@@ -73,8 +89,8 @@ export class SourcesService {
   }
 
   async status(): Promise<SourcesDto> {
-    const [notion, folder, google] = await Promise.all([this.#notion(), this.#folder(), this.#google()]);
-    return { notion, folder, google };
+    const [notion, folder, google, github, figma] = await Promise.all([this.#notion(), this.#folder(), this.#google(), this.#github(), this.#figma()]);
+    return { notion, folder, google, github, figma };
   }
 
   /** Checks the secret with Notion first; nothing is stored when Notion refuses it. */
@@ -191,6 +207,83 @@ export class SourcesService {
     return this.status();
   }
 
+  // --- GitHub: OpenClaw's own GitHub sign-in (device code) for the main agent only; teams have their own token.
+
+  async startGitHubSignIn(): Promise<StartGitHubSignInResultDto> {
+    const res = await this.deps.gateway.request<{ requestId: string; userCode: string; verificationUri: string; expiresInMs: number; pollAfterMs: number }>(
+      "tools.github.authorize.start",
+      { scope: "agent", agentId: "main" },
+    );
+    return { requestId: res.requestId, userCode: res.userCode, verificationUri: res.verificationUri, expiresAt: Date.now() + res.expiresInMs, pollAfterMs: res.pollAfterMs };
+  }
+
+  async pollGitHubSignIn(requestId: string): Promise<PollGitHubSignInResultDto> {
+    const res = await this.deps.gateway.request<{ status: string; retryAfterMs?: number }>("tools.github.authorize.poll", { requestId });
+    const status = (["pending", "success", "access_denied", "expired"] as const).find((s) => s === res.status) ?? "failed";
+    if (status === "success") this.deps.logger.info("github connected for the main agent");
+    return { status, retryAfterMs: res.retryAfterMs ?? 5000 };
+  }
+
+  async disconnectGitHub(): Promise<SourcesDto> {
+    // Back to inheriting: no GitHub identity of its own for the main agent.
+    await this.deps.gateway.request("tools.github.configure", { scope: "agent", agentId: "main", mode: "inherit" });
+    return this.status();
+  }
+
+  async #github(): Promise<GitHubSourceDto> {
+    try {
+      const st = await this.deps.gateway.request<GitHubStatus>("tools.github.status", { agentId: "main", selectedScope: "agent" });
+      const identity = st.selected?.configured ? st.selected.identity : null;
+      return { connected: identity?.credentialState === "available", account: identity?.account?.login ?? null, error: null };
+    } catch (e) {
+      return { connected: false, account: null, error: (e as Error).message };
+    }
+  }
+
+  // --- Figma: a personal access token for ClawDesk's read-only figma skill.
+
+  async connectFigmaToken(token: string): Promise<SourcesDto> {
+    let res: Response;
+    try {
+      res = await this.#fetch("https://api.figma.com/v1/me", { headers: { "x-figma-token": token }, signal: AbortSignal.timeout(15_000) });
+    } catch (error) {
+      throw new SourcesError("figma_unreachable", `Figma did not answer: ${(error as Error).message}`);
+    }
+    if (res.status === 401 || res.status === 403) throw new SourcesError("figma_token_rejected", "Figma rejected this token");
+    if (!res.ok) throw new SourcesError("figma_unreachable", `Figma answered ${res.status}`);
+    const me = (await res.json()) as { handle?: string; email?: string };
+    await this.deps.gateway.request("secrets.store.set", { name: FIGMA_TOKEN_SECRET, value: token, kind: "secret", allowedHosts: ["api.figma.com"] });
+    const { config } = await getConfig<SourcesConfig>(this.deps.gateway);
+    const dirs = [...new Set([...(config.skills?.load?.extraDirs ?? []), CLAWDESK_SKILLS])];
+    await patchConfig(
+      this.deps.gateway,
+      { skills: { load: { extraDirs: dirs }, entries: { figma: { enabled: true, apiKey: { source: "store", provider: "default", id: FIGMA_TOKEN_SECRET } } } } },
+      { note: "clawdesk: figma source" },
+    );
+    this.#saveRow("figma", "skill:figma", JSON.stringify({ handle: me.handle ?? me.email ?? null }), "connected", "figma");
+    this.deps.logger.info("figma connected");
+    return this.status();
+  }
+
+  async disconnectFigma(): Promise<SourcesDto> {
+    await patchConfig(this.deps.gateway, { skills: { entries: { figma: { enabled: false, apiKey: null } } } }, { note: "clawdesk: figma source removed" });
+    await this.deps.gateway.request("secrets.store.delete", { name: FIGMA_TOKEN_SECRET }).catch(() => undefined);
+    this.deps.db.delete(dataSources).where(eq(dataSources.id, "figma")).run();
+    return this.status();
+  }
+
+  async #figma(): Promise<FigmaSourceDto> {
+    const row = this.deps.db.select().from(dataSources).where(eq(dataSources.id, "figma")).get();
+    try {
+      const { config } = await getConfig<SourcesConfig>(this.deps.gateway);
+      const entry = config.skills?.entries?.figma;
+      const connected = !!entry?.apiKey && entry.enabled !== false;
+      return { connected, handle: connected && row?.scope ? ((JSON.parse(row.scope) as { handle?: string | null }).handle ?? null) : null, error: null };
+    } catch (e) {
+      return { connected: false, handle: null, error: (e as Error).message };
+    }
+  }
+
   #bridgeFor(what: "google"): BridgeClient {
     if (!this.deps.bridge) throw new SourcesError(`${what}_unavailable`, "the ClawDesk bridge is not configured");
     return this.deps.bridge;
@@ -281,10 +374,10 @@ export class SourcesService {
     return { available: true, hostPath: hostPath ?? dir, agentPath: FOLDER_AGENT_PATH, files: files.slice(0, FOLDER_LIST_LIMIT), total: files.length };
   }
 
-  #saveRow(id: string, connectorRef: string, scope: string, status: "pending" | "connected" | "error"): void {
+  #saveRow(id: string, connectorRef: string, scope: string, status: "pending" | "connected" | "error", kind: "notion" | "figma" = "notion"): void {
     this.deps.db
       .insert(dataSources)
-      .values({ id, kind: "notion", connectorRef, scope, status })
+      .values({ id, kind, connectorRef, scope, status })
       .onConflictDoUpdate({ target: dataSources.id, set: { connectorRef, scope, status } })
       .run();
   }

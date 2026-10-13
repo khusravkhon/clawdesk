@@ -1,9 +1,9 @@
 <script setup lang="ts">
-// Data sources (screen 5): what the main agent can read — Notion, a folder on this computer, Google (next).
-import type { SourcesDto } from "@clawdesk/shared";
+// Data sources (screen 5): what the main agent can read — Notion, a folder, Google, GitHub, Figma.
+import type { SourcesDto, StartGitHubSignInResultDto } from "@clawdesk/shared";
 import { CheckCircle2, Copy, ExternalLink, File, Folder, FolderOpen, KeyRound, LogIn, RefreshCw } from "@lucide/vue";
 import { NA, NAlert, NButton, NCollapseTransition, NInput, NPopconfirm, NSkeleton, useMessage } from "naive-ui";
-import { computed, onMounted, ref } from "vue";
+import { computed, onMounted, onUnmounted, ref } from "vue";
 import { useI18n } from "vue-i18n";
 import { useRoute, useRouter } from "vue-router";
 import { api, ApiError } from "../api/client";
@@ -36,6 +36,75 @@ async function load(): Promise<void> {
     loading.value = false;
   }
 }
+
+// --- GitHub: OpenClaw gets a code from GitHub; the person types it at github.com/login/device.
+const gh = ref<StartGitHubSignInResultDto | null>(null);
+const ghBusy = ref(false);
+let ghTimer: number | undefined;
+
+async function githubStart(): Promise<void> {
+  ghBusy.value = true;
+  try {
+    gh.value = await api.sources.githubStart();
+    window.open(gh.value.verificationUri, "_blank", "noopener");
+    ghPoll(gh.value.pollAfterMs);
+  } catch (e) {
+    message.error(errText(e));
+  } finally {
+    ghBusy.value = false;
+  }
+}
+
+function ghPoll(after: number): void {
+  window.clearTimeout(ghTimer);
+  ghTimer = window.setTimeout(async () => {
+    const pending = gh.value;
+    if (!pending) return;
+    try {
+      const res = await api.sources.githubPoll(pending.requestId);
+      if (res.status === "pending") return ghPoll(res.retryAfterMs);
+      gh.value = null;
+      if (res.status === "success") message.success(t("sources.github.connected"));
+      else message.error(t(`sources.github.${res.status}`));
+      await load();
+    } catch (e) {
+      gh.value = null;
+      message.error(errText(e));
+    }
+  }, Math.max(after, 2000));
+}
+
+async function githubDisconnect(): Promise<void> {
+  data.value = await api.sources.githubDisconnect().catch((e) => (message.error(errText(e)), data.value));
+}
+
+async function copyCode(): Promise<void> {
+  if (gh.value) await navigator.clipboard?.writeText(gh.value.userCode).catch(() => undefined);
+}
+
+// --- Figma: a personal access token for the read-only figma skill.
+const figmaToken = ref("");
+const figmaBusy = ref(false);
+const figmaValid = computed(() => /^figd_[A-Za-z0-9_-]{20,}$/.test(figmaToken.value.trim()));
+
+async function figmaConnect(): Promise<void> {
+  figmaBusy.value = true;
+  try {
+    data.value = await api.sources.figmaToken(figmaToken.value.trim());
+    figmaToken.value = "";
+    message.success(t("sources.figma.connected"));
+  } catch (e) {
+    message.error(e instanceof ApiError && e.body.error === "figma_token_rejected" ? t("sources.figma.rejected") : errText(e));
+  } finally {
+    figmaBusy.value = false;
+  }
+}
+
+async function figmaDisconnect(): Promise<void> {
+  data.value = await api.sources.figmaDisconnect().catch((e) => (message.error(errText(e)), data.value));
+}
+
+onUnmounted(() => window.clearTimeout(ghTimer));
 
 async function signIn(): Promise<void> {
   busy.value = "oauth";
@@ -266,6 +335,92 @@ onMounted(async () => {
         <n-alert v-else-if="!google?.available" type="info" :bordered="false">{{ t("sources.google.noGog") }}</n-alert>
         <google-wizard v-else :google="google" @updated="(d) => (data = d)" />
       </section>
+
+      <!-- GitHub -->
+      <section class="card">
+        <header class="card-head">
+          <div class="logo github">GH</div>
+          <div class="head-text">
+            <h2>GitHub</h2>
+            <p>{{ t("sources.github.about") }}</p>
+          </div>
+          <span v-if="data?.github.connected" class="badge ok"><check-circle-2 :size="13" /> {{ t("sources.connected") }}</span>
+        </header>
+        <n-skeleton v-if="!data" text :repeat="2" />
+        <template v-else-if="data.github.connected">
+          <dl class="facts">
+            <div>
+              <dt>{{ t("sources.github.account") }}</dt>
+              <dd>{{ data.github.account ?? "—" }}</dd>
+            </div>
+          </dl>
+          <p class="hint">{{ t("sources.github.connectedHint") }}</p>
+          <n-popconfirm @positive-click="githubDisconnect">
+            <template #trigger>
+              <n-button size="small" secondary type="error">{{ t("sources.disconnect") }}</n-button>
+            </template>
+            {{ t("sources.github.confirmDisconnect") }}
+          </n-popconfirm>
+        </template>
+        <template v-else-if="gh">
+          <p class="hint">{{ t("sources.github.enterCode") }}</p>
+          <div class="code-row">
+            <code class="code">{{ gh.userCode }}</code>
+            <n-button size="small" secondary @click="copyCode"><template #icon><copy :size="14" /></template></n-button>
+          </div>
+          <n-a :href="gh.verificationUri" target="_blank" rel="noopener noreferrer">{{ gh.verificationUri }} <external-link :size="12" /></n-a>
+          <p class="hint">{{ t("sources.github.waiting") }}</p>
+        </template>
+        <template v-else>
+          <n-button type="primary" block :loading="ghBusy" @click="githubStart">
+            <template #icon><log-in :size="16" /></template>
+            {{ t("sources.github.signIn") }}
+          </n-button>
+          <p class="hint">{{ t("sources.github.signInHint") }}</p>
+        </template>
+      </section>
+
+      <!-- Figma -->
+      <section class="card">
+        <header class="card-head">
+          <div class="logo figma">F</div>
+          <div class="head-text">
+            <h2>Figma</h2>
+            <p>{{ t("sources.figma.about") }}</p>
+          </div>
+          <span v-if="data?.figma.connected" class="badge ok"><check-circle-2 :size="13" /> {{ t("sources.connected") }}</span>
+        </header>
+        <n-skeleton v-if="!data" text :repeat="2" />
+        <template v-else-if="data.figma.connected">
+          <dl v-if="data.figma.handle" class="facts">
+            <div>
+              <dt>{{ t("sources.figma.account") }}</dt>
+              <dd>{{ data.figma.handle }}</dd>
+            </div>
+          </dl>
+          <p class="hint">{{ t("sources.figma.connectedHint") }}</p>
+          <n-popconfirm @positive-click="figmaDisconnect">
+            <template #trigger>
+              <n-button size="small" secondary type="error">{{ t("sources.disconnect") }}</n-button>
+            </template>
+            {{ t("sources.figma.confirmDisconnect") }}
+          </n-popconfirm>
+        </template>
+        <template v-else>
+          <ol class="steps">
+            <li>
+              {{ t("sources.figma.step1") }}
+              <n-a href="https://www.figma.com/settings" target="_blank" rel="noopener noreferrer">figma.com/settings <external-link :size="12" /></n-a>
+            </li>
+            <li>{{ t("sources.figma.step2") }}</li>
+          </ol>
+          <div class="token-row">
+            <n-input v-model:value="figmaToken" type="password" show-password-on="click" placeholder="figd_…" @keyup.enter="figmaValid && figmaConnect()" />
+            <n-button type="primary" :disabled="!figmaValid" :loading="figmaBusy" @click="figmaConnect">{{ t("sources.notion.connect") }}</n-button>
+          </div>
+          <p class="hint">{{ t("sources.privacy") }}</p>
+        </template>
+      </section>
     </div>
   </div>
 </template>
@@ -336,6 +491,26 @@ onMounted(async () => {
 .logo.folder {
   color: var(--accent);
   background: var(--accent-soft);
+}
+.logo.github {
+  background: #24292f;
+  color: #fff;
+  font-size: 13px;
+}
+.logo.figma {
+  background: linear-gradient(135deg, #f24e1e, #a259ff);
+  color: #fff;
+}
+.code-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 4px 0 8px;
+}
+.code {
+  font-size: 22px;
+  font-weight: 600;
+  letter-spacing: 0.1em;
 }
 .logo.google {
   color: #4285f4;

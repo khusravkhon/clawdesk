@@ -379,6 +379,30 @@
       "confirmRemove": "Отключить этот Google-аккаунт? Ассистент перестанет видеть почту и файлы.",
       "connectedHint": "Ассистент работает с Google через инструмент gog. Команды проходят через одобрения.",
       "noGog": "Подключение Google недоступно на этом сервере — обновите ClawDesk."
+    },
+    "github": {
+      "about": "Репозитории, issues и pull requests — для главного агента",
+      "signIn": "Войти через GitHub",
+      "signInHint": "Откроется страница GitHub: введите там код, который покажет панель. Ключ остаётся внутри OpenClaw.",
+      "enterCode": "Введите этот код на странице GitHub:",
+      "waiting": "Жду подтверждения от GitHub…",
+      "account": "Аккаунт",
+      "connectedHint": "Главный агент видит репозитории этого аккаунта. Командам проектов доступ даётся отдельно, своим токеном.",
+      "confirmDisconnect": "Отключить GitHub от главного агента?",
+      "connected": "GitHub подключён",
+      "access_denied": "Вход в GitHub отклонён",
+      "expired": "Код устарел — начните заново",
+      "failed": "Не удалось войти в GitHub"
+    },
+    "figma": {
+      "about": "Макеты и комментарии — только чтение",
+      "step1": "В Figma: Settings → Security → Personal access tokens →",
+      "step2": "Создайте токен с правом File content — Read only и вставьте его сюда.",
+      "account": "Аккаунт",
+      "connectedHint": "Главный агент читает файлы Figma по ссылке: экраны, компоненты, тексты, комментарии. Ничего не меняет.",
+      "confirmDisconnect": "Отключить Figma?",
+      "connected": "Figma подключена",
+      "rejected": "Figma не приняла этот токен"
     }
   },
   "chat": {
@@ -740,7 +764,11 @@
         "notionDisconnect": "Отключён Notion",
         "googleClient": "Сохранён OAuth-клиент Google",
         "googleConnect": "Подключён Google",
-        "googleRemove": "Отключён Google"
+        "googleRemove": "Отключён Google",
+        "githubSignIn": "Начат вход в GitHub",
+        "githubDisconnect": "Отключён GitHub",
+        "figmaConnect": "Подключена Figma",
+        "figmaDisconnect": "Отключена Figma"
       },
       "freeModels": {
         "addKey": "Добавлен ключ бесплатных моделей",

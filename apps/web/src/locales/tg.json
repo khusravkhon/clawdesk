@@ -379,6 +379,30 @@
       "confirmRemove": "Ин аккаунти Google ҷудо карда шавад? Ёрдамчӣ дигар почта ва файлҳоро намебинад.",
       "connectedHint": "Ёрдамчӣ бо Google тавассути асбоби gog кор мекунад. Фармонҳо аз иҷозатҳо мегузаранд.",
       "noGog": "Пайвасти Google дар ин сервер дастрас нест — ClawDesk-ро нав кунед."
+    },
+    "github": {
+      "about": "Репозиторийҳо, issues ва pull request-ҳо — барои агенти асосӣ",
+      "signIn": "Воридшавӣ тавассути GitHub",
+      "signInHint": "Саҳифаи GitHub кушода мешавад: рамзеро, ки панел нишон медиҳад, ворид кунед. Калид дар дохили OpenClaw мемонад.",
+      "enterCode": "Ин рамзро дар саҳифаи GitHub ворид кунед:",
+      "waiting": "Тасдиқи GitHub-ро интизорам…",
+      "account": "Ҳисоб",
+      "connectedHint": "Агенти асосӣ репозиторийҳои ин ҳисобро мебинад. Гурӯҳҳои лоиҳа бо токени худ дастрасӣ мегиранд.",
+      "confirmDisconnect": "GitHub-ро аз агенти асосӣ ҷудо кунем?",
+      "connected": "GitHub пайваст шуд",
+      "access_denied": "Воридшавӣ ба GitHub рад шуд",
+      "expired": "Рамз кӯҳна шуд — аз нав оғоз кунед",
+      "failed": "Ба GitHub ворид шудан нашуд"
+    },
+    "figma": {
+      "about": "Макетҳо ва шарҳҳо — танҳо хондан",
+      "step1": "Дар Figma: Settings → Security → Personal access tokens →",
+      "step2": "Токен бо ҳуқуқи File content — Read only созед ва ин ҷо гузоред.",
+      "account": "Ҳисоб",
+      "connectedHint": "Агенти асосӣ файлҳои Figma-ро аз рӯи истинод мехонад: экранҳо, ҷузъҳо, матнҳо, шарҳҳо. Ҳеҷ чизро тағйир намедиҳад.",
+      "confirmDisconnect": "Figma-ро ҷудо кунем?",
+      "connected": "Figma пайваст шуд",
+      "rejected": "Figma ин токенро қабул накард"
     }
   },
   "chat": {
@@ -740,7 +764,11 @@
         "notionDisconnect": "Notion ҷудо шуд",
         "googleClient": "Мизоҷи OAuth-и Google нигоҳ дошта шуд",
         "googleConnect": "Google пайваст шуд",
-        "googleRemove": "Google ҷудо шуд"
+        "googleRemove": "Google ҷудо шуд",
+        "githubSignIn": "Воридшавӣ ба GitHub оғоз шуд",
+        "githubDisconnect": "GitHub ҷудо шуд",
+        "figmaConnect": "Figma пайваст шуд",
+        "figmaDisconnect": "Figma ҷудо шуд"
       },
       "freeModels": {
         "addKey": "Калиди моделҳои ройгон илова шуд",

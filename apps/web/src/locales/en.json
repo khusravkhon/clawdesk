@@ -379,6 +379,30 @@
       "confirmRemove": "Disconnect this Google account? The assistant will no longer see your mail and files.",
       "connectedHint": "The assistant works with Google through the gog tool. Its commands go through approvals.",
       "noGog": "Google is not available on this server — update ClawDesk."
+    },
+    "github": {
+      "about": "Repositories, issues and pull requests — for the main agent",
+      "signIn": "Sign in with GitHub",
+      "signInHint": "A GitHub page opens: type the code the panel shows. The key stays inside OpenClaw.",
+      "enterCode": "Type this code on the GitHub page:",
+      "waiting": "Waiting for GitHub to confirm…",
+      "account": "Account",
+      "connectedHint": "The main agent sees this account's repositories. Project teams get access separately, with their own token.",
+      "confirmDisconnect": "Disconnect GitHub from the main agent?",
+      "connected": "GitHub connected",
+      "access_denied": "GitHub sign-in was declined",
+      "expired": "The code expired — start again",
+      "failed": "Could not sign in to GitHub"
+    },
+    "figma": {
+      "about": "Designs and comments — read only",
+      "step1": "In Figma: Settings → Security → Personal access tokens →",
+      "step2": "Create a token with File content — Read only and paste it here.",
+      "account": "Account",
+      "connectedHint": "The main agent reads Figma files from a link: screens, components, texts, comments. It changes nothing.",
+      "confirmDisconnect": "Disconnect Figma?",
+      "connected": "Figma connected",
+      "rejected": "Figma rejected this token"
     }
   },
   "chat": {
@@ -740,7 +764,11 @@
         "notionDisconnect": "Notion disconnected",
         "googleClient": "Google OAuth client saved",
         "googleConnect": "Google connected",
-        "googleRemove": "Google disconnected"
+        "googleRemove": "Google disconnected",
+        "githubSignIn": "GitHub sign-in started",
+        "githubDisconnect": "GitHub disconnected",
+        "figmaConnect": "Figma connected",
+        "figmaDisconnect": "Figma disconnected"
       },
       "freeModels": {
         "addKey": "Free models key added",
