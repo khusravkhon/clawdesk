@@ -386,3 +386,22 @@ Google для этого ключа выбираем Flash, сохраняем �
   `groups.<chat>.topics.<topic>.agentId`, рестарт; расписания команды → `delivery.threadId`. **С живой группой не
   проверено.**
 - Ограничение: в песочнице нет node и сети — разработчик не установит зависимости и не прогонит JS-тесты (python есть).
+
+**Десктоп (Tauri 2, сделано 2026-10-13; проверено на Windows 11).**
+- Лаунчер (Vue) локально; панель — окно `panel-<id>` с адресом сервера (HTTPS или `http://127.0.0.1:<порт>` туннеля;
+  порт запоминается, чтобы cookie входа панели переживал перезапуск). Команды приложения объявлены в `build.rs`
+  (app manifest) → у окна панели их нет: `list_servers`/`open_panel` из него — «not allowed by ACL» (проверено),
+  `notification` есть (`capabilities/panel.json`, remote `http://127.0.0.1:*`, `https://*`).
+- SSH: `russh` 0.64 на `ring` (`aws-lc-rs` по умолчанию требует NASM на Windows). `check_server_key` получает
+  `PublicKeyOrCertificate`; ключ ed25519 — `Ed25519Keypair::from_seed` + `getrandom` (rand_core 0.10).
+  Ключ сервера: TOFU, при несовпадении — отказ с понятным текстом. Ключ приложения — `keyring` 4 (Credential Manager).
+- Установка: пароль один раз → свой ключ в `authorized_keys` → SFTP `/tmp/clawdesk-src.tar.gz` (код этой версии,
+  `scripts/bundle-source.mjs`, ~310 КБ) → `install.sh` (не root — через `sudo -S`), журнал построчно, шаги по `==> `,
+  ссылка `/setup?code=…` из вывода. Ключ сохраняется только после успешной установки.
+- Проверено: e2e-тест против sshd в контейнере (пароль, ключ, чужой ключ сервера, SFTP, exec, туннель → HTTP 200);
+  собранное приложение через WebView2 DevTools: добавить сервер, открыть панель через туннель, мастер установки до
+  `install.sh` (в контейнере падает на systemd — ожидаемо). Установщики: NSIS 3,9 МБ, MSI 5,2 МБ, подписи обновлений.
+- Обновления: ключ подписи вне репозитория (`C:\Users\user\.clawdesk\updater\`), публичный — в `tauri.conf.json`;
+  в GitHub нужны секреты `TAURI_SIGNING_PRIVATE_KEY` и `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`. Релиз — черновик;
+  автообновление видит только опубликованный релиз публичного репозитория.
+- `.dockerignore` исключает `apps/desktop`: иначе `pnpm -r build` в образе панели падал на десктопе без зависимостей.

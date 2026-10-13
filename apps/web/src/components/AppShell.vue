@@ -6,6 +6,7 @@ import { h, onBeforeUnmount, onMounted, ref } from "vue";
 import { useI18n } from "vue-i18n";
 import { useRouter } from "vue-router";
 import { useApprovalsStore } from "../stores/approvals";
+import { desktopNotify } from "../desktop";
 import SidebarNav from "./SidebarNav.vue";
 
 const { t } = useI18n();
@@ -16,6 +17,7 @@ const approvals = useApprovalsStore();
 // Anywhere in the panel: a command waiting for approval pops up a notice.
 onMounted(() =>
   approvals.watch((p) => {
+    void desktopNotify(t("approvals.toastTitle"), p.command.length > 160 ? `${p.command.slice(0, 160)}…` : p.command);
     const notice = notification.warning({
       title: t("approvals.toastTitle"),
       content: p.command.length > 120 ? `${p.command.slice(0, 120)}…` : p.command,

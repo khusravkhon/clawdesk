@@ -1,0 +1,17 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "launcher",
+  "description": "The launcher window (local files): servers, SSH install, tunnels, updates.",
+  "windows": ["main"],
+  "permissions": [
+    "core:default",
+    "notification:default",
+    "updater:default",
+    "process:allow-restart",
+    "allow-list-servers",
+    "allow-add-server",
+    "allow-remove-server",
+    "allow-open-panel",
+    "allow-install-server"
+  ]
+}

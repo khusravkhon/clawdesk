@@ -1,0 +1,59 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "ClawDesk",
+  "version": "0.1.0",
+  "identifier": "app.clawdesk.desktop",
+  "build": {
+    "beforeDevCommand": "pnpm dev",
+    "devUrl": "http://localhost:1420",
+    "beforeBuildCommand": "pnpm build && pnpm bundle-source",
+    "frontendDist": "../dist"
+  },
+  "app": {
+    "withGlobalTauri": true,
+    "windows": [
+      {
+        "label": "main",
+        "title": "ClawDesk",
+        "width": 880,
+        "height": 700,
+        "minWidth": 520,
+        "minHeight": 480
+      }
+    ],
+    "security": {
+      "csp": "default-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self' data:; connect-src ipc: http://ipc.localhost"
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": [
+      "nsis",
+      "msi",
+      "dmg",
+      "appimage",
+      "deb"
+    ],
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.icns",
+      "icons/icon.ico"
+    ],
+    "resources": {
+      "resources/clawdesk-src.tar.gz": "clawdesk-src.tar.gz"
+    },
+    "createUpdaterArtifacts": true,
+    "shortDescription": "ClawDesk",
+    "longDescription": "ClawDesk desktop: install ClawDesk on a server and open its panel."
+  },
+  "plugins": {
+    "updater": {
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDlGQzhFNkVCODkyNTFBQzIKUldUQ0dpV0o2K2JJbjZRTTE4NmcrcUVsaEQ3NE1JTThuV1JINHNsNGQrQWZmOHUzbHZsRC96dDEK",
+      "endpoints": [
+        "https://github.com/khusravkhon/clawdesk/releases/latest/download/latest.json"
+      ]
+    }
+  }
+}

@@ -7,3 +7,5 @@
 !**/.env.example
 deploy/.env
 *.log
+# The desktop app is not part of the panel image (and its Rust build output is large).
+apps/desktop

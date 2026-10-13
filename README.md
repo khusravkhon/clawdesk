@@ -73,6 +73,23 @@ sudo bash clawdesk/deploy/install.sh --domain panel.example.com
 Наружу смотрят только 80/443 (Caddy). Панель — на `127.0.0.1:8080` (доступна через SSH-туннель), Gateway — только
 внутри контейнера.
 
+## Десктоп-приложение
+
+`apps/desktop` — Tauri 2 (Windows, macOS, Linux). Агенты на компьютере не работают: приложение — лаунчер.
+
+- **Серверы:** список, вход по SSH-ключу приложения (хранится в Windows Credential Manager / Keychain / Secret Service),
+  ключ сервера запоминается при первом подключении и потом сверяется.
+- **Установить на сервер:** IP + root-пароль → приложение ставит на сервер свой ключ (пароль не сохраняется),
+  заливает по SFTP вшитый в него код этой же версии и запускает `deploy/install.sh` с журналом по шагам.
+- **Панель** открывается в отдельном окне: по HTTPS-домену или через SSH-туннель на `127.0.0.1:8080` сервера — домен
+  не нужен. Окну панели разрешены только уведомления (одобрения агентов приходят системным уведомлением).
+- **Трей** и **автообновление** из релизов GitHub (подпись ключом обновлений).
+
+```bash
+pnpm --filter @clawdesk/desktop tauri dev      # нужно: Rust, на Windows — Visual Studio Build Tools (C++)
+pnpm --filter @clawdesk/desktop tauri build    # установщики в apps/desktop/src-tauri/target/release/bundle
+```
+
 ## Шаблоны агентов
 
 Шаблон — папка `packages/templates/agents/<mode>/<id>/` с `template.json` и заготовками `SOUL.md`, `AGENTS.md`,

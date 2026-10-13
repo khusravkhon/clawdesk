@@ -1,0 +1,8 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "panel",
+  "description": "Panel windows load the panel from a server. They may only show notifications: no files, no shell, no SSH, no app commands.",
+  "windows": ["panel-*"],
+  "remote": { "urls": ["http://127.0.0.1:*", "https://*"] },
+  "permissions": ["notification:default"]
+}
