@@ -56,7 +56,6 @@ onMounted(() => load());
             <n-tag size="small" :bordered="false" :type="e.result === 'ok' ? 'success' : 'error'">{{ e.result === "ok" ? t("audit.ok") : t("audit.failed", { code: e.detail ?? "" }) }}</n-tag>
             <span>{{ actionText(e.action) }}</span>
             <code v-if="e.target">{{ e.target }}</code>
-            <span v-if="e.actor === 'anonymous'" class="muted">· {{ t("audit.anonymous") }}</span>
           </li>
         </ul>
         <n-button v-if="nextPanel" size="small" quaternary :loading="loading" @click="load('panel')">{{ t("audit.more") }}</n-button>

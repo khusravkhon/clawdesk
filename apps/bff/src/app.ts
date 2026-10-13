@@ -111,7 +111,8 @@ export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
     await app.register(fastifyStatic, { root: deps.webDist, wildcard: false });
     // SPA fallback: any non-API GET serves index.html so client-side routes work on reload.
     app.setNotFoundHandler((request, reply) => {
-      if (request.method === "GET" && !request.url.startsWith("/api/")) return reply.sendFile("index.html");
+      // A file of an older build (a tab open across an update) is gone: 404, so the page can reload itself.
+      if (request.method === "GET" && !request.url.startsWith("/api/") && !request.url.startsWith("/assets/")) return reply.sendFile("index.html");
       return reply.status(404).send({ error: "not_found", message: `${request.method} ${request.url} not found` } satisfies ApiErrorDto);
     });
   }

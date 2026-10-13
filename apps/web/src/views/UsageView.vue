@@ -110,7 +110,7 @@ const activeAgents = computed(() => (data.value?.agents ?? []).filter((a) => a.t
               <td>{{ a.emoji }} {{ a.name }}</td>
               <td class="num">{{ formatInt(a.tokens, loc) }}</td>
               <td class="num">{{ formatCost(a.cost, loc) }}</td>
-              <td class="trend"><trend-chart :labels="labels" :values="a.daily" :name="a.name" :format="tokens" :height="44" /></td>
+              <td class="trend"><trend-chart :labels="labels" :values="a.daily" :name="a.name" :format="tokens" :height="40" compact /></td>
             </tr>
           </tbody>
         </table>

@@ -17,6 +17,8 @@ const props = defineProps<{
   name: string;
   format: (v: number) => string;
   height?: number;
+  /** Sparkline in a table row: no axes or grid, the tooltip still names the day and the value. */
+  compact?: boolean;
 }>();
 
 const escape = (s: string) => s.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]!);
@@ -25,7 +27,7 @@ const option = computed(() => {
   const c = colors.value;
   return {
     animationDuration: 400,
-    grid: { left: 4, right: 12, top: 12, bottom: 4, containLabel: true },
+    grid: props.compact ? { left: 2, right: 2, top: 4, bottom: 4, containLabel: false } : { left: 4, right: 12, top: 12, bottom: 4, containLabel: true },
     tooltip: {
       trigger: "axis",
       backgroundColor: c.surface2,
@@ -45,16 +47,16 @@ const option = computed(() => {
       type: "category",
       data: props.labels,
       boundaryGap: false,
-      axisLine: { lineStyle: { color: c.axis } },
+      axisLine: { show: !props.compact, lineStyle: { color: c.axis } },
       axisTick: { show: false },
-      axisLabel: { color: c.muted, fontSize: 11, hideOverlap: true, margin: 10 },
+      axisLabel: { show: !props.compact, color: c.muted, fontSize: 11, hideOverlap: true, margin: 10 },
     },
     yAxis: {
       type: "value",
       minInterval: 1,
       splitNumber: 4,
-      axisLabel: { color: c.muted, fontSize: 11, formatter: (v: number) => props.format(v) },
-      splitLine: { lineStyle: { color: c.grid, width: 1 } },
+      axisLabel: { show: !props.compact, color: c.muted, fontSize: 11, formatter: (v: number) => props.format(v) },
+      splitLine: { show: !props.compact, lineStyle: { color: c.grid, width: 1 } },
     },
     series: [
       {

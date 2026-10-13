@@ -27,6 +27,19 @@ export const router = createRouter({
   ],
 });
 
+// After a panel update an open tab asks for files of the old build; load the new one once.
+router.onError((error, to) => {
+  if (!/dynamically imported module|Importing a module script failed|Failed to fetch/i.test(String(error))) return;
+  const key = "clawdesk.reloadedFor";
+  try {
+    if (sessionStorage.getItem(key) === to.fullPath) return;
+    sessionStorage.setItem(key, to.fullPath);
+  } catch {
+    // no storage: still try once
+  }
+  location.assign(to.fullPath);
+});
+
 // Sign-in comes first: without a session every page leads to the sign-in screen, and before the
 // owner exists — to setting the password with the owner code. Checked until signed in.
 let auth: AuthStateDto | null = null;

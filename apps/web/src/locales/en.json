@@ -712,7 +712,6 @@
     "empty": "Nothing yet",
     "ok": "done",
     "failed": "error {code}",
-    "anonymous": "signed out",
     "more": "Show more",
     "run": "agent turn",
     "tool": "tool {tool}",
