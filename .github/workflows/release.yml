@@ -1,66 +1,44 @@
-# A tag v1.2.3 publishes the images an install pulls instead of building them on the server:
-#   ghcr.io/<owner>/clawdesk-panel, clawdesk-gateway (pinned OpenClaw + ClawDesk bridge), clawdesk-sandbox.
-# Set CLAWDESK_VERSION=1.2.3 in deploy/.env to use them (deploy/scripts/init.sh pulls, or builds if it cannot).
-name: Release images
+# Every merge into main is a release: the checks run again, then
+#   - desktop installers (Windows, macOS, Linux) go to a GitHub release v0.1.<run>, with latest.json for the
+#     in-app updater (installed apps offer the new version themselves);
+#   - the server images go to ghcr.io/<owner>/clawdesk-panel, clawdesk-gateway, clawdesk-sandbox with the same version.
+# Work happens on dev; only the owner merges dev → main on GitHub.
+#
+# Needs repository secrets TAURI_SIGNING_PRIVATE_KEY and TAURI_SIGNING_PRIVATE_KEY_PASSWORD (the updater key).
+name: Release
 
 on:
   push:
-    tags: ["v*"]
+    branches: [main]
   workflow_dispatch:
-    inputs:
-      version:
-        description: Image tag (e.g. 0.1.0)
-        required: true
+
+# One release at a time; a newer merge waits instead of racing the previous one.
+concurrency:
+  group: release
+  cancel-in-progress: false
 
 permissions:
   contents: read
-  packages: write
 
 jobs:
-  images:
+  checks:
+    uses: ./.github/workflows/ci.yml
+
+  version:
+    needs: checks
     runs-on: ubuntu-24.04
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - image: clawdesk-panel
-            context: .
-            file: deploy/panel.Dockerfile
-          - image: clawdesk-gateway
-            context: deploy
-            file: deploy/gateway.Dockerfile
-          - image: clawdesk-sandbox
-            context: deploy
-            file: deploy/sandbox.Dockerfile
+    outputs:
+      version: ${{ steps.v.outputs.version }}
     steps:
       - uses: actions/checkout@v4
-      - id: version
+      # major.minor from tauri.conf.json (raise it there for a bigger step), patch = this workflow's run number.
+      - id: v
         run: |
-          v="${{ inputs.version || github.ref_name }}"
-          echo "tag=${v#v}" >> "$GITHUB_OUTPUT"
-      - uses: docker/setup-buildx-action@v3
-      - uses: docker/login-action@v3
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-      - uses: docker/build-push-action@v6
-        with:
-          context: ${{ matrix.context }}
-          file: ${{ matrix.file }}
-          # The Gateway image bundles x86-64 binaries (gog).
-          platforms: linux/amd64
-          push: true
-          tags: |
-            ghcr.io/${{ github.repository_owner }}/${{ matrix.image }}:${{ steps.version.outputs.tag }}
-            ghcr.io/${{ github.repository_owner }}/${{ matrix.image }}:latest
-          cache-from: type=gha,scope=${{ matrix.image }}
-          cache-to: type=gha,mode=max,scope=${{ matrix.image }}
+          base="$(jq -r .version apps/desktop/src-tauri/tauri.conf.json | cut -d. -f1-2)"
+          echo "version=${base}.${{ github.run_number }}" >> "$GITHUB_OUTPUT"
 
-  # Desktop installers (Tauri) attached to the GitHub release, with latest.json for the in-app updater.
-  # Needs repository secrets TAURI_SIGNING_PRIVATE_KEY and TAURI_SIGNING_PRIVATE_KEY_PASSWORD (the updater key).
   desktop:
-    if: github.event_name == 'push'
+    needs: version
     permissions:
       contents: write
     strategy:
@@ -84,6 +62,17 @@ jobs:
         with:
           workspaces: apps/desktop/src-tauri
       - run: pnpm install --frozen-lockfile
+      # The release's version goes into the app (the updater compares it with latest.json).
+      - name: Set version ${{ needs.version.outputs.version }}
+        shell: bash
+        run: |
+          node -e '
+            const fs = require("fs");
+            const file = "apps/desktop/src-tauri/tauri.conf.json";
+            const conf = JSON.parse(fs.readFileSync(file, "utf8"));
+            conf.version = process.argv[1];
+            fs.writeFileSync(file, JSON.stringify(conf, null, 2) + "\n");
+          ' "${{ needs.version.outputs.version }}"
       - uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -91,8 +80,50 @@ jobs:
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         with:
           projectPath: apps/desktop
-          tagName: ${{ github.ref_name }}
-          releaseName: ClawDesk ${{ github.ref_name }}
-          releaseBody: "Installers for Windows, macOS and Linux. The server images are on ghcr.io."
-          releaseDraft: true
+          tagName: v${{ needs.version.outputs.version }}
+          releaseName: ClawDesk ${{ needs.version.outputs.version }}
+          releaseBody: |
+            Windows: ClawDesk_*_x64-setup.exe · macOS: .dmg · Linux: .AppImage or .deb.
+            Already installed? The app offers this version itself.
+          releaseDraft: false
           includeUpdaterJson: true
+
+  images:
+    needs: version
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      packages: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - image: clawdesk-panel
+            context: .
+            file: deploy/panel.Dockerfile
+          - image: clawdesk-gateway
+            context: deploy
+            file: deploy/gateway.Dockerfile
+          - image: clawdesk-sandbox
+            context: deploy
+            file: deploy/sandbox.Dockerfile
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - uses: docker/build-push-action@v6
+        with:
+          context: ${{ matrix.context }}
+          file: ${{ matrix.file }}
+          # The Gateway image bundles x86-64 binaries (gog).
+          platforms: linux/amd64
+          push: true
+          tags: |
+            ghcr.io/${{ github.repository_owner }}/${{ matrix.image }}:${{ needs.version.outputs.version }}
+            ghcr.io/${{ github.repository_owner }}/${{ matrix.image }}:latest
+          cache-from: type=gha,scope=${{ matrix.image }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.image }}

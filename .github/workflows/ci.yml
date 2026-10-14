@@ -1,10 +1,12 @@
-# Every push to main and every pull request: build, typecheck, tests, and the install scripts.
+# Every push to dev and every pull request (dev → main): build, typecheck, tests, and the install scripts.
+# The release workflow runs the same checks again on main before it builds the installers.
 name: CI
 
 on:
   push:
-    branches: [main]
+    branches: [dev]
   pull_request:
+  workflow_call:
 
 permissions:
   contents: read

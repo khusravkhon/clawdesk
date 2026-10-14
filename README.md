@@ -74,6 +74,15 @@ sudo bash clawdesk/deploy/install.sh --domain panel.example.com
 Наружу смотрят только 80/443 (Caddy). Панель — на `127.0.0.1:8080` (доступна через SSH-туннель), Gateway — только
 внутри контейнера.
 
+## Ветки и релизы
+
+- Работа идёт в ветке `dev`: на каждый пуш — сборка, типы, тесты (`.github/workflows/ci.yml`).
+- В `main` попадает только пулл-реквест `dev` → `main`, его сливает владелец на GitHub.
+- Каждое слияние в `main` — релиз (`.github/workflows/release.yml`): те же проверки ещё раз, затем установщики
+  Windows / macOS / Linux в GitHub Releases с версией `0.1.<номер запуска>` (мажор и минор — из
+  `apps/desktop/src-tauri/tauri.conf.json`) и `latest.json` для автообновления, и образы сервера в ghcr.io.
+- Секреты репозитория: `TAURI_SIGNING_PRIVATE_KEY`, `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` (ключ обновлений).
+
 ## Десктоп-приложение
 
 `apps/desktop` — Tauri 2 (Windows, macOS, Linux). Само приложение — лаунчер: агенты работают на сервере или в Docker Desktop.
