@@ -92,7 +92,7 @@ export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
   registerHealthRoutes(app, deps);
   registerAgentRoutes(app, deps);
   registerAiRoutes(app, deps);
-  registerTemplateRoutes(app);
+  registerTemplateRoutes(app, deps);
   registerTelegramRoutes(app, deps);
   registerFreeModelRoutes(app, deps);
   registerSourceRoutes(app, deps);

@@ -1,5 +1,5 @@
 import { FREE_MODEL_REF, type CreateAgentRequest, type CreateAgentResultDto } from "@clawdesk/shared";
-import { loadTemplate, renderTemplateFiles, WORKSPACE_FILES, type LoadedTemplate } from "@clawdesk/templates";
+import { renderTemplateFiles, WORKSPACE_FILES, type LoadedTemplate } from "@clawdesk/templates";
 import { eq } from "drizzle-orm";
 import type { Logger } from "pino";
 import type { Db } from "../db/client.js";
@@ -7,6 +7,7 @@ import { agents, agentSourceGrants, dataSources, schedules } from "../db/schema.
 import { getConfig, patchConfig } from "../gateway/config-patch.js";
 import type { GatewayService } from "../gateway/gateway-service.js";
 import { readChain } from "../ai-setup/model-chain.js";
+import { findTemplate } from "./agent-profile.js";
 import { runSaga } from "./saga.js";
 
 // "Create a junior agent" = one chain of Gateway RPCs plus our metadata rows.
@@ -47,7 +48,7 @@ export class CreateAgentError extends Error {
 
 export async function createJuniorAgent(deps: CreateAgentDeps, req: CreateAgentRequest): Promise<CreateAgentResultDto> {
   const { gateway, db, logger } = deps;
-  const template = loadJuniorTemplate(req, !!deps.team);
+  const template = loadJuniorTemplate(db, req, !!deps.team);
   let files: ReturnType<typeof renderTemplateFiles>;
   try {
     files = renderTemplateFiles(template, { ...req.values, ...deps.team?.values });
@@ -257,13 +258,10 @@ export function dataAccessBlock(agentPath: string, folderName: string, canAskMai
   ].join("\n");
 }
 
-function loadJuniorTemplate(req: CreateAgentRequest, forTeam: boolean): LoadedTemplate {
-  let template: LoadedTemplate;
-  try {
-    template = loadTemplate(req.mode, req.templateId);
-  } catch {
-    throw new CreateAgentError("invalid_template", `template ${req.mode}/${req.templateId} not found`);
-  }
+function loadJuniorTemplate(db: Db, req: CreateAgentRequest, forTeam: boolean): LoadedTemplate {
+  // Built-in, or one of the owner's own ("my-…", saved from an agent).
+  const template = findTemplate(db, req.mode, req.templateId);
+  if (!template) throw new CreateAgentError("invalid_template", `template ${req.mode}/${req.templateId} not found`);
   if (template.role === "main") throw new CreateAgentError("invalid_template", "the main-agent template cannot create a junior agent");
   // Team roles only through a team (they need its repository and project values), and the other way round.
   if ((template.role === "team_member") !== forTeam) throw new CreateAgentError("invalid_template", forTeam ? "not a team role" : "team roles are created with a team");
@@ -271,7 +269,8 @@ function loadJuniorTemplate(req: CreateAgentRequest, forTeam: boolean): LoadedTe
 }
 
 export function slugBase(template: Pick<LoadedTemplate, "id">, displayName: string): string {
-  if (template.id !== "custom") return template.id;
+  // Custom agents and the owner's own templates are named after the agent.
+  if (template.id !== "custom" && !template.id.startsWith("my-")) return template.id;
   const latin = displayName
     .normalize("NFKD")
     .toLowerCase()

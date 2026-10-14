@@ -10,6 +10,7 @@ export const router = createRouter({
     { path: "/assistant", name: "assistant", component: () => import("./views/AssistantView.vue") },
     { path: "/agents", name: "agents", component: () => import("./views/AgentsView.vue") },
     { path: "/agents/new", name: "agent-new", component: () => import("./views/AgentBuilderView.vue") },
+    { path: "/agents/:agentId/edit", name: "agent-edit", component: () => import("./views/AgentEditView.vue") },
     { path: "/free-models", name: "free-models", component: () => import("./views/FreeModelsView.vue") },
     { path: "/chat/:agentId?", name: "chat", component: () => import("./views/ChatView.vue") },
     { path: "/schedules", name: "schedules", component: () => import("./views/SchedulesView.vue") },

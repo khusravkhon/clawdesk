@@ -78,6 +78,7 @@ onMounted(load);
                     <n-tag v-if="agent.canAskMain" size="small" type="info">{{ t("agents.canAskMain") }}</n-tag>
                     <n-tag v-if="agent.folder" size="small">📁 {{ agent.folder }}</n-tag>
                     <n-tag v-if="agent.role === null" size="small">{{ t("status.notInPanel") }}</n-tag>
+                    <n-button v-if="agent.role" size="small" secondary @click="$router.push(`/agents/${agent.id}/edit`)">{{ t("agents.edit") }}</n-button>
                     <n-popconfirm @positive-click="remove(agent)">
                       <template #trigger>
                         <n-button size="small" quaternary type="error" :loading="deleting === agent.id">{{ t("agents.delete") }}</n-button>

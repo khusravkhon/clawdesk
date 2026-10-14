@@ -46,6 +46,9 @@ import type {
   StartGoogleLoginResultDto,
   StartNotionOAuthResultDto,
   StartSignInRequest,
+  AgentProfileDto,
+  SaveAgentProfileRequest,
+  SaveAsTemplateRequest,
   ModelChainDto,
   SaveModelChainRequest,
   TelegramPairingRequestDto,
@@ -134,6 +137,11 @@ export const api = {
   agents: () => request<AgentListDto>("/api/agents"),
   createAgent: (body: CreateAgentRequest) => post<CreateAgentResultDto>("/api/agents", body),
   deleteAgent: (agentId: string) => request<void>(`/api/agents/${encodeURIComponent(agentId)}`, { method: "DELETE" }),
+  agentProfile: (agentId: string) => request<AgentProfileDto>(`/api/agents/${encodeURIComponent(agentId)}/profile`),
+  saveAgentProfile: (agentId: string, body: SaveAgentProfileRequest) =>
+    request<AgentProfileDto>(`/api/agents/${encodeURIComponent(agentId)}/profile`, { method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify(body) }),
+  saveAsTemplate: (agentId: string, body: SaveAsTemplateRequest) => post<TemplateDto>(`/api/agents/${encodeURIComponent(agentId)}/template`, body),
+  deleteTemplate: (templateId: string) => request<void>(`/api/templates/${encodeURIComponent(templateId)}`, { method: "DELETE" }),
   telegram: {
     status: () => request<TelegramStatusDto>("/api/telegram"),
     connect: (token: string) => post<TelegramStatusDto>("/api/telegram/connect", { token }),

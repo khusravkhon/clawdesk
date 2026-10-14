@@ -139,7 +139,8 @@
     "deleted": "Agent \"{name}\" deleted",
     "noSandboxTitle": "Sandbox not set up yet",
     "noSandbox": "The server does not run the Docker sandbox for junior agents yet, so they run without isolation. Do not give them dangerous tools until the sandbox is on.",
-    "freeModels": "Free models"
+    "freeModels": "Free models",
+    "edit": "Edit"
   },
   "builder": {
     "title": "New agent",
@@ -181,7 +182,34 @@
     "folderName": "Folder name",
     "folderHint": "Put files for the agent here: {path}. The agent reads them and saves its results there.",
     "folderInvalid": "Letters, digits, spaces, dots and dashes, up to 60 characters; no slashes, colons or commas.",
-    "folderNoSandbox": "Sandboxes are off on this server: the agent works with its folder but could technically see other server files too."
+    "folderNoSandbox": "Sandboxes are off on this server: the agent works with its folder but could technically see other server files too.",
+    "ownTemplate": "My template",
+    "ownTemplateNoDescription": "Your template",
+    "deleteTemplate": "Delete template",
+    "deleteTemplateConfirm": "Delete template “{name}”? Agents made from it stay."
+  },
+  "agentEdit": {
+    "title": "Agent “{name}”",
+    "titleEmpty": "Agent",
+    "subtitle": "Name, instructions and what it knows about you",
+    "who": "Who it is",
+    "folder": "Agent's folder: {name}",
+    "instructions": "Instructions",
+    "instructionsLead": "These are the files the agent reads in every conversation. Write plain text; # headings are just for structure.",
+    "soul": "Who it is and what it does (SOUL.md)",
+    "user": "What it knows about you (USER.md)",
+    "agents": "How it works with files and other agents (AGENTS.md)",
+    "schedules": "Schedules",
+    "saveHint": "Changes apply from the next message to the agent.",
+    "saved": "“{name}” saved",
+    "asTemplate": "Save as a template",
+    "asTemplateLead": "The template appears in “Create an agent”: a new agent gets these instructions, schedules and folder — you only give it a name.",
+    "templateTitle": "Template name",
+    "templateDescription": "Short description",
+    "templateDescriptionPlaceholder": "For example: counts money and reminds about goals",
+    "saveFirst": "Save the agent's changes first — the template takes the saved version.",
+    "saveTemplate": "Save template",
+    "templateSaved": "Template “{name}” saved — it comes first when you create an agent."
   },
   "telegram": {
     "stepBot": "Bot",
@@ -754,7 +782,8 @@
       },
       "agent": {
         "create": "Agent created",
-        "delete": "Agent deleted"
+        "delete": "Agent deleted",
+        "edit": "Agent edited"
       },
       "ai": {
         "connect": "AI connected",
@@ -813,6 +842,10 @@
         "fetch": "Team updated from GitHub",
         "push": "Branch pushed, PR opened",
         "telegram": "Team Telegram group linked"
+      },
+      "template": {
+        "save": "Agent template saved",
+        "delete": "Agent template deleted"
       }
     }
   },

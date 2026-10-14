@@ -169,3 +169,26 @@ export const auditEvents = sqliteTable(
   },
   (t) => [index("audit_events_at_idx").on(t.at)],
 );
+
+/**
+ * Templates the owner saved from one of their agents ("My templates"). Built-in templates live in
+ * packages/templates; these work the same way in the builder, with the agent's name as {{agentName}}.
+ */
+export const userTemplates = sqliteTable("user_templates", {
+  /** "my-…", so it never collides with a built-in template id. */
+  id: text("id").primaryKey(),
+  mode: text("mode", { enum: ["personal", "company"] }).notNull(),
+  title: text("title").notNull(),
+  description: text("description").notNull(),
+  emoji: text("emoji"),
+  /** Name suggested for a new agent (the name of the agent it was saved from). */
+  defaultName: text("default_name").notNull(),
+  /** SOUL.md, AGENTS.md, USER.md. */
+  files: text("files", { mode: "json" }).$type<Record<string, string>>().notNull(),
+  /** Suggested own folder; null: the template does not use one. */
+  folder: text("folder"),
+  cronPresets: text("cron_presets", { mode: "json" }).$type<{ id: string; label: string; cron: string; prompt: string }[]>().notNull(),
+  skills: text("skills", { mode: "json" }).$type<string[]>().notNull(),
+  canAskMain: integer("can_ask_main", { mode: "boolean" }).notNull(),
+  createdAt: createdAt(),
+});

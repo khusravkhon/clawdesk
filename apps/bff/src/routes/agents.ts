@@ -1,10 +1,21 @@
-import { CreateAgentRequest, type AgentListDto, type AgentListItemDto, type ApiErrorDto, type CreateAgentResultDto } from "@clawdesk/shared";
-import type { FastifyInstance } from "fastify";
+import {
+  CreateAgentRequest,
+  SaveAgentProfileRequest,
+  SaveAsTemplateRequest,
+  type AgentListDto,
+  type AgentListItemDto,
+  type AgentProfileDto,
+  type ApiErrorDto,
+  type CreateAgentResultDto,
+  type TemplateDto,
+} from "@clawdesk/shared";
+import type { FastifyInstance, FastifyReply } from "fastify";
 import type { Logger } from "pino";
 import { z } from "zod";
 import type { Db } from "../db/client.js";
 import { agents } from "../db/schema.js";
 import type { GatewayService } from "../gateway/gateway-service.js";
+import { AgentProfileError, readProfile, saveAsTemplate, saveProfile } from "../provision/agent-profile.js";
 import { CreateAgentError, createJuniorAgent, deleteJuniorAgent } from "../provision/create-agent.js";
 import { SagaError } from "../provision/saga.js";
 import type { TelegramService } from "../telegram/telegram-service.js";
@@ -99,6 +110,29 @@ export function registerAgentRoutes(app: FastifyInstance, deps: AgentRouteDeps):
     }
   });
 
+  // --- Editing an agent after creation, and saving it as one of the owner's templates ---
+
+  app.get("/api/agents/:agentId/profile", async (request, reply): Promise<AgentProfileDto | ApiErrorDto> => {
+    const { agentId } = AgentParams.parse(request.params);
+    return withProfileErrors(reply, () => readProfile(deps, agentId));
+  });
+
+  app.put("/api/agents/:agentId/profile", async (request, reply): Promise<AgentProfileDto | ApiErrorDto> => {
+    const { agentId } = AgentParams.parse(request.params);
+    const body = SaveAgentProfileRequest.parse(request.body);
+    return withProfileErrors(reply, () => saveProfile(deps, agentId, body));
+  });
+
+  app.post("/api/agents/:agentId/template", async (request, reply): Promise<TemplateDto | ApiErrorDto> => {
+    const { agentId } = AgentParams.parse(request.params);
+    const body = SaveAsTemplateRequest.parse(request.body);
+    return withProfileErrors(reply, async () => {
+      const template = await saveAsTemplate({ ...deps, mode: deps.space.mode() }, agentId, body);
+      reply.status(201);
+      return template;
+    });
+  });
+
   app.delete("/api/agents/:agentId", async (request, reply) => {
     const { agentId } = AgentParams.parse(request.params);
     try {
@@ -109,4 +143,16 @@ export function registerAgentRoutes(app: FastifyInstance, deps: AgentRouteDeps):
     }
     return reply.status(204).send();
   });
+}
+
+async function withProfileErrors<T>(reply: FastifyReply, fn: () => Promise<T>): Promise<T | ApiErrorDto> {
+  try {
+    return await fn();
+  } catch (error) {
+    if (error instanceof AgentProfileError) {
+      reply.status(error.code === "not_editable" ? 400 : 404);
+      return { error: error.code, message: error.message };
+    }
+    throw error;
+  }
 }

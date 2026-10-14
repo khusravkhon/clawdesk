@@ -27,6 +27,8 @@ export const TemplateDto = z.object({
   sandbox: z.boolean(),
   /** Suggested name of the agent's own folder; null when the template does not use one. */
   folder: LocalizedText.nullable(),
+  /** Saved by the owner from one of their agents ("My templates"); can be deleted. */
+  own: z.boolean(),
 });
 export type TemplateDto = z.infer<typeof TemplateDto>;
 
@@ -82,3 +84,36 @@ export const CreateAgentResultDto = z.object({
   sandboxApplied: z.boolean(),
 });
 export type CreateAgentResultDto = z.infer<typeof CreateAgentResultDto>;
+
+// --- Editing an agent and saving it as a template ("My templates") ---
+
+/** Workspace files the owner can edit: who the agent is, what it knows about the owner, how it works with data. */
+export const AgentFiles = z.object({
+  soul: z.string().max(20000),
+  user: z.string().max(20000),
+  agents: z.string().max(20000),
+});
+export type AgentFiles = z.infer<typeof AgentFiles>;
+
+export const AgentProfileDto = z.object({
+  id: z.string(),
+  name: z.string(),
+  emoji: z.string().nullable(),
+  role: AgentRole,
+  folder: z.string().nullable(),
+  files: AgentFiles,
+});
+export type AgentProfileDto = z.infer<typeof AgentProfileDto>;
+
+export const SaveAgentProfileRequest = z.object({
+  name: z.string().trim().min(1).max(60),
+  emoji: z.string().trim().max(8).nullable(),
+  files: AgentFiles,
+});
+export type SaveAgentProfileRequest = z.infer<typeof SaveAgentProfileRequest>;
+
+export const SaveAsTemplateRequest = z.object({
+  title: z.string().trim().min(1).max(60),
+  description: z.string().trim().max(300).default(""),
+});
+export type SaveAsTemplateRequest = z.infer<typeof SaveAsTemplateRequest>;

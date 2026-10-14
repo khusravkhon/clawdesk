@@ -10,6 +10,7 @@ import {
   NGi,
   NGrid,
   NInput,
+  NPopconfirm,
   NRadio,
   NRadioGroup,
   NSpace,
@@ -20,7 +21,7 @@ import {
   NText,
   NTimePicker,
 } from "naive-ui";
-import { computed, onMounted, reactive, ref } from "vue";
+import { computed, onMounted, reactive, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import PageHeader from "../components/ui/PageHeader.vue";
 import { useRouter } from "vue-router";
@@ -96,6 +97,20 @@ function pick(tpl: TemplateDto): void {
   // Preset labels start with their time ("06:30 тренировка дня"); keep only the words so editing the time cannot contradict them.
   schedules.value = tpl.cronPresets.map((p) => ({ presetId: p.id, label: tx(p.label).replace(/^(\S+\s)?\d{1,2}:\d{2}\s*/, ""), ...parseCron(p.cron), prompt: p.prompt, enabled: true }));
   step.value = 2;
+}
+
+// Turning the folder on for a template without one: name it after the agent.
+watch(useFolder, (on) => {
+  if (on && !folderName.value.trim()) folderName.value = (values.agentName ?? "").trim().slice(0, 60);
+});
+
+async function removeTemplate(tpl: TemplateDto): Promise<void> {
+  try {
+    await api.deleteTemplate(tpl.id);
+    templates.value = templates.value.filter((x) => x.id !== tpl.id);
+  } catch (error) {
+    loadError.value = errorText(error);
+  }
 }
 
 function addSchedule(): void {
@@ -183,11 +198,20 @@ onMounted(load);
         <!-- 1. template -->
         <n-grid v-if="step === 1" cols="1 s:2 m:3" responsive="screen" :x-gap="12" :y-gap="12">
           <n-gi v-for="tpl in templates" :key="tpl.id">
-            <button class="tpl" type="button" @click="pick(tpl)">
-              <span class="emoji">{{ tpl.emoji ?? "🤖" }}</span>
-              <strong>{{ tx(tpl.title) }}</strong>
-              <n-text depth="3" class="desc">{{ tx(tpl.description) }}</n-text>
-            </button>
+            <div class="tpl-wrap">
+              <button class="tpl" type="button" @click="pick(tpl)">
+                <span class="emoji">{{ tpl.emoji ?? "🤖" }}</span>
+                <strong>{{ tx(tpl.title) }}</strong>
+                <n-text depth="3" class="desc">{{ tx(tpl.description) || t("builder.ownTemplateNoDescription") }}</n-text>
+                <span v-if="tpl.own" class="own-tag">{{ t("builder.ownTemplate") }}</span>
+              </button>
+              <n-popconfirm v-if="tpl.own" @positive-click="removeTemplate(tpl)">
+                <template #trigger>
+                  <button type="button" class="tpl-delete" :aria-label="t('builder.deleteTemplate')" :title="t('builder.deleteTemplate')">×</button>
+                </template>
+                {{ t("builder.deleteTemplateConfirm", { name: tx(tpl.title) }) }}
+              </n-popconfirm>
+            </div>
           </n-gi>
         </n-grid>
 
@@ -313,6 +337,33 @@ onMounted(load);
 </template>
 
 <style scoped>
+.tpl-wrap {
+  position: relative;
+  height: 100%;
+}
+.own-tag {
+  align-self: flex-start;
+  font-size: 11px;
+  padding: 1px 8px;
+  border-radius: 999px;
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+.tpl-delete {
+  position: absolute;
+  top: 6px;
+  right: 8px;
+  border: none;
+  background: transparent;
+  color: var(--muted);
+  font-size: 18px;
+  line-height: 1;
+  cursor: pointer;
+  padding: 4px;
+}
+.tpl-delete:hover {
+  color: var(--text);
+}
 .tpl {
   width: 100%;
   height: 100%;
