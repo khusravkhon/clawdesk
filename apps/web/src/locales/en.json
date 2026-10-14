@@ -105,7 +105,8 @@
     "reset": "Discard",
     "saved": "Model list saved",
     "added": "Backup model connected",
-    "tip": "Cheap and reliable: DeepSeek V4 Flash (≈ $0.14 / $0.28 per 1M tokens), GLM-5.3-Flash, Gemini Flash-Lite. Back up a ChatGPT Plus subscription with a pay-as-you-go key."
+    "tip": "Cheap and reliable: DeepSeek V4 Flash (≈ $0.14 / $0.28 per 1M tokens), GLM-5.3-Flash, Gemini Flash-Lite. Back up a ChatGPT Plus subscription with a pay-as-you-go key.",
+    "followers": "Junior agents with “same as the main assistant” AI use this same list: when the limit runs out, they switch to the backup too."
   },
   "signIn": {
     "deviceSteps": "Open the sign-in page in your own browser, sign in and enter this code:",
@@ -159,7 +160,7 @@
     "schedulePrompt": "What the agent does at this time",
     "noSchedules": "This template has no default schedules.",
     "addSchedule": "Add schedule",
-    "aiInherit": "Same as the main assistant",
+    "aiInherit": "Same as the main assistant (backup models included)",
     "aiOwn": "Own access: key or subscription (connect after creating)",
     "mainNotConnected": "the main assistant has no AI yet",
     "create": "Create agent",

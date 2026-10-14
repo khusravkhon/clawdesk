@@ -61,7 +61,7 @@ describe("junior agent folders", () => {
         calls.push({ method, params });
         if (method === "agents.list") return { agents: [{ id: "main", model: { primary: "google/gemini-flash-latest" } }] };
         if (method === "agents.create") return { agentId: params.name };
-        if (method === "config.get") return { hash: "h", config: {} };
+        if (method === "config.get") return { hash: "h", config: { agents: { entries: { main: { model: { primary: "google/gemini-flash-latest", fallbacks: ["deepseek/deepseek-v4-flash"] } } } } } };
         if (method === "cron.add") return { id: "job-1" };
         return { ok: true };
       },
@@ -80,6 +80,9 @@ describe("junior agent folders", () => {
       );
       expect(ensured).toEqual(["Питание"]);
       const patch = JSON.parse(calls.find((c) => c.method === "config.patch")!.params.raw as string);
+      // "Same as main": the whole chain, so the junior switches to the same backups.
+      expect(patch.agents.entries[res.agentId].model).toEqual({ primary: "google/gemini-flash-latest", fallbacks: ["deepseek/deepseek-v4-flash"] });
+      expect(res.model).toBe("google/gemini-flash-latest");
       expect(patch.agents.entries[res.agentId].sandbox).toEqual({
         mode: "all",
         scope: "agent",

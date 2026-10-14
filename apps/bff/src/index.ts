@@ -26,8 +26,8 @@ const logger = createLogger(config.logLevel);
 
 const { db, close: closeDb } = openDb(config.dbPath);
 const gateway = createGatewayService(config, logger, { retryPairing: true });
-const aiSetup = new AiSetupService(gateway, logger.child({ component: "ai-setup" }));
-const signIn = new SignInSessionManager(gateway, logger.child({ component: "signin" }));
+const aiSetup = new AiSetupService(gateway, logger.child({ component: "ai-setup" }), db);
+const signIn = new SignInSessionManager(gateway, logger.child({ component: "signin" }), () => aiSetup.syncFollowers());
 const telegram = new TelegramService(gateway, db, logger.child({ component: "telegram" }));
 const bridge = new BridgeClient(config.bridgeUrl, config.gateway.sharedToken);
 const freeModels = new FreeModelsService(gateway, logger.child({ component: "free-models" }), {
@@ -61,6 +61,13 @@ void gateway
   .then(() => approvals.ensureDefault(getSetting<boolean>(db, EXEC_DEFAULT_SETTING) === true))
   .then((applied) => applied && putSetting(db, EXEC_DEFAULT_SETTING, true))
   .catch((error: Error) => logger.warn({ err: error }, "could not apply the default exec approval mode"));
+
+// Juniors with the main agent's AI: bring them onto its current models and backups
+// (also covers juniors created before backups existed, which copied only the main model).
+void gateway
+  .waitUntilConnected(120_000)
+  .then(() => aiSetup.syncFollowers())
+  .catch((error: Error) => logger.warn({ err: error }, "could not sync juniors' models"));
 
 // Memory search: OpenClaw defaults to OpenAI embeddings even without an OpenAI key; use what works.
 void gateway

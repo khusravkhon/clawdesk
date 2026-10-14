@@ -4,7 +4,8 @@ import { patchConfig } from "../gateway/config-patch.js";
 import type { GatewayService } from "../gateway/gateway-service.js";
 import { buildCatalog, providerPluginId, type DetectResult, type PluginEntry } from "./catalog.js";
 import { findFlashModels, storeKeyWithModelViaWizard } from "./gemini-free-tier.js";
-import { assertRoomForBackup, choicesFor, keepAsBackup, ModelChainError, readCatalog, readChain, toOptions, validateChain, writeChain } from "./model-chain.js";
+import type { Db } from "../db/client.js";
+import { assertRoomForBackup, choicesFor, keepAsBackup, ModelChainError, readCatalog, readChain, syncFollowers, toOptions, validateChain, writeChain } from "./model-chain.js";
 
 type ActivateResult = { ok: boolean; status?: string; modelRef?: string; latencyMs?: number; error?: string };
 type InstallResult = { ok: true; plugin: { id: string; version?: string }; restartRequired?: boolean };
@@ -31,7 +32,18 @@ export class AiSetupService {
   constructor(
     private readonly gateway: GatewayService,
     private readonly logger: Logger,
+    private readonly db: Db,
   ) {}
+
+  /** Juniors with the main agent's AI follow its model chain; never fails the caller. */
+  async syncFollowers(): Promise<void> {
+    try {
+      const updated = await syncFollowers(this.gateway, this.db);
+      if (updated.length) this.logger.info({ agents: updated }, "juniors follow the main agent's models");
+    } catch (error) {
+      this.logger.warn({ err: error }, "could not copy the main agent's models to juniors");
+    }
+  }
 
   async catalog(agentId: string): Promise<AiCatalogDto> {
     const [detect, plugins] = await Promise.all([
@@ -67,10 +79,17 @@ export class AiSetupService {
     if (problem) throw new ModelChainError("invalid_chain", problem);
     await writeChain(this.gateway, req.agentId, req.chain, "clawdesk: model chain");
     this.logger.info({ agentId: req.agentId, chain: req.chain }, "model chain saved");
+    if (req.agentId === "main") await this.syncFollowers();
     return this.modelChain(req.agentId);
   }
 
   async activateApiKey(req: ActivateApiKeyRequest): Promise<ActivateResultDto> {
+    const result = await this.#activateApiKey(req);
+    if (result.ok && req.agentId === "main") await this.syncFollowers();
+    return result;
+  }
+
+  async #activateApiKey(req: ActivateApiKeyRequest): Promise<ActivateResultDto> {
     const before = req.asBackup ? await readChain(this.gateway, req.agentId) : null;
     if (before) assertRoomForBackup(before);
     const res = await this.gateway.request<ActivateResult>(

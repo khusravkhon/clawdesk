@@ -75,6 +75,8 @@ export class SignInSessionManager {
   constructor(
     private readonly gateway: GatewayService,
     private readonly logger: Logger,
+    /** Called after a sign-in changed the main agent's models (juniors follow them). */
+    private readonly onMainModelsChanged: () => Promise<void> = async () => {},
   ) {}
 
   async start(agentId: string, authChoice: string, asBackup = false): Promise<SignInStateDto> {
@@ -135,6 +137,7 @@ export class SignInSessionManager {
         if (next.done || next.status === "done" || next.status === "cancelled") {
           let modelRef = next.modelActivation?.modelRef ?? next.preparedModelRef ?? null;
           if (next.status !== "cancelled" && session.backupOf) modelRef = (await keepAsBackup(this.gateway, session.state.agentId, session.backupOf)) ?? modelRef;
+          if (next.status !== "cancelled" && session.state.agentId === "main") await this.onMainModelsChanged();
           this.#finish(session, { status: next.status === "cancelled" ? "cancelled" : "done", modelRef });
           return;
         }

@@ -1,5 +1,12 @@
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
+import { FREE_MODEL_REF } from "@clawdesk/shared";
 import { describe, expect, it } from "vitest";
-import { assertRoomForBackup, baseRef, chainFromSetting, choicesFor, ModelChainError, toOptions, validateChain, withBackup } from "../src/ai-setup/model-chain.js";
+import { assertRoomForBackup, baseRef, chainFromSetting, choicesFor, followerIds, ModelChainError, syncFollowers, toOptions, validateChain, withBackup } from "../src/ai-setup/model-chain.js";
+import { openDb } from "../src/db/client.js";
+import { agents } from "../src/db/schema.js";
+import type { GatewayService } from "../src/gateway/gateway-service.js";
 
 const catalog = [
   { id: "gemini-3.7-flash", name: "Gemini 3.7 Flash", provider: "google", available: true },
@@ -54,5 +61,41 @@ describe("model chain", () => {
     expect(validateChain("main", ["nope/model"], catalog, current)).toMatch(/unknown/);
     expect(validateChain("main", ["google/gemini-3.7-flash", "freellmapi/auto"], catalog, current)).toMatch(/main agent/);
     expect(validateChain("main", ["a/1", "a/2", "a/3", "a/4", "a/5"], catalog, current)).toMatch(/at most/);
+  });
+});
+
+describe("juniors follow the main agent's models", () => {
+  it("copies the main chain only to 'same as main' juniors that differ, and only if they still exist", async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "clawdesk-chain-"));
+    const { db, close } = openDb(path.join(dir, "panel.sqlite"));
+    const row = { role: "specialist" as const, parentId: "main", displayName: "x", status: "ready" as const };
+    db.insert(agents)
+      .values([
+        { ...row, id: "diet", model: "google/gemini-3.7-flash" }, // same as main, old copy without backups
+        { ...row, id: "coach", model: null }, // own key
+        { ...row, id: "free", model: FREE_MODEL_REF }, // free models
+        { ...row, id: "team-dev", role: "team_member", model: "google/gemini-3.7-flash" }, // already in sync
+        { ...row, id: "gone", model: "google/gemini-3.7-flash" }, // removed outside the panel
+      ])
+      .run();
+    const main = { primary: "google/gemini-3.7-flash", fallbacks: ["deepseek/deepseek-v4-flash"] };
+    const patches: { raw: string; replacePaths?: string[] }[] = [];
+    const gateway = {
+      request: async (method: string, params: { raw: string; replacePaths?: string[] }) => {
+        if (method === "config.get") return { hash: "h", config: { agents: { entries: { main: { model: main }, diet: { model: "google/gemini-3.7-flash" }, coach: { model: "openai/gpt-6-luna" }, free: { model: FREE_MODEL_REF }, "team-dev": { model: main } } } } };
+        if (method === "config.patch") patches.push(params);
+        return { ok: true };
+      },
+    } as unknown as GatewayService;
+    try {
+      expect(followerIds(db).sort()).toEqual(["diet", "gone", "team-dev"]);
+      expect(await syncFollowers(gateway, db)).toEqual(["diet"]);
+      expect(JSON.parse(patches[0]!.raw)).toEqual({ agents: { entries: { diet: { model: main } } } });
+      expect(patches[0]!.replacePaths).toEqual(["agents.entries.diet.model.fallbacks"]);
+      expect(patches).toHaveLength(1);
+    } finally {
+      close();
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
   });
 });

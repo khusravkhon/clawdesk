@@ -6,6 +6,7 @@ import type { Db } from "../db/client.js";
 import { agents, agentSourceGrants, dataSources, schedules } from "../db/schema.js";
 import { getConfig, patchConfig } from "../gateway/config-patch.js";
 import type { GatewayService } from "../gateway/gateway-service.js";
+import { readChain } from "../ai-setup/model-chain.js";
 import { runSaga } from "./saga.js";
 
 // "Create a junior agent" = one chain of Gateway RPCs plus our metadata rows.
@@ -60,10 +61,12 @@ export async function createJuniorAgent(deps: CreateAgentDeps, req: CreateAgentR
   const taken = new Set(list.agents.map((a) => a.id));
   const base = deps.team ? `${deps.team.id}-${template.id}` : slugBase(template, displayName);
   let agentId = uniqueSlug(base, taken);
-  const mainModel = list.agents.find((a) => a.id === "main")?.model?.primary ?? null;
   // Free models only for personal-mode juniors; company teams and the main agent never get them.
   if (req.ai === "free" && template.mode !== "personal") throw new CreateAgentError("invalid_values", "free models are only available for personal assistants");
-  const model = req.ai === "inherit" ? mainModel : req.ai === "free" ? FREE_MODEL_REF : null;
+  // "Same as main" takes the main agent's whole chain, backups included (kept in sync by syncFollowers).
+  const mainChain = req.ai === "inherit" ? await readChain(gateway, "main") : [];
+  const model = req.ai === "inherit" ? (mainChain[0] ?? null) : req.ai === "free" ? FREE_MODEL_REF : null;
+  const modelSetting = req.ai === "inherit" && mainChain.length ? { primary: mainChain[0], fallbacks: mainChain.slice(1) } : model;
   const sandboxApplied = deps.sandboxEnabled && template.sandbox;
   const cronJobIds: string[] = [];
   const delivery = req.deliverToTelegram && deps.telegramDelivery ? deps.telegramDelivery : null;
@@ -116,7 +119,7 @@ export async function createJuniorAgent(deps: CreateAgentDeps, req: CreateAgentR
         run: async () => {
           const entry: Record<string, unknown> = {};
           if (template.skills.length) entry.skills = template.skills;
-          if (model) entry.model = model;
+          if (modelSetting) entry.model = modelSetting;
           if (!req.canAskMain) entry.tools = { deny: CROSS_AGENT_TOOLS };
           if (sandboxApplied) {
             // Only this folder of the person's files; the rest of the shared folder stays outside the sandbox.

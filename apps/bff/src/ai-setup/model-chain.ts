@@ -1,4 +1,7 @@
-import { MAX_BACKUP_MODELS, type ModelOptionDto } from "@clawdesk/shared";
+import { FREE_MODEL_REF, MAX_BACKUP_MODELS, type ModelOptionDto } from "@clawdesk/shared";
+import { inArray } from "drizzle-orm";
+import type { Db } from "../db/client.js";
+import { agents } from "../db/schema.js";
 import { getConfig, patchConfig } from "../gateway/config-patch.js";
 import type { GatewayService } from "../gateway/gateway-service.js";
 
@@ -102,6 +105,45 @@ export async function writeChain(gateway: GatewayService, agentId: string, chain
 export async function readCatalog(gateway: GatewayService): Promise<CatalogModel[]> {
   const res = await gateway.request<{ models?: CatalogModel[] }>("models.list", { view: "all" });
   return res.models ?? [];
+}
+
+/**
+ * Junior agents created with "same AI as the main agent". The panel DB keeps the main
+ * model they copied ("own" access keeps null, free models keep the free ref).
+ */
+export function followerIds(db: Db): string[] {
+  return db
+    .select({ id: agents.id, model: agents.model })
+    .from(agents)
+    .where(inArray(agents.role, ["specialist", "team_member"]))
+    .all()
+    .filter((a) => a.model !== null && a.model !== FREE_MODEL_REF)
+    .map((a) => a.id);
+}
+
+/**
+ * Juniors with the main agent's AI use its whole chain: when the main model runs out,
+ * they switch to the same backups. Only agents whose chain differs are written.
+ * Returns the ids that were updated.
+ */
+export async function syncFollowers(gateway: GatewayService, db: Db): Promise<string[]> {
+  const ids = followerIds(db);
+  if (!ids.length) return [];
+  const { config } = await getConfig<AgentsConfig>(gateway);
+  const main = chainFromSetting(config.agents?.entries?.main?.model ?? config.agents?.defaults?.model);
+  if (!main.length) return [];
+  const entries = config.agents?.entries ?? {};
+  // Agents removed outside the panel are skipped: patching them would recreate a config entry.
+  const stale = ids.filter((id) => id in entries && JSON.stringify(chainFromSetting(entries[id]!.model)) !== JSON.stringify(main));
+  if (!stale.length) return [];
+  const [primary, ...fallbacks] = main;
+  await patchConfig(
+    gateway,
+    { agents: { entries: Object.fromEntries(stale.map((id) => [id, { model: { primary, fallbacks } }])) } },
+    { replacePaths: stale.map((id) => `agents.entries.${id}.model.fallbacks`), note: "clawdesk: juniors follow the main agent's models" },
+  );
+  db.update(agents).set({ model: primary }).where(inArray(agents.id, stale)).run();
+  return stale;
 }
 
 /**

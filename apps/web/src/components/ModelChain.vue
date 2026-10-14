@@ -87,6 +87,7 @@ onMounted(load);
   <section class="card">
     <h2 class="card-title"><layers :size="16" /> {{ t("models.title") }}</h2>
     <p class="hint">{{ t("models.lead") }}</p>
+    <p class="hint">{{ t("models.followers") }}</p>
 
     <n-alert v-if="loadError" type="error" :bordered="false" class="block">
       {{ loadError }}
