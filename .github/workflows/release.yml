@@ -1,5 +1,5 @@
 # Every merge into main is a release: the checks run again, then
-#   - desktop installers (Windows, macOS, Linux) go to a GitHub release v0.1.<run>, with latest.json for the
+#   - desktop installers (Windows, Linux; macOS once the repo is public) go to a GitHub release v0.1.<run>, with latest.json for the
 #     in-app updater (installed apps offer the new version themselves);
 #   - the server images go to ghcr.io/<owner>/clawdesk-panel, clawdesk-gateway, clawdesk-sandbox with the same version.
 # Work happens on dev; only the owner merges dev → main on GitHub.
@@ -44,7 +44,8 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        platform: [windows-latest, macos-latest, ubuntu-22.04]
+        # macOS returns when the repository is public (its runner minutes cost 10x on a private one).
+        platform: [windows-latest, ubuntu-22.04]
     runs-on: ${{ matrix.platform }}
     steps:
       - uses: actions/checkout@v4
@@ -83,7 +84,7 @@ jobs:
           tagName: v${{ needs.version.outputs.version }}
           releaseName: ClawDesk ${{ needs.version.outputs.version }}
           releaseBody: |
-            Windows: ClawDesk_*_x64-setup.exe · macOS: .dmg · Linux: .AppImage or .deb.
+            Windows: ClawDesk_*_x64-setup.exe · Linux: .AppImage or .deb.
             Already installed? The app offers this version itself.
           releaseDraft: false
           includeUpdaterJson: true
