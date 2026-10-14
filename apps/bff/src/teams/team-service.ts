@@ -181,7 +181,18 @@ export class TeamService {
       if (!agentId) throw new TeamError("telegram_links", `the team has no ${p.role}`);
       return { topicId: p.topicId, agentId };
     });
-    await this.deps.telegram.linkGroup(chatId, topics);
+    // Topics this team had in the same group before, now without a role.
+    const dropTopics =
+      team.telegramGroupId === chatId
+        ? this.deps.db
+            .select({ topicId: channelBindings.topicId })
+            .from(channelBindings)
+            .where(and(eq(channelBindings.peerKind, "group"), eq(channelBindings.peerId, chatId)))
+            .all()
+            .map((b) => b.topicId!)
+            .filter((id) => id && !topics.some((t) => t.topicId === id))
+        : [];
+    await this.deps.telegram.linkGroup(chatId, topics, dropTopics);
 
     const { db, gateway } = this.deps;
     db.delete(channelBindings).where(and(eq(channelBindings.channel, "telegram"), eq(channelBindings.peerKind, "group"), eq(channelBindings.peerId, team.telegramGroupId ?? chatId))).run();

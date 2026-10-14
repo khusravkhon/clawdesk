@@ -27,6 +27,11 @@ describe("agent → template", () => {
     expect(files["USER.md"]).toBe("О владельце");
   });
 
+  it("also drops the block about data from the main agent", () => {
+    const files = filesToTemplate({ soul: "", user: "", agents: "Своё.\n\n## Данные от главного (ClawDesk)\n\nСпрашивай главного." }, "Агент");
+    expect(files["AGENTS.md"]).toBe("Своё.\n");
+  });
+
   it("does not replace very short names inside ordinary words", () => {
     expect(filesToTemplate({ soul: "# Я\n\nЯблоко", user: "", agents: "" }, "Я")["SOUL.md"]).toBe("# Я\n\nЯблоко");
   });

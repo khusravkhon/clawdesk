@@ -81,7 +81,11 @@ export async function createJuniorAgent(deps: CreateAgentDeps, req: CreateAgentR
         // Kept on rollback: the folder may already hold the person's files.
         name: "folder",
         run: async () => {
-          if (!req.folder) return;
+          if (!req.folder) {
+            // No folder: data from the main agent still has a place, the agent's own workspace.
+            if (req.canAskMain) files["AGENTS.md"] = `${files["AGENTS.md"].trimEnd()}\n\n${askMainBlock()}\n`;
+            return;
+          }
           const made = await deps.folders!.ensureFolder(req.folder);
           folder = { name: req.folder, hostPath: made.hostPath, agentPath: sandboxApplied ? `${SANDBOX_FOLDERS}/${req.folder}` : made.gatewayPath };
           files["AGENTS.md"] = `${files["AGENTS.md"].trimEnd()}\n\n${dataAccessBlock(folder.agentPath, req.folder, req.canAskMain)}\n`;
@@ -255,6 +259,30 @@ export function dataAccessBlock(agentPath: string, folderName: string, canAskMai
     canAskMain
       ? "Почту, Notion, Google и файлы других агентов ты не видишь — спрашивай главного ассистента конкретный факт или путь."
       : "Почту, Notion, Google и файлы других агентов ты не видишь и спросить главного не можешь: работай с тем, что есть.",
+    ...(canAskMain ? ["", savingRule(`папку \`${agentPath}/данные\``)] : []),
+  ].join("\n");
+}
+
+/** For a junior without its own folder that may ask the main agent. */
+export function askMainBlock(): string {
+  return [
+    "## Данные от главного (ClawDesk)",
+    "",
+    "Почту, Notion, Google и файлы владельца ты не видишь — спрашивай главного ассистента.",
+    "",
+    savingRule("свою рабочую папку `данные/`"),
+  ].join("\n");
+}
+
+/**
+ * Data the junior needs for its work (finances from Notion, a training log…) is asked from the main agent
+ * once, kept, and reused, instead of asking again for every answer.
+ */
+function savingRule(where: string): string {
+  return [
+    "Когда для работы нужны данные владельца (например, доходы и расходы из Notion), попроси главного прислать их",
+    `таблицей по твоей теме и сохрани в ${where} (один файл на тему, в начале — откуда данные и на какую дату).`,
+    "Дальше работай с сохранёнными данными. Обновляй их у главного, когда владелец просит или данным больше недели.",
   ].join("\n");
 }
 

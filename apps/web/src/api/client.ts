@@ -46,6 +46,8 @@ import type {
   StartGoogleLoginResultDto,
   StartNotionOAuthResultDto,
   StartSignInRequest,
+  AgentTopicsDto,
+  LinkAgentTopicsRequest,
   AgentProfileDto,
   SaveAgentProfileRequest,
   SaveAsTemplateRequest,
@@ -150,6 +152,10 @@ export const api = {
     approve: (requestId: string, accountId: string) => post<ApproveTelegramResultDto>("/api/telegram/pairing/approve", { requestId, accountId }),
     test: (text: string) => post<void>("/api/telegram/test", { text }),
     approvals: (enabled: boolean) => post<TelegramStatusDto>("/api/telegram/approvals", { enabled }),
+    topics: () => request<AgentTopicsDto>("/api/telegram/topics"),
+    saveTopics: (body: LinkAgentTopicsRequest) =>
+      request<AgentTopicsDto>("/api/telegram/topics", { method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify(body) }),
+    removeTopics: () => request<AgentTopicsDto>("/api/telegram/topics", { method: "DELETE" }),
   },
   freeModels: {
     status: () => request<FreeModelsStatusDto>("/api/free-models"),

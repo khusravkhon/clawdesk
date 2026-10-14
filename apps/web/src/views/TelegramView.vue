@@ -5,6 +5,7 @@ import type { TelegramPairingRequestDto, TelegramStatusDto } from "@clawdesk/sha
 import { NA, NAlert, NButton, NCard, NInput, NPopconfirm, NSpace, NSpin, NStep, NSteps, NSwitch, NTag, NText, useMessage } from "naive-ui";
 import { computed, onBeforeUnmount, onMounted, ref } from "vue";
 import { useI18n } from "vue-i18n";
+import AgentTopics from "../components/AgentTopics.vue";
 import PageHeader from "../components/ui/PageHeader.vue";
 import { api, ApiError } from "../api/client";
 
@@ -212,6 +213,11 @@ onBeforeUnmount(() => clearInterval(pollTimer));
               </n-popconfirm>
             </n-space>
           </n-space>
+        </n-card>
+
+        <!-- 4. a topic per agent in a group -->
+        <n-card v-if="status && step === 3" :title="t('telegram.topics.title')" class="mt">
+          <AgentTopics />
         </n-card>
       </n-spin>
     </n-space>

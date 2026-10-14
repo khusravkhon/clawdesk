@@ -15,8 +15,8 @@ export type ProfileDeps = { gateway: GatewayService; db: Db; logger: Logger };
 
 const FILE_NAMES = { soul: "SOUL.md", user: "USER.md", agents: "AGENTS.md" } as const satisfies Record<keyof AgentFiles, string>;
 
-/** The block create-agent appends to AGENTS.md for the agent's folder; a template gets it again for its own folder. */
-const FOLDER_BLOCK = "\n\n## Твоя папка (ClawDesk)";
+/** Blocks create-agent appends to AGENTS.md (the agent's folder, or data from the main agent); a template gets them again. */
+const PANEL_BLOCKS = ["\n\n## Твоя папка (ClawDesk)", "\n\n## Данные от главного (ClawDesk)"];
 
 export class AgentProfileError extends Error {
   constructor(
@@ -76,7 +76,8 @@ export function filesToTemplate(files: AgentFiles, agentName: string): Record<st
     // Short names ("Я", "Ту") would also hit ordinary words.
     return name.length >= 3 ? safe.split(name).join("{{agentName}}") : safe;
   };
-  const agentsMd = files.agents.includes(FOLDER_BLOCK) ? files.agents.slice(0, files.agents.indexOf(FOLDER_BLOCK)) + "\n" : files.agents;
+  const cut = Math.min(...PANEL_BLOCKS.map((b) => files.agents.indexOf(b)).filter((i) => i >= 0));
+  const agentsMd = Number.isFinite(cut) ? files.agents.slice(0, cut) + "\n" : files.agents;
   return { "SOUL.md": convert(files.soul), "USER.md": convert(files.user), "AGENTS.md": convert(agentsMd) };
 }
 
