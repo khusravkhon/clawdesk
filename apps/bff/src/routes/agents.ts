@@ -135,12 +135,15 @@ export function registerAgentRoutes(app: FastifyInstance, deps: AgentRouteDeps):
 
   app.delete("/api/agents/:agentId", async (request, reply) => {
     const { agentId } = AgentParams.parse(request.params);
+    const topics = deps.telegram.agentTopics();
     try {
       await deleteJuniorAgent(deps, agentId);
     } catch (error) {
       if (error instanceof CreateAgentError) return reply.status(400).send({ error: error.code, message: error.message } satisfies ApiErrorDto);
       throw error;
     }
+    // Its Telegram topic (if any) must not keep pointing at an agent that is gone.
+    await deps.telegram.forgetAgentTopic(topics, agentId).catch((error: Error) => deps.logger.warn({ err: error, agentId }, "could not free the agent's Telegram topic"));
     return reply.status(204).send();
   });
 }

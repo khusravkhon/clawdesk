@@ -245,7 +245,9 @@
     },
     "subtitle": "Agents message you in Telegram: plans, reminders, answers",
     "approvals": "Approvals in Telegram",
-    "approvalsHint": "When an agent wants to run a command on the server, the bot sends you Allow and Deny buttons in a private chat. Only you can decide. Switching restarts the system (about 10 seconds)."
+    "approvalsHint": "When an agent wants to run a command on the server, the bot sends you Allow and Deny buttons in a private chat. Only you can decide. Switching restarts the system (about 10 seconds).",
+    "topics": "Telegram topics linked to agents",
+    "topicsRemove": "Telegram agents' group unlinked"
   },
   "free": {
     "title": "Free models (experimental)",

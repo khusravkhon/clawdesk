@@ -40,6 +40,8 @@ const ACTIONS: Record<string, string> = {
   "POST /api/telegram/disconnect": "telegram.disconnect",
   "POST /api/telegram/pairing/approve": "telegram.approveOwner",
   "POST /api/telegram/approvals": "telegram.approvals",
+  "PUT /api/telegram/topics": "telegram.topics",
+  "DELETE /api/telegram/topics": "telegram.topicsRemove",
   "POST /api/sources/notion/token": "source.notionConnect",
   "POST /api/sources/notion/oauth": "source.notionSignIn",
   "GET /api/sources/notion/callback": "source.notionSignedIn",

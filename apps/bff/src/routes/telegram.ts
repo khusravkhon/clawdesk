@@ -1,8 +1,10 @@
 import {
   ApproveTelegramRequest,
   ConnectTelegramRequest,
+  LinkAgentTopicsRequest,
   TelegramApprovalsRequest,
   type ApiErrorDto,
+  type AgentTopicsDto,
   type ApproveTelegramResultDto,
   type TelegramPairingRequestDto,
   type TelegramStatusDto,
@@ -37,6 +39,16 @@ export function registerTelegramRoutes(app: FastifyInstance, deps: { telegram: T
     const { enabled } = TelegramApprovalsRequest.parse(request.body);
     return withTelegramErrors(reply, () => deps.telegram.setApprovals(enabled));
   });
+
+  // A topic per agent in the owner's group.
+  app.get("/api/telegram/topics", async (): Promise<AgentTopicsDto> => deps.telegram.agentTopics());
+
+  app.put("/api/telegram/topics", async (request, reply): Promise<AgentTopicsDto | ApiErrorDto> => {
+    const { topics } = LinkAgentTopicsRequest.parse(request.body);
+    return withTelegramErrors(reply, () => deps.telegram.linkAgentTopics(topics));
+  });
+
+  app.delete("/api/telegram/topics", async (): Promise<AgentTopicsDto> => deps.telegram.unlinkAgentTopics());
 
   app.post("/api/telegram/test", async (request, reply) => {
     const { text } = TestMessage.parse(request.body);

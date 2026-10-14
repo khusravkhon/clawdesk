@@ -1,9 +1,9 @@
 import crypto from "node:crypto";
-import type { ApproveTelegramResultDto, TelegramPairingRequestDto, TelegramStatusDto } from "@clawdesk/shared";
+import { parseTopicLink, topicLink, type AgentTopicsDto, type ApproveTelegramResultDto, type TelegramPairingRequestDto, type TelegramStatusDto } from "@clawdesk/shared";
 import { and, eq, isNull } from "drizzle-orm";
 import type { Logger } from "pino";
 import type { Db } from "../db/client.js";
-import { channelBindings, schedules, settings } from "../db/schema.js";
+import { agents, channelBindings, schedules, settings, teams } from "../db/schema.js";
 import { getConfig, patchConfig } from "../gateway/config-patch.js";
 import type { GatewayService } from "../gateway/gateway-service.js";
 
@@ -14,6 +14,8 @@ import type { GatewayService } from "../gateway/gateway-service.js";
 const TOKEN_SECRET = "CLAWDESK_TELEGRAM_BOT_TOKEN";
 const BOT_SETTING = "telegram.bot";
 const OWNER_LABEL_SETTING = "telegram.ownerLabel";
+/** The owner's group whose topics are personal agents' chats. */
+const AGENTS_GROUP_SETTING = "telegram.agentsGroup";
 
 type BotInfo = { id: number; username: string; name: string };
 type TelegramConfig = { enabled?: boolean; botToken?: unknown; execApprovals?: { enabled?: boolean | string; approvers?: string[] } };
@@ -24,7 +26,7 @@ type PairingList = {
 
 export class TelegramError extends Error {
   constructor(
-    readonly code: "invalid_token" | "telegram_unreachable" | "not_connected" | "no_owner",
+    readonly code: "invalid_token" | "telegram_unreachable" | "not_connected" | "no_owner" | "topic_links",
     message: string,
   ) {
     super(message);
@@ -167,10 +169,11 @@ export class TelegramService {
   }
 
   /**
-   * A team's Telegram group: each topic answered by one agent. Group chat stays limited to listed groups
-   * and to the owner as sender (groupPolicy allowlist). Restarts the Gateway.
+   * A Telegram group with topics (a team's, or the owner's group for personal agents): each listed topic is
+   * answered by one agent, every other topic is ignored ("*" disabled), and only the owner can talk there
+   * (groupPolicy allowlist). `dropTopics`: topics linked before that no longer have an agent. Restarts the Gateway.
    */
-  async linkGroup(chatId: string, topics: { topicId: string; agentId: string }[]): Promise<void> {
+  async linkGroup(chatId: string, topics: { topicId: string; agentId: string }[], dropTopics: string[] = []): Promise<void> {
     const owner = this.#owner();
     if (!owner?.peerId) throw new TelegramError("no_owner", "approve yourself in the bot first");
     const { config } = await getConfig<{ channels?: { telegram?: { groupAllowFrom?: string[] } } }>(this.gateway);
@@ -186,7 +189,12 @@ export class TelegramService {
               [chatId]: {
                 enabled: true,
                 requireMention: false,
-                topics: Object.fromEntries(topics.map((t) => [t.topicId, { agentId: t.agentId, requireMention: false }])),
+                topics: {
+                  // Topics without an agent stay silent (no fallback to the main agent).
+                  "*": { enabled: false },
+                  ...Object.fromEntries(dropTopics.map((id) => [id, null])),
+                  ...Object.fromEntries(topics.map((t) => [t.topicId, { enabled: true, agentId: t.agentId, requireMention: false }])),
+                },
               },
             },
           },
@@ -194,8 +202,105 @@ export class TelegramService {
       },
       generation,
     );
-    if (this.gateway.generation === generation) await this.#restart("clawdesk: team telegram group");
+    if (this.gateway.generation === generation) await this.#restart("clawdesk: telegram group topics");
     this.logger.info({ chatId, topics: topics.length }, "telegram group linked");
+  }
+
+  // --- The owner's group for personal agents: a topic per agent (the main agent too) ---
+
+  /** Topics of agents that are not in a team (teams keep their own group). */
+  agentTopics(): AgentTopicsDto {
+    const chatId = this.#getSetting<string>(AGENTS_GROUP_SETTING);
+    if (!chatId) return { chatId: null, topics: [] };
+    const rows = this.db
+      .select()
+      .from(channelBindings)
+      .where(and(eq(channelBindings.channel, "telegram"), eq(channelBindings.peerKind, "group"), eq(channelBindings.peerId, chatId)))
+      .all()
+      .filter((r) => r.topicId);
+    return { chatId, topics: rows.map((r) => ({ agentId: r.agentId, topicId: r.topicId!, link: topicLink(chatId, r.topicId!) })) };
+  }
+
+  /**
+   * Links topics of one group to agents (a topic per agent). Agents that lose their topic, and the agents'
+   * scheduled reports, go back to the owner's private chat. Restarts the Gateway.
+   */
+  async linkAgentTopics(links: { agentId: string; link: string }[]): Promise<AgentTopicsDto> {
+    const parsed = links.map((l) => ({ agentId: l.agentId, ...parseTopicLink(l.link)! }));
+    const chatIds = new Set(parsed.map((p) => p.chatId));
+    if (chatIds.size !== 1) throw new TelegramError("topic_links", "all topics must be in the same group");
+    const chatId = [...chatIds][0]!;
+    if (new Set(parsed.map((p) => p.topicId)).size !== parsed.length) throw new TelegramError("topic_links", "one topic per agent");
+    if (new Set(parsed.map((p) => p.agentId)).size !== parsed.length) throw new TelegramError("topic_links", "one topic per agent");
+    if (this.db.select().from(teams).where(eq(teams.telegramGroupId, chatId)).get()) throw new TelegramError("topic_links", "this group belongs to a project team");
+    const known = new Map(this.db.select({ id: agents.id, role: agents.role }).from(agents).all().map((a) => [a.id, a.role]));
+    for (const p of parsed) {
+      const role = p.agentId === "main" ? "main" : known.get(p.agentId);
+      if (!role) throw new TelegramError("topic_links", `unknown agent ${p.agentId}`);
+      if (role === "team_member") throw new TelegramError("topic_links", "team agents are linked on the team's screen");
+    }
+
+    const before = this.agentTopics();
+    if (before.chatId && before.chatId !== chatId) await this.unlinkGroup(before.chatId);
+    const dropTopics = before.chatId === chatId ? before.topics.map((t) => t.topicId).filter((id) => !parsed.some((p) => p.topicId === id)) : [];
+    await this.linkGroup(chatId, parsed, dropTopics);
+
+    if (before.chatId) this.db.delete(channelBindings).where(and(eq(channelBindings.peerKind, "group"), eq(channelBindings.peerId, before.chatId))).run();
+    for (const p of parsed) {
+      this.db.insert(channelBindings).values({ id: crypto.randomUUID(), agentId: p.agentId, channel: "telegram", accountId: null, peerKind: "group", peerId: chatId, topicId: p.topicId }).run();
+    }
+    this.#putSetting(AGENTS_GROUP_SETTING, chatId);
+    await this.#routeAgentSchedules(chatId, parsed, before.topics.map((t) => t.agentId));
+    this.logger.info({ chatId, topics: parsed.length }, "agent topics linked");
+    return this.agentTopics();
+  }
+
+  /** Agents leave the group: their chat is the bot's private chat again (through the main agent). */
+  async unlinkAgentTopics(): Promise<AgentTopicsDto> {
+    const before = this.agentTopics();
+    if (!before.chatId) return before;
+    await this.unlinkGroup(before.chatId);
+    this.db.delete(channelBindings).where(and(eq(channelBindings.peerKind, "group"), eq(channelBindings.peerId, before.chatId))).run();
+    this.db.delete(settings).where(eq(settings.key, AGENTS_GROUP_SETTING)).run();
+    await this.#routeAgentSchedules(before.chatId, [], before.topics.map((t) => t.agentId));
+    return this.agentTopics();
+  }
+
+  /**
+   * After an agent is deleted: its topic goes silent. `before` is read before the deletion, because the
+   * agent's binding rows go with it.
+   */
+  async forgetAgentTopic(before: AgentTopicsDto, agentId: string): Promise<void> {
+    const gone = before.topics.find((t) => t.agentId === agentId);
+    if (!before.chatId || !gone) return;
+    const remaining = before.topics.filter((t) => t.agentId !== agentId);
+    if (remaining.length) {
+      await this.linkGroup(before.chatId, remaining, [gone.topicId]);
+    } else {
+      await this.unlinkGroup(before.chatId);
+      this.db.delete(settings).where(eq(settings.key, AGENTS_GROUP_SETTING)).run();
+    }
+  }
+
+  /** Scheduled reports of agents with a topic go to it; those that lost theirs go to the owner's chat. */
+  async #routeAgentSchedules(chatId: string, topics: { agentId: string; topicId: string }[], previous: string[]): Promise<void> {
+    const owner = this.#owner();
+    const affected = new Set([...topics.map((t) => t.agentId), ...previous]);
+    for (const row of this.db.select().from(schedules).all()) {
+      if (!row.openclawCronId || !affected.has(row.agentId)) continue;
+      const topic = topics.find((t) => t.agentId === row.agentId);
+      // Only schedules already delivered to Telegram (the owner's chat or a topic) move; the rest stay in the panel.
+      if (!row.deliverTo?.startsWith("telegram:")) continue;
+      const delivery = topic
+        ? { mode: "announce" as const, channel: "telegram", to: chatId, threadId: topic.topicId, bestEffort: true }
+        : owner?.peerId
+          ? telegramDelivery(owner.peerId)
+          : null;
+      if (!delivery) continue;
+      await this.gateway.request("cron.update", { id: row.openclawCronId, patch: { delivery } });
+      const deliverTo = topic ? `telegram:${chatId}:${topic.topicId}` : `telegram:${owner!.peerId}`;
+      this.db.update(schedules).set({ deliverTo }).where(eq(schedules.id, row.id)).run();
+    }
   }
 
   /** Removes a team's group (its agents are gone or the team is unlinked). */

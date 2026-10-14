@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { parseTopicLink } from "./teams.js";
 
 // Telegram screen (6): connect a bot, approve the owner, route schedules to Telegram.
 // The bot token only travels browser → BFF → Gateway secret store; it never comes back.
@@ -50,3 +51,32 @@ export type ApproveTelegramResultDto = z.infer<typeof ApproveTelegramResultDto>;
 
 export const TelegramApprovalsRequest = z.object({ enabled: z.boolean() });
 export type TelegramApprovalsRequest = z.infer<typeof TelegramApprovalsRequest>;
+
+// --- Topics for agents: a Telegram group with topics, each topic answered by one agent ---
+
+export const AgentTopicsDto = z.object({
+  /** The linked group ("-100…"), null when none. */
+  chatId: z.string().nullable(),
+  /** Agents with a topic; the rest are only reachable through the main agent in the bot's chat. */
+  topics: z.array(z.object({ agentId: z.string(), topicId: z.string(), link: z.string() })),
+});
+export type AgentTopicsDto = z.infer<typeof AgentTopicsDto>;
+
+export const LinkAgentTopicsRequest = z.object({
+  /** "Copy link" of each topic in Telegram (https://t.me/c/<chat>/<topic>); all in one group. */
+  topics: z
+    .array(
+      z.object({
+        agentId: z.string().regex(/^[a-z0-9][a-z0-9-]{0,63}$/),
+        link: z.string().trim().refine((l) => parseTopicLink(l) !== null, "paste the topic's link, it starts with https://t.me/c/"),
+      }),
+    )
+    .min(1)
+    .max(30),
+});
+export type LinkAgentTopicsRequest = z.infer<typeof LinkAgentTopicsRequest>;
+
+/** The topic's link as Telegram shows it, for a group id "-100…" and a topic id. */
+export function topicLink(chatId: string, topicId: string): string {
+  return `https://t.me/c/${chatId.replace(/^-100/, "")}/${topicId}`;
+}

@@ -92,6 +92,8 @@ describe("junior agent folders", () => {
       const agentsMd = calls.find((c) => c.method === "agents.files.set" && c.params.name === "AGENTS.md")!.params.content as string;
       expect(agentsMd).toContain("Твоя папка: `/workspace/folders/Питание`");
       expect(agentsMd).toContain("спрашивай главного ассистента");
+      // Data from the main agent is kept in the folder and reused.
+      expect(agentsMd).toContain("сохрани в папку `/workspace/folders/Питание/данные`");
       const listed = await listAgents({ gateway: { request: async () => ({ defaultId: "main", agents: [{ id: res.agentId }] }) } as unknown as GatewayService, db, sandboxEnabled: true });
       expect(listed.agents[0]!.folder).toBe("Питание");
     } finally {
