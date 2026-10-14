@@ -1,3 +1,4 @@
+import { CronExpr } from "@clawdesk/shared";
 import { describe, expect, it } from "vitest";
 import { listTemplates, loadTemplate, renderTemplateFiles, renderTemplateText, TEAM_VALUES } from "../src/index.js";
 
@@ -10,10 +11,12 @@ describe("templates", () => {
       "company/main",
       "company/pm",
       "company/reviewer",
+      "personal/accountant",
       "personal/custom",
       "personal/dietitian",
       "personal/finance",
       "personal/main",
+      "personal/social",
       "personal/trainer",
       "personal/youtube",
     ]);
@@ -23,6 +26,12 @@ describe("templates", () => {
       if (template.role === "team_member") for (const key of TEAM_VALUES) required[key] = `value-${key}`;
       const files = renderTemplateFiles(template, required);
       for (const content of Object.values(files)) expect(content).not.toMatch(/\{\{/);
+    }
+  });
+
+  it("every preset schedule is one the builder accepts", () => {
+    for (const template of listTemplates()) {
+      for (const preset of template.cronPresets) expect(CronExpr.safeParse(preset.cron).success, `${template.id}/${preset.id}: ${preset.cron}`).toBe(true);
     }
   });
 

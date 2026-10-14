@@ -1,0 +1,58 @@
+{
+  "id": "social",
+  "mode": "personal",
+  "role": "specialist",
+  "emoji": "📱",
+  "title": { "ru": "Соцсети", "en": "Social media", "tg": "Шабакаҳои иҷтимоӣ" },
+  "description": {
+    "ru": "Идеи постов и роликов, тексты и контент-план на неделю. Идеи для длинных видео откладывает для YouTube.",
+    "en": "Post and video ideas, captions and a weekly content plan. Keeps ideas for long videos aside for YouTube.",
+    "tg": "Ғояҳои постҳо ва видеоҳо, матнҳо ва нақшаи контент барои ҳафта."
+  },
+  "fields": [
+    { "key": "agentName", "type": "text", "label": { "ru": "Имя", "en": "Name", "tg": "Ном" }, "default": "Соцсети" },
+    {
+      "key": "about",
+      "type": "textarea",
+      "label": { "ru": "О чём вы пишете и для кого", "en": "What you post about and for whom", "tg": "Дар бораи чӣ менависед ва барои кӣ" }
+    },
+    {
+      "key": "platforms",
+      "type": "text",
+      "label": { "ru": "Площадки", "en": "Platforms", "tg": "Платформаҳо" },
+      "default": "Instagram, TikTok, YouTube Shorts, Telegram"
+    },
+    {
+      "key": "style",
+      "type": "textarea",
+      "label": { "ru": "Стиль и тон", "en": "Style and tone", "tg": "Услуб ва оҳанг" },
+      "required": false,
+      "default": "живо, по-человечески, без воды"
+    },
+    {
+      "key": "rhythm",
+      "type": "text",
+      "label": { "ru": "Как часто публиковать", "en": "How often to post", "tg": "Чӣ қадар зуд нашр кардан" },
+      "required": false,
+      "default": "3 поста в неделю"
+    }
+  ],
+  "sources": ["folder"],
+  "folder": { "ru": "Соцсети", "en": "Social media", "tg": "Шабакаҳои иҷтимоӣ" },
+  "cronPresets": [
+    {
+      "id": "plan",
+      "label": { "ru": "Пн 10:00 контент-план на неделю", "en": "Mon 10:00 weekly content plan" },
+      "cron": "0 10 * * 1",
+      "prompt": "Составь контент-план на эту неделю по ритму владельца: для каждой публикации — площадка, идея, крючок в первой строке, текст или сценарий ролика до 60 секунд. Сохрани план в папку и пришли коротко."
+    },
+    {
+      "id": "idea",
+      "label": { "ru": "09:00 идея дня", "en": "09:00 idea of the day" },
+      "cron": "0 9 * * *",
+      "prompt": "Предложи одну свежую идею публикации на сегодня с готовым текстом. Не повторяй идеи из файла идей."
+    }
+  ],
+  "canAskMain": true,
+  "sandbox": true
+}

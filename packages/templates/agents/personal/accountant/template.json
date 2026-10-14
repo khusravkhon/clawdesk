@@ -1,0 +1,54 @@
+{
+  "id": "accountant",
+  "mode": "personal",
+  "role": "specialist",
+  "emoji": "🧾",
+  "title": { "ru": "Бухгалтер", "en": "Accountant", "tg": "Муҳосиб" },
+  "description": {
+    "ru": "Распределяет доходы по конвертам, ведёт учёт в таблице и подсказывает, куда направить остаток. Без доступа к банку.",
+    "en": "Splits income into envelopes, keeps the books in a spreadsheet and suggests where the leftover could go. No bank access.",
+    "tg": "Даромадро ба лифофаҳо тақсим мекунад, ҳисобро дар ҷадвал пеш мебарад ва пешниҳод мекунад, ки боқимондаро ба куҷо равона кунед."
+  },
+  "fields": [
+    { "key": "agentName", "type": "text", "label": { "ru": "Имя", "en": "Name", "tg": "Ном" }, "default": "Бухгалтер" },
+    { "key": "currency", "type": "text", "label": { "ru": "Основная валюта", "en": "Main currency", "tg": "Асъори асосӣ" }, "default": "TJS" },
+    {
+      "key": "income",
+      "type": "textarea",
+      "label": { "ru": "Доходы: откуда и когда приходят", "en": "Income: where it comes from and when", "tg": "Даромад: аз куҷо ва кай меояд" },
+      "required": false,
+      "default": "расскажу в чате"
+    },
+    {
+      "key": "rules",
+      "type": "textarea",
+      "label": { "ru": "Как делить деньги", "en": "How to split the money", "tg": "Пулро чӣ тавр тақсим кардан" },
+      "default": "50% — обязательное (жильё, еда, транспорт, кредиты), 30% — желания, 20% — накопления и вложения"
+    },
+    {
+      "key": "goals",
+      "type": "textarea",
+      "label": { "ru": "Цели и подушка безопасности", "en": "Goals and emergency fund", "tg": "Мақсадҳо ва захираи эҳтиётӣ" },
+      "required": false,
+      "default": "подушка безопасности на 3 месяца расходов"
+    }
+  ],
+  "sources": ["folder"],
+  "folder": { "ru": "Бухгалтерия", "en": "Accounting", "tg": "Муҳосибот" },
+  "cronPresets": [
+    {
+      "id": "evening",
+      "label": { "ru": "21:00 записать траты дня", "en": "21:00 log today's spending" },
+      "cron": "0 21 * * *",
+      "prompt": "Коротко спроси владельца, какие сегодня были доходы и траты, если он ещё не писал. Запиши ответ в учёт."
+    },
+    {
+      "id": "weekly",
+      "label": { "ru": "Вс 19:00 итоги недели и остатки", "en": "Sun 19:00 week results and what is left" },
+      "cron": "0 19 * * 0",
+      "prompt": "Подведи итоги недели по учёту: доходы, траты по конвертам, сколько осталось в каждом до конца месяца. Обнови бюджет. Если конверт уходит в минус — предложи, откуда переложить. В последнюю неделю месяца предложи, куда направить свободный остаток."
+    }
+  ],
+  "canAskMain": false,
+  "sandbox": true
+}
