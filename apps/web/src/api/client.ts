@@ -46,6 +46,8 @@ import type {
   StartGoogleLoginResultDto,
   StartNotionOAuthResultDto,
   StartSignInRequest,
+  ModelChainDto,
+  SaveModelChainRequest,
   TelegramPairingRequestDto,
   TelegramStatusDto,
   TemplateDto,
@@ -195,6 +197,9 @@ export const api = {
     catalog: (agentId: string) => request<AiCatalogDto>(`/api/ai/catalog?${q(agentId)}`),
     install: (pluginId: string) => post<InstallProviderResultDto>(`/api/ai/providers/${encodeURIComponent(pluginId)}/install`),
     activate: (body: ActivateApiKeyRequest) => post<ActivateResultDto>("/api/ai/activate", body),
+    models: (agentId: string) => request<ModelChainDto>(`/api/ai/models?${q(agentId)}`),
+    saveModels: (body: SaveModelChainRequest) =>
+      request<ModelChainDto>("/api/ai/models", { method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify(body) }),
     signIn: {
       start: (body: StartSignInRequest) => post<SignInStateDto>("/api/ai/signin", body),
       get: (sessionId: string) => request<SignInStateDto>(`/api/ai/signin/${encodeURIComponent(sessionId)}`),

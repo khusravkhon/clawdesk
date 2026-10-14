@@ -6,6 +6,7 @@ import { NAlert, NButton, NInput, NInputNumber, NSkeleton, useMessage } from "na
 import { computed, onMounted, reactive, ref } from "vue";
 import { useI18n } from "vue-i18n";
 import { api, ApiError } from "../api/client";
+import ModelChain from "../components/ModelChain.vue";
 import PageHeader from "../components/ui/PageHeader.vue";
 
 const { t } = useI18n();
@@ -129,6 +130,8 @@ onMounted(load);
         </n-button>
         <span class="muted small">{{ t("assistant.saveHint") }}</span>
       </div>
+
+      <ModelChain agent-id="main" />
 
       <section class="card memory">
         <h2 class="card-title"><brain :size="16" /> {{ t("assistant.memory.title") }}</h2>

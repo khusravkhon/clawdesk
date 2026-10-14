@@ -82,6 +82,31 @@
     },
     "switchedModel": "The default (Pro) model is not available on a free key, so the free Gemini Flash model was connected."
   },
+  "models": {
+    "title": "AI models",
+    "lead": "The main model always answers first. If it hits a limit, the key runs out of money or the provider is overloaded, the next model in the list answers that message. The next message goes to the main model again.",
+    "main": "Main",
+    "backup": "Backup {n}",
+    "ready": "connected",
+    "notReady": "no access",
+    "notReadyHint": "A model marked “no access” has no key or subscription connected, so OpenClaw skips it. Connect it with “Connect a new AI” or remove it from the list.",
+    "up": "Move up",
+    "down": "Move down",
+    "remove": "Remove",
+    "empty": "No model connected yet.",
+    "pick": "A model of an AI you already connected…",
+    "noChoices": "No other models of connected AIs — connect a new AI",
+    "add": "Add",
+    "connectNew": "Connect a new AI",
+    "connectHint": "The key or subscription is added as a backup model: the main model stays as it is.",
+    "full": "At most {n} backup models. Remove one to add another.",
+    "saveFirst": "Save your changes before connecting a new AI.",
+    "save": "Save order",
+    "reset": "Discard",
+    "saved": "Model list saved",
+    "added": "Backup model connected",
+    "tip": "Cheap and reliable: DeepSeek V4 Flash (≈ $0.14 / $0.28 per 1M tokens), GLM-5.3-Flash, Gemini Flash-Lite. Back up a ChatGPT Plus subscription with a pay-as-you-go key."
+  },
   "signIn": {
     "deviceSteps": "Open the sign-in page in your own browser, sign in and enter this code:",
     "copy": "Copy",
@@ -733,7 +758,8 @@
       "ai": {
         "connect": "AI connected",
         "signIn": "AI subscription sign-in",
-        "installProvider": "AI provider installed"
+        "installProvider": "AI provider installed",
+        "models": "AI model list changed"
       },
       "assistant": {
         "save": "Assistant changed",

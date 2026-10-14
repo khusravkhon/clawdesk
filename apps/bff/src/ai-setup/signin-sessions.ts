@@ -2,6 +2,7 @@ import crypto from "node:crypto";
 import type { SignInAnswerRequest, SignInPromptDto, SignInStateDto } from "@clawdesk/shared";
 import type { Logger } from "pino";
 import type { GatewayService } from "../gateway/gateway-service.js";
+import { assertRoomForBackup, keepAsBackup, readChain } from "./model-chain.js";
 
 // Subscription sign-in (ChatGPT, Copilot, xAI, OpenRouter, MiniMax…) runs as a
 // Gateway wizard: openclaw.setup.auth.start, then wizard.next until done.
@@ -37,7 +38,12 @@ class SignInSession {
   cancelled = false;
   pendingAnswer: { stepId: string; resolve: (value: unknown) => void; reject: (error: Error) => void } | null = null;
 
-  constructor(sessionId: string, agentId: string) {
+  constructor(
+    sessionId: string,
+    agentId: string,
+    /** The agent's model chain before sign-in, when the new model joins it as a backup. */
+    readonly backupOf: string[] | null,
+  ) {
     this.state = {
       sessionId,
       agentId,
@@ -71,13 +77,15 @@ export class SignInSessionManager {
     private readonly logger: Logger,
   ) {}
 
-  async start(agentId: string, authChoice: string): Promise<SignInStateDto> {
+  async start(agentId: string, authChoice: string, asBackup = false): Promise<SignInStateDto> {
     this.#sweep();
+    const backupOf = asBackup ? await readChain(this.gateway, agentId) : null;
+    if (backupOf) assertRoomForBackup(backupOf);
     const sessionId = crypto.randomUUID();
     await this.gateway.request("openclaw.setup.auth.start", { sessionId, agentId, authChoice });
-    const session = new SignInSession(sessionId, agentId);
+    const session = new SignInSession(sessionId, agentId, backupOf);
     this.#sessions.set(sessionId, session);
-    this.logger.info({ sessionId, agentId, authChoice }, "subscription sign-in started");
+    this.logger.info({ sessionId, agentId, authChoice, asBackup }, "subscription sign-in started");
     void this.#drive(session);
     return session.state;
   }
@@ -125,7 +133,8 @@ export class SignInSessionManager {
           return;
         }
         if (next.done || next.status === "done" || next.status === "cancelled") {
-          const modelRef = next.modelActivation?.modelRef ?? next.preparedModelRef ?? null;
+          let modelRef = next.modelActivation?.modelRef ?? next.preparedModelRef ?? null;
+          if (next.status !== "cancelled" && session.backupOf) modelRef = (await keepAsBackup(this.gateway, session.state.agentId, session.backupOf)) ?? modelRef;
           this.#finish(session, { status: next.status === "cancelled" ? "cancelled" : "done", modelRef });
           return;
         }

@@ -59,6 +59,8 @@ export const ActivateApiKeyRequest = z.object({
   agentId: AgentId,
   authChoice: z.string().min(1).max(100),
   apiKey: z.string().trim().min(8).max(4096),
+  /** Keep the agent's current model and add the new one at the end of its backup list. */
+  asBackup: z.boolean().optional(),
 });
 export type ActivateApiKeyRequest = z.infer<typeof ActivateApiKeyRequest>;
 
@@ -80,6 +82,8 @@ export const StartSignInRequest = z.object({
   agentId: AgentId,
   /** Id from AiCatalogDto.signIn, e.g. "openai-device-code", "github-copilot". */
   authChoice: z.string().min(1).max(100),
+  /** Keep the agent's current model and add the signed-in one as a backup. */
+  asBackup: z.boolean().optional(),
 });
 export type StartSignInRequest = z.infer<typeof StartSignInRequest>;
 
@@ -115,6 +119,36 @@ export const SignInAnswerRequest = z.object({
   value: z.unknown(),
 });
 export type SignInAnswerRequest = z.infer<typeof SignInAnswerRequest>;
+
+// --- Backup models: the agent's main model plus models OpenClaw switches to when it fails ---
+
+/** Main model + up to this many backups. */
+export const MAX_BACKUP_MODELS = 3;
+
+export const ModelOptionDto = z.object({
+  /** OpenClaw model ref, e.g. "deepseek/deepseek-v4-flash" (may carry "@profile"). */
+  ref: z.string(),
+  label: z.string(),
+  provider: z.string(),
+  /** The agent has a working credential for this model's provider. */
+  ready: z.boolean(),
+});
+export type ModelOptionDto = z.infer<typeof ModelOptionDto>;
+
+export const ModelChainDto = z.object({
+  agentId: z.string(),
+  /** chain[0] is the main model, the rest are backups in the order OpenClaw tries them. */
+  chain: z.array(ModelOptionDto),
+  /** Models of already connected providers that can be added without a new key. */
+  choices: z.array(ModelOptionDto),
+});
+export type ModelChainDto = z.infer<typeof ModelChainDto>;
+
+export const SaveModelChainRequest = z.object({
+  agentId: AgentId,
+  chain: z.array(z.string().min(3).max(200)).min(1).max(1 + MAX_BACKUP_MODELS),
+});
+export type SaveModelChainRequest = z.infer<typeof SaveModelChainRequest>;
 
 export const InstallProviderResultDto = z.object({
   ok: z.literal(true),

@@ -9,7 +9,7 @@ import { useI18n } from "vue-i18n";
 import { api, ApiError } from "../api/client";
 import SignInFlow from "./SignInFlow.vue";
 
-const props = defineProps<{ agentId: string }>();
+const props = defineProps<{ agentId: string; asBackup?: boolean }>();
 const emit = defineEmits<{ connected: [result: ActivateResultDto] }>();
 const { t, te } = useI18n();
 
@@ -85,7 +85,7 @@ async function activate(): Promise<void> {
   actionError.value = null;
   result.value = null;
   try {
-    const res = await api.ai.activate({ agentId: props.agentId, authChoice: authChoice.value, apiKey: apiKey.value });
+    const res = await api.ai.activate({ agentId: props.agentId, authChoice: authChoice.value, apiKey: apiKey.value, asBackup: props.asBackup });
     result.value = res;
     if (res.ok) {
       apiKey.value = "";
@@ -165,6 +165,7 @@ onMounted(load);
           :key="signInOption.id"
           :agent-id="agentId"
           :option="signInOption"
+          :as-backup="asBackup"
           @connected="onSignedIn"
           @cancel="signInOption = null"
         />

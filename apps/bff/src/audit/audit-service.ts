@@ -23,6 +23,7 @@ const ACTIONS: Record<string, string> = {
   "POST /api/ai/activate": "ai.connect",
   "POST /api/ai/signin": "ai.signIn",
   "POST /api/ai/providers/:pluginId/install": "ai.installProvider",
+  "PUT /api/ai/models": "ai.models",
   "PUT /api/assistant": "assistant.save",
   "POST /api/assistant/memory": "assistant.memory",
   "POST /api/approvals/:id/resolve": "approval.resolve",

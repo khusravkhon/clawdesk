@@ -1,9 +1,10 @@
-import type { ActivateApiKeyRequest, ActivateResultDto, AiCatalogDto, AiStatusDto, InstallProviderResultDto } from "@clawdesk/shared";
+import type { ActivateApiKeyRequest, ActivateResultDto, AiCatalogDto, AiStatusDto, InstallProviderResultDto, ModelChainDto, SaveModelChainRequest } from "@clawdesk/shared";
 import type { Logger } from "pino";
 import { patchConfig } from "../gateway/config-patch.js";
 import type { GatewayService } from "../gateway/gateway-service.js";
 import { buildCatalog, providerPluginId, type DetectResult, type PluginEntry } from "./catalog.js";
 import { findFlashModels, storeKeyWithModelViaWizard } from "./gemini-free-tier.js";
+import { assertRoomForBackup, choicesFor, keepAsBackup, ModelChainError, readCatalog, readChain, toOptions, validateChain, writeChain } from "./model-chain.js";
 
 type ActivateResult = { ok: boolean; status?: string; modelRef?: string; latencyMs?: number; error?: string };
 type InstallResult = { ok: true; plugin: { id: string; version?: string }; restartRequired?: boolean };
@@ -55,7 +56,23 @@ export class AiSetupService {
     return run;
   }
 
+  async modelChain(agentId: string): Promise<ModelChainDto> {
+    const [chain, catalog] = await Promise.all([readChain(this.gateway, agentId), readCatalog(this.gateway)]);
+    return { agentId, chain: toOptions(chain, catalog), choices: choicesFor(agentId, chain, catalog) };
+  }
+
+  async saveModelChain(req: SaveModelChainRequest): Promise<ModelChainDto> {
+    const [current, catalog] = await Promise.all([readChain(this.gateway, req.agentId), readCatalog(this.gateway)]);
+    const problem = validateChain(req.agentId, req.chain, catalog, current);
+    if (problem) throw new ModelChainError("invalid_chain", problem);
+    await writeChain(this.gateway, req.agentId, req.chain, "clawdesk: model chain");
+    this.logger.info({ agentId: req.agentId, chain: req.chain }, "model chain saved");
+    return this.modelChain(req.agentId);
+  }
+
   async activateApiKey(req: ActivateApiKeyRequest): Promise<ActivateResultDto> {
+    const before = req.asBackup ? await readChain(this.gateway, req.agentId) : null;
+    if (before) assertRoomForBackup(before);
     const res = await this.gateway.request<ActivateResult>(
       "openclaw.setup.activate",
       { agentId: req.agentId, kind: "api-key", authChoice: req.authChoice, apiKey: req.apiKey },
@@ -71,6 +88,10 @@ export class AiSetupService {
       error: res.error ?? null,
       switchedModel: false,
     };
+    if (before) {
+      if (res.ok) result.modelRef = await keepAsBackup(this.gateway, req.agentId, before);
+      return result;
+    }
     if (!res.ok && (res.status === "rate_limit" || res.status === "billing") && req.authChoice === "gemini-api-key" && req.agentId === "main") {
       return (await this.#activateGeminiFlash(req.apiKey)) ?? result;
     }

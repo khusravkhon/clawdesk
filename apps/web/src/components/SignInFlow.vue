@@ -7,7 +7,7 @@ import { computed, onBeforeUnmount, onMounted, ref } from "vue";
 import { useI18n } from "vue-i18n";
 import { api, ApiError } from "../api/client";
 
-const props = defineProps<{ agentId: string; option: AiSignInOption }>();
+const props = defineProps<{ agentId: string; option: AiSignInOption; asBackup?: boolean }>();
 const emit = defineEmits<{ connected: [modelRef: string | null]; cancel: [] }>();
 const { t } = useI18n();
 const message = useMessage();
@@ -24,7 +24,7 @@ const pastesRedirect = computed(() => !!state.value?.url && !state.value.deviceC
 async function start(): Promise<void> {
   startError.value = null;
   try {
-    state.value = await api.ai.signIn.start({ agentId: props.agentId, authChoice: props.option.id });
+    state.value = await api.ai.signIn.start({ agentId: props.agentId, authChoice: props.option.id, asBackup: props.asBackup });
     schedulePoll();
   } catch (error) {
     startError.value = errorText(error);

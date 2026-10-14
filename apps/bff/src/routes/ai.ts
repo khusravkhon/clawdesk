@@ -1,6 +1,7 @@
 import {
   ActivateApiKeyRequest,
   AgentId,
+  SaveModelChainRequest,
   SignInAnswerRequest,
   StartSignInRequest,
   type ActivateResultDto,
@@ -8,11 +9,13 @@ import {
   type AiStatusDto,
   type ApiErrorDto,
   type InstallProviderResultDto,
+  type ModelChainDto,
   type SignInStateDto,
 } from "@clawdesk/shared";
 import type { FastifyInstance, FastifyReply } from "fastify";
 import { z } from "zod";
 import { AiSetupError, type AiSetupService } from "../ai-setup/ai-setup-service.js";
+import { ModelChainError } from "../ai-setup/model-chain.js";
 import { SignInError, type SignInSessionManager } from "../ai-setup/signin-sessions.js";
 
 const AgentQuery = z.object({ agentId: AgentId.default("main") });
@@ -43,16 +46,28 @@ export function registerAiRoutes(app: FastifyInstance, deps: { aiSetup: AiSetupS
     }
   });
 
-  app.post("/api/ai/activate", async (request): Promise<ActivateResultDto> => {
+  app.post("/api/ai/activate", async (request, reply): Promise<ActivateResultDto | ApiErrorDto> => {
     const body = ActivateApiKeyRequest.parse(request.body);
-    return deps.aiSetup.activateApiKey(body);
+    return withChainErrors(reply, () => deps.aiSetup.activateApiKey(body));
+  });
+
+  // --- main model + backups ---
+
+  app.get("/api/ai/models", async (request): Promise<ModelChainDto> => {
+    const { agentId } = AgentQuery.parse(request.query);
+    return deps.aiSetup.modelChain(agentId);
+  });
+
+  app.put("/api/ai/models", async (request, reply): Promise<ModelChainDto | ApiErrorDto> => {
+    const body = SaveModelChainRequest.parse(request.body);
+    return withChainErrors(reply, () => deps.aiSetup.saveModelChain(body));
   });
 
   // --- subscription sign-in ---
 
-  app.post("/api/ai/signin", async (request): Promise<SignInStateDto> => {
+  app.post("/api/ai/signin", async (request, reply): Promise<SignInStateDto | ApiErrorDto> => {
     const body = StartSignInRequest.parse(request.body);
-    return deps.signIn.start(body.agentId, body.authChoice);
+    return withChainErrors(reply, () => deps.signIn.start(body.agentId, body.authChoice, body.asBackup));
   });
 
   app.get("/api/ai/signin/:sessionId", async (request, reply): Promise<SignInStateDto | ApiErrorDto> => {
@@ -71,6 +86,18 @@ export function registerAiRoutes(app: FastifyInstance, deps: { aiSetup: AiSetupS
     await deps.signIn.cancel(sessionId);
     return reply.status(204).send();
   });
+}
+
+async function withChainErrors<T>(reply: FastifyReply, fn: () => Promise<T>): Promise<T | ApiErrorDto> {
+  try {
+    return await fn();
+  } catch (error) {
+    if (error instanceof ModelChainError) {
+      reply.status(error.code === "chain_full" ? 409 : 400);
+      return { error: error.code, message: error.message };
+    }
+    throw error;
+  }
 }
 
 function withSignInErrors<T>(reply: FastifyReply, fn: () => T): T | ApiErrorDto {
