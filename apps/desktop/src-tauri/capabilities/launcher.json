@@ -12,6 +12,7 @@
     "allow-add-server",
     "allow-remove-server",
     "allow-open-panel",
-    "allow-install-server"
+    "allow-install-server",
+    "allow-install-local"
   ]
 }

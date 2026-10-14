@@ -1,9 +1,10 @@
 <script setup lang="ts">
-// The launcher: the person's servers, adding one that has ClawDesk, installing it on a new one.
+// The launcher: ClawDesk on this computer (Docker Desktop), the person's servers, adding one that has
+// ClawDesk, installing it on a new one.
 // The panel itself always opens in its own window, loaded from the server.
 import { check, type Update } from "@tauri-apps/plugin-updater";
 import { relaunch } from "@tauri-apps/plugin-process";
-import { ExternalLink, Plus, Server as ServerIcon, Trash2, Wand2 } from "@lucide/vue";
+import { ExternalLink, Monitor, Plus, RefreshCw, Server as ServerIcon, Trash2, Wand2 } from "@lucide/vue";
 import { darkTheme, NAlert, NButton, NCard, NConfigProvider, NEmpty, NGlobalStyle, NInput, NInputNumber, NMessageProvider, NPopconfirm, NRadio, NRadioGroup, NSpace } from "naive-ui";
 import { computed, onMounted, onUnmounted, reactive, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
@@ -20,8 +21,10 @@ const theme = computed(() => (dark.value ? darkTheme : null));
 const overrides = computed(() => ({ common: { primaryColor: dark.value ? "#7c70f0" : "#5b4fd9", primaryColorHover: dark.value ? "#8f85f3" : "#6c61e0", fontFamily: '"Inter Variable", system-ui, sans-serif', borderRadius: "8px" } }));
 const syncTheme = () => document.documentElement.setAttribute("data-theme", dark.value ? "dark" : "light");
 
-const view = ref<"list" | "add" | "install">("list");
+const view = ref<"list" | "add" | "install" | "local">("list");
 const servers = ref<Server[]>([]);
+const localServer = computed(() => servers.value.find((s) => s.local) ?? null);
+const remoteServers = computed(() => servers.value.filter((s) => !s.local));
 const error = ref<string | null>(null);
 const opening = ref<string | null>(null);
 
@@ -102,6 +105,24 @@ async function startInstall(): Promise<void> {
   }
 }
 
+// --- This computer: ClawDesk in Docker Desktop here (also how it updates: the app's own version of the code).
+async function startLocal(): Promise<void> {
+  view.value = "local";
+  installing.value = true;
+  error.value = null;
+  log.value = [];
+  result.value = null;
+  try {
+    const res = await api.installLocal(t("thisComputer"));
+    result.value = { id: res.server.id, setupUrl: res.setupUrl };
+    await load();
+  } catch (e) {
+    error.value = `${t("installFailed")}: ${errorText(e)}`;
+  } finally {
+    installing.value = false;
+  }
+}
+
 /** The owner code's path (/setup?code=…) opened in the panel window, whichever way it is reached. */
 async function openSetup(): Promise<void> {
   if (!result.value) return;
@@ -143,6 +164,12 @@ onUnmounted(() => {
   media.removeEventListener("change", onScheme);
 });
 watch(dark, syncTheme);
+// A finished install (on a server or here) is not shown again when another screen opens.
+watch(view, () => {
+  if (installing.value) return;
+  result.value = null;
+  log.value = [];
+});
 </script>
 
 <template>
@@ -161,6 +188,27 @@ watch(dark, syncTheme);
 
         <!-- Servers -->
         <template v-if="view === 'list'">
+          <!-- This computer -->
+          <n-card class="gap local">
+            <div class="server">
+              <monitor :size="20" class="muted" />
+              <div class="grow">
+                <strong>{{ t("thisComputer") }}</strong>
+                <div v-if="localServer" class="muted small">{{ t("localRunsIn", { url: localServer.panelUrl }) }}</div>
+                <div v-else class="muted small">{{ t("localLead") }}</div>
+              </div>
+              <template v-if="localServer">
+                <n-button type="primary" :loading="opening === localServer.id" @click="open(localServer.id)"><template #icon><external-link :size="15" /></template>{{ t("open") }}</n-button>
+                <n-button quaternary circle :title="t('localUpdate')" :aria-label="t('localUpdate')" @click="startLocal"><refresh-cw :size="16" /></n-button>
+                <n-popconfirm @positive-click="remove(localServer.id)">
+                  <template #trigger><n-button quaternary circle :aria-label="t('remove')"><trash-2 :size="16" /></n-button></template>
+                  {{ t("localRemoveConfirm") }}
+                </n-popconfirm>
+              </template>
+              <n-button v-else @click="view = 'local'">{{ t("localSetup") }}</n-button>
+            </div>
+          </n-card>
+
           <div class="row">
             <h1>{{ t("servers") }}</h1>
             <n-space>
@@ -168,8 +216,8 @@ watch(dark, syncTheme);
               <n-button type="primary" @click="view = 'install'"><template #icon><wand2 :size="16" /></template>{{ t("install") }}</n-button>
             </n-space>
           </div>
-          <n-empty v-if="!servers.length" :description="t('empty')" class="gap" />
-          <n-card v-for="s in servers" :key="s.id" class="gap">
+          <n-empty v-if="!remoteServers.length" :description="t('empty')" class="gap" />
+          <n-card v-for="s in remoteServers" :key="s.id" class="gap">
             <div class="server">
               <server-icon :size="20" class="muted" />
               <div class="grow">
@@ -205,6 +253,33 @@ watch(dark, syncTheme);
               <n-button attr-type="submit" type="primary" :loading="adding" :disabled="!add.host.trim() || !(add.password || add.privateKey.trim())">{{ t("save") }}</n-button>
             </n-space>
           </form>
+        </n-card>
+
+        <!-- This computer: set up / update -->
+        <n-card v-else-if="view === 'local'" :title="t('thisComputer')">
+          <template v-if="!result">
+            <p class="muted">{{ t("localExplain") }}</p>
+            <ul class="muted needs">
+              <li>{{ t("localNeedDocker") }}</li>
+              <li>{{ t("localNeedGit") }}</li>
+              <li>{{ t("localNeedTime") }}</li>
+            </ul>
+            <n-space>
+              <n-button :disabled="installing" @click="view = 'list'">{{ t("back") }}</n-button>
+              <n-button type="primary" :loading="installing" @click="startLocal">{{ installing ? t("installing") : localServer ? t("localUpdate") : t("localStart") }}</n-button>
+            </n-space>
+          </template>
+          <template v-else>
+            <n-alert type="success" :bordered="false" class="gap">{{ result.setupUrl ? t("installDone") : t("localUpdated") }}</n-alert>
+            <n-space>
+              <n-button @click="view = 'list'">{{ t("back") }}</n-button>
+              <n-button type="primary" :loading="opening === result.id" @click="openSetup">{{ result.setupUrl ? t("openSetup") : t("open") }}</n-button>
+            </n-space>
+          </template>
+          <div v-if="log.length" class="log-wrap">
+            <div class="label">{{ t("log") }}<span v-if="step && installing"> · {{ step }}</span></div>
+            <pre ref="logBox" class="log">{{ log.join("\n") }}</pre>
+          </div>
         </n-card>
 
         <!-- Install on a new server -->
@@ -324,6 +399,12 @@ h1 {
   display: grid;
   grid-template-columns: 1fr 120px;
   gap: 12px;
+}
+.needs {
+  margin: 0 0 14px;
+  padding-left: 18px;
+  font-size: 13px;
+  line-height: 1.7;
 }
 .log-wrap {
   margin-top: 16px;

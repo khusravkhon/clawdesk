@@ -1,6 +1,7 @@
 //! Commands the launcher window calls (allowed only for it: capabilities/launcher.json).
 
 use crate::install::{self, InstallInput, InstallResult};
+use crate::local;
 use crate::servers::{self, Server, Store};
 use crate::ssh::{self, Auth};
 use crate::tunnel::{self, Tunnel};
@@ -80,6 +81,7 @@ pub async fn add_server(state: State<'_, AppState>, input: AddServerInput) -> Re
         host_key: session.host_key.clone(),
         created_at: SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0),
         tunnel_port: None,
+        local: false,
     };
     state.store.save(&server).map_err(err)?;
     Ok(server)
@@ -99,6 +101,12 @@ pub async fn install_server(app: AppHandle, state: State<'_, AppState>, input: I
     install::run(&app, &state.store, input).await.map_err(err)
 }
 
+/// "This computer": sets up (or updates) ClawDesk in Docker Desktop here.
+#[tauri::command]
+pub async fn install_local(app: AppHandle, state: State<'_, AppState>, name: String) -> Res<InstallResult> {
+    local::install(&app, &state.store, name).await.map_err(err)
+}
+
 fn panel_label(id: &str) -> String {
     format!("panel-{}", id.chars().filter(|c| c.is_ascii_alphanumeric()).collect::<String>())
 }
@@ -107,6 +115,10 @@ fn panel_label(id: &str) -> String {
 #[tauri::command]
 pub async fn open_panel(app: AppHandle, state: State<'_, AppState>, id: String, path: Option<String>) -> Res<()> {
     let mut server = state.store.get(&id).map_err(err)?;
+    if server.local {
+        // After a reboot Docker Desktop may not be running yet; the containers come back with it.
+        local::ensure_running().await.map_err(err)?;
+    }
     let base = match &server.panel_url {
         Some(url) => url.clone(),
         None => {

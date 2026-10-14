@@ -15,6 +15,8 @@ export type Server = {
   /** SHA-256 of the server's SSH host key, remembered on first contact. */
   hostKey: string;
   createdAt: number;
+  /** "This computer": ClawDesk in Docker Desktop here, no SSH. */
+  local: boolean;
 };
 
 export type AddServerInput = {
@@ -50,6 +52,8 @@ export const api = {
   /** Opens the panel of this server in its own window (through the tunnel when there is no domain). */
   openPanel: (id: string, path?: string) => invoke<void>("open_panel", { id, path: path ?? null }),
   installServer: (input: InstallInput) => invoke<InstallResult>("install_server", { input }),
+  /** "This computer": sets up (or updates) ClawDesk in Docker Desktop on this machine. */
+  installLocal: (name: string) => invoke<InstallResult>("install_local", { name }),
   onInstallLog: (cb: (e: InstallLog) => void): Promise<UnlistenFn> => listen<InstallLog>("install://log", (e) => cb(e.payload)),
   onInstallStep: (cb: (e: InstallStep) => void): Promise<UnlistenFn> => listen<InstallStep>("install://step", (e) => cb(e.payload)),
 };

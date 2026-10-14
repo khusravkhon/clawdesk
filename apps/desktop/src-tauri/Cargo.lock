@@ -649,12 +649,14 @@ name = "clawdesk-desktop"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "flate2",
  "getrandom 0.3.4",
  "keyring",
  "russh",
  "russh-sftp",
  "serde",
  "serde_json",
+ "tar",
  "tauri",
  "tauri-build",
  "tauri-plugin-notification",

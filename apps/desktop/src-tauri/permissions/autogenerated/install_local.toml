@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-install-local"
+description = "Enables the install_local command without any pre-configured scope."
+commands.allow = ["install_local"]
+
+[[permission]]
+identifier = "deny-install-local"
+description = "Denies the install_local command without any pre-configured scope."
+commands.deny = ["install_local"]

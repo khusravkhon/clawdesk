@@ -34,6 +34,7 @@ deploy/
   docker-compose.dev.yml   gateway для разработки на хосте
   install.sh               установка на сервер Ubuntu / Debian: Docker, код, HTTPS, первый запуск
   scripts/init.sh          первый запуск: .env, онбординг OpenClaw, старт
+  scripts/local.sh         «Этот компьютер»: тот же стек в Docker Desktop, отдельно от dev
 ```
 
 ## Разработка
@@ -75,8 +76,13 @@ sudo bash clawdesk/deploy/install.sh --domain panel.example.com
 
 ## Десктоп-приложение
 
-`apps/desktop` — Tauri 2 (Windows, macOS, Linux). Агенты на компьютере не работают: приложение — лаунчер.
+`apps/desktop` — Tauri 2 (Windows, macOS, Linux). Само приложение — лаунчер: агенты работают на сервере или в Docker Desktop.
 
+- **Этот компьютер:** ClawDesk в Docker Desktop без сервера — тот же стек, что на сервере (`deploy/scripts/local.sh`:
+  проект `clawdesk-local`, данные `/var/lib/clawdesk-local` внутри Docker, панель `127.0.0.1:18080`; dev-стек не трогает).
+  Приложение распаковывает вшитый код в свою папку данных и запускает установку через Git Bash; «Обновить» — то же
+  самое с кодом новой версии приложения (`deploy/.env` и данные сохраняются). Контейнеры `restart: unless-stopped`
+  поднимаются вместе с Docker Desktop; «Открыть панель» сама запускает Docker Desktop, если он выключен.
 - **Серверы:** список, вход по SSH-ключу приложения (хранится в Windows Credential Manager / Keychain / Secret Service),
   ключ сервера запоминается при первом подключении и потом сверяется.
 - **Установить на сервер:** IP + root-пароль → приложение ставит на сервер свой ключ (пароль не сохраняется),

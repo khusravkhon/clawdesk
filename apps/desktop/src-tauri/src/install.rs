@@ -30,13 +30,13 @@ pub struct InstallResult {
 }
 
 #[derive(Clone, Serialize)]
-struct LogLine<'a> {
-    line: &'a str,
+pub(crate) struct LogLine<'a> {
+    pub line: &'a str,
 }
 
 #[derive(Clone, Serialize)]
-struct Step<'a> {
-    step: &'a str,
+pub(crate) struct Step<'a> {
+    pub step: &'a str,
 }
 
 const REMOTE_ARCHIVE: &str = "/tmp/clawdesk-src.tar.gz";
@@ -143,6 +143,7 @@ pub async fn run(app: &AppHandle, store: &servers::Store, input: InstallInput) -
         host_key: session.host_key.clone(),
         created_at: now,
         tunnel_port: None,
+        local: false,
     };
     // Only a server that installed is kept, with its key in the system keychain.
     servers::store_key(&server.id, &private_key)?;
@@ -151,7 +152,7 @@ pub async fn run(app: &AppHandle, store: &servers::Store, input: InstallInput) -
     Ok(InstallResult { server, setup_url })
 }
 
-fn strip_ansi(s: &str) -> String {
+pub(crate) fn strip_ansi(s: &str) -> String {
     let mut out = String::with_capacity(s.len());
     let mut chars = s.chars().peekable();
     while let Some(c) = chars.next() {

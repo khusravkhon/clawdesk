@@ -5,7 +5,8 @@
 #   deploy/scripts/init.sh          production stack (gateway + panel)
 #   deploy/scripts/init.sh --dev    gateway only, published on 127.0.0.1:18789 for host development
 #
-# CLAWDESK_DOMAIN, CLAWDESK_FILES_DIR, CLAWDESK_TZ in the environment are written to deploy/.env
+# CLAWDESK_DOMAIN, CLAWDESK_FILES_DIR, CLAWDESK_TZ, CLAWDESK_VERSION, CLAWDESK_DATA_DIR, PANEL_PORT and
+# COMPOSE_PROJECT_NAME in the environment are written to deploy/.env
 # (install.sh passes them). With a domain, Caddy serves the panel over HTTPS.
 set -euo pipefail
 
@@ -50,7 +51,7 @@ env_set() {
 }
 
 # Values from install.sh (or the person) win over what .env had; set-but-empty clears (e.g. --no-https).
-for name in CLAWDESK_DOMAIN CLAWDESK_FILES_DIR CLAWDESK_TZ CLAWDESK_VERSION; do
+for name in CLAWDESK_DOMAIN CLAWDESK_FILES_DIR CLAWDESK_TZ CLAWDESK_VERSION CLAWDESK_DATA_DIR PANEL_PORT COMPOSE_PROJECT_NAME; do
   if [[ -n "${!name+set}" ]]; then env_set "$name" "${!name}"; fi
 done
 
@@ -105,7 +106,7 @@ fi
 
 VERSION="$(env_get CLAWDESK_VERSION)"
 pulled=0
-if [[ -n "$VERSION" && "$VERSION" != "dev" && $DEV == 0 ]]; then
+if [[ -n "$VERSION" && "$VERSION" != "dev" && "$VERSION" != "local" && $DEV == 0 ]]; then
   step "Pulling ClawDesk $VERSION images"
   registry="ghcr.io/khusravkhon"
   if "${COMPOSE[@]}" pull gateway panel && docker pull "$registry/clawdesk-sandbox:$VERSION"     && docker tag "$registry/clawdesk-sandbox:$VERSION" openclaw-sandbox:bookworm-slim; then

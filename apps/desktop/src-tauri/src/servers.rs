@@ -23,6 +23,9 @@ pub struct Server {
     /// Local port of the tunnel, kept so the panel's sign-in cookie (bound to the address) survives restarts.
     #[serde(default)]
     pub tunnel_port: Option<u16>,
+    /// "This computer": ClawDesk in Docker Desktop here, no SSH (see local.rs).
+    #[serde(default)]
+    pub local: bool,
 }
 
 pub struct Store {

@@ -7,6 +7,7 @@ fn main() {
         "remove_server",
         "open_panel",
         "install_server",
+        "install_local",
     ])))
     .expect("failed to run tauri-build");
 }

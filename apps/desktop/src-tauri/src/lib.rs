@@ -1,9 +1,10 @@
-//! ClawDesk desktop: a launcher (servers, install over SSH) and the panel of each server in its own window.
-//! Agents never run here — the panel and the agents live on the server; this app reaches them through
+//! ClawDesk desktop: a launcher (servers, install over SSH, "this computer") and the panel of each server in its own window.
+//! Agents never run in this app — they live on the server (or in Docker Desktop for "this computer"); it reaches them through
 //! HTTPS or an SSH tunnel, keeps SSH keys in the system keychain, and sits in the tray.
 
 mod commands;
 mod install;
+mod local;
 mod servers;
 mod ssh;
 mod tunnel;
@@ -68,7 +69,8 @@ pub fn run() {
             commands::add_server,
             commands::remove_server,
             commands::open_panel,
-            commands::install_server
+            commands::install_server,
+            commands::install_local
         ])
         .run(tauri::generate_context!())
         .expect("error while running ClawDesk");

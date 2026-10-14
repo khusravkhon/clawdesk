@@ -38,6 +38,18 @@ const ru = {
   log: "Журнал установки",
   updateAvailable: "Доступна новая версия {v}",
   updateInstall: "Обновить",
+  thisComputer: "Этот компьютер",
+  localLead: "Попробуйте ClawDesk без сервера: он запустится в Docker Desktop на этом компьютере.",
+  localRunsIn: "Docker Desktop · {url}",
+  localSetup: "Запустить здесь",
+  localStart: "Запустить",
+  localUpdate: "Обновить",
+  localExplain: "ClawDesk запустится в Docker Desktop на этом компьютере — так же, как на сервере. После перезагрузки он поднимется вместе с Docker Desktop, а кнопка «Открыть панель» сама запустит Docker Desktop, если он выключен. Агенты работают, пока компьютер включён.",
+  localNeedDocker: "Docker Desktop (docker.com) — включите в его настройках «Start Docker Desktop when you sign in».",
+  localNeedGit: "Git for Windows (git-scm.com) — нужен только для установки.",
+  localNeedTime: "Первый запуск собирает программы — это 5–15 минут.",
+  localUpdated: "ClawDesk на этом компьютере обновлён и запущен.",
+  localRemoveConfirm: "Убрать из приложения? ClawDesk и его данные останутся в Docker Desktop.",
 };
 
 const en: typeof ru = {
@@ -76,6 +88,18 @@ const en: typeof ru = {
   log: "Installation log",
   updateAvailable: "Version {v} is available",
   updateInstall: "Update",
+  thisComputer: "This computer",
+  localLead: "Try ClawDesk without a server: it runs in Docker Desktop on this computer.",
+  localRunsIn: "Docker Desktop · {url}",
+  localSetup: "Run it here",
+  localStart: "Start",
+  localUpdate: "Update",
+  localExplain: "ClawDesk runs in Docker Desktop on this computer, the same way it runs on a server. After a restart it comes back with Docker Desktop, and “Open the panel” starts Docker Desktop if it is not running. Agents work while the computer is on.",
+  localNeedDocker: "Docker Desktop (docker.com) — turn on “Start Docker Desktop when you sign in” in its settings.",
+  localNeedGit: "Git for Windows (git-scm.com) — needed only to set it up.",
+  localNeedTime: "The first start builds the programs — 5 to 15 minutes.",
+  localUpdated: "ClawDesk on this computer is updated and running.",
+  localRemoveConfirm: "Remove it from the app? ClawDesk and its data stay in Docker Desktop.",
 };
 
 const tg: typeof ru = {
@@ -91,6 +115,18 @@ const tg: typeof ru = {
   installDone: "Тайёр. Пароли соҳиби панелро гузоред.",
   installFailed: "Насб нашуд",
   openSetup: "Кушодани панел ва гузоштани парол",
+  thisComputer: "Ҳамин компютер",
+  localLead: "ClawDesk-ро бе сервер санҷед: он дар Docker Desktop дар ҳамин компютер кор мекунад.",
+  localRunsIn: "Docker Desktop · {url}",
+  localSetup: "Дар ин ҷо оғоз кардан",
+  localStart: "Оғоз кардан",
+  localUpdate: "Навсозӣ",
+  localExplain: "ClawDesk дар Docker Desktop дар ҳамин компютер кор мекунад — мисли сервер. Пас аз бозоғозӣ он бо Docker Desktop бармегардад ва тугмаи «Кушодани панел» Docker Desktop-ро худаш оғоз мекунад, агар хомӯш бошад. Агентҳо то даме ки компютер фаъол аст, кор мекунанд.",
+  localNeedDocker: "Docker Desktop (docker.com) — дар танзимоти он «Start Docker Desktop when you sign in»-ро фаъол кунед.",
+  localNeedGit: "Git for Windows (git-scm.com) — танҳо барои насб лозим аст.",
+  localNeedTime: "Оғози аввал барномаҳоро месозад — 5–15 дақиқа.",
+  localUpdated: "ClawDesk дар ҳамин компютер нав карда шуд ва кор мекунад.",
+  localRemoveConfirm: "Аз барнома хориҷ кунем? ClawDesk ва маълумоти он дар Docker Desktop мемонанд.",
 };
 
 const saved = (() => {
