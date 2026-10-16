@@ -17,3 +17,4 @@ export * from "./teams.js";
 export * from "./audit.js";
 export * from "./usage.js";
 export * from "./video.js";
+export * from "./library.js";

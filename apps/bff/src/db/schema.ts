@@ -226,3 +226,49 @@ export const videoJobs = sqliteTable(
   },
   (t) => [index("video_jobs_state_idx").on(t.state), index("video_jobs_created_idx").on(t.createdAt)],
 );
+
+/**
+ * The owner's library: what the panel has already read for an agent — a document from the chat or
+ * a video transcript. The row belongs to the agent the material was sent to, so a search only ever
+ * finds what that agent was actually given.
+ */
+export const libraryItems = sqliteTable(
+  "library_items",
+  {
+    id: text("id").primaryKey(),
+    agentId: text("agent_id").notNull(),
+    kind: text("kind", { enum: ["document", "video"] }).notNull(),
+    /** The file name or the video title. */
+    title: text("title").notNull(),
+    /** Where it came from: the file name, or the canonical video link. */
+    source: text("source").notNull(),
+    /** How to point back into it: "страница", "лист", "таймкод" — set by whoever read it. */
+    locator: text("locator"),
+    /** The text the panel read, as it was handed to the agent (already bounded). */
+    text: text("text").notNull(),
+    chars: integer("chars").notNull(),
+    createdAt: createdAt(),
+  },
+  (t) => [index("library_items_agent_idx").on(t.agentId), index("library_items_created_idx").on(t.createdAt)],
+);
+
+/**
+ * Notes the owner keeps for an agent, with where each one came from and when. The panel writes
+ * them into that agent's USER.md between its own markers, so the agent reads them as its own
+ * knowledge while the owner stays able to correct or delete any of them.
+ */
+export const memoryNotes = sqliteTable(
+  "memory_notes",
+  {
+    id: text("id").primaryKey(),
+    agentId: text("agent_id").notNull(),
+    text: text("text").notNull(),
+    /** Where this came from, in the owner's words: a document, a conversation, a link. */
+    source: text("source"),
+    /** The day the fact is about (YYYY-MM-DD), which is not always the day it was written. */
+    happenedOn: text("happened_on"),
+    createdAt: createdAt(),
+    updatedAt: integer("updated_at", { mode: "timestamp_ms" }),
+  },
+  (t) => [index("memory_notes_agent_idx").on(t.agentId)],
+);

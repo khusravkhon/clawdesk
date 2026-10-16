@@ -1029,5 +1029,54 @@
       "audio_setup_busy": "Transcription setup is already running. Wait for it to finish.",
       "no_audio_key": "Save an API key for the selected transcription provider first."
     }
+  },
+  "library": {
+    "placeholder": "Search this agent's materials…",
+    "search": "Search",
+    "remove": "Remove the material",
+    "nothing": "Nothing found. Materials searched: {count}.",
+    "emptyLibrary": "This agent has no read materials yet.",
+    "partial": "Matches from the most recent materials: there are too many to search all of them.",
+    "kind": {
+      "document": "document",
+      "video": "video"
+    }
+  },
+  "memory": {
+    "notes": {
+      "title": "What the agent knows about you",
+      "lead": "The owner's notes: a fact, its source and its date. The panel writes them into the agent's file, where it reads them as its own knowledge. Any note can be corrected or deleted.",
+      "empty": "No notes yet.",
+      "noSource": "no source",
+      "add": "Add",
+      "saveEdit": "Save",
+      "cancel": "Cancel",
+      "edit": "Correct",
+      "remove": "Delete",
+      "textPlaceholder": "For example: left knee hurts, squats without weight",
+      "sourcePlaceholder": "Source: a conversation, a document, a link",
+      "error": {
+        "too_many": "Too many notes: delete some, or the agent reads all of them every time.",
+        "not_found": "That note is already gone."
+      }
+    }
+  },
+  "budget": {
+    "title": "Spending limits",
+    "lead": "What a day and a month may cost. At the limit the panel stops starting work by itself: schedules pause and no new video is taken. Your own messages are never blocked.",
+    "today": "Today",
+    "month": "This month",
+    "dailyLimit": "Daily limit, $",
+    "monthlyLimit": "Monthly limit, $",
+    "save": "Save the limits",
+    "saved": "Limits saved",
+    "zeroHint": "0 means no limit.",
+    "paused": "Schedules paused: {count}.",
+    "incomplete": "The Gateway returned some entries without cost, so the total is a lower bound.",
+    "exceeded": {
+      "daily": "The daily limit is reached.",
+      "monthly": "The monthly limit is reached.",
+      "none": ""
+    }
   }
 }

@@ -11,6 +11,7 @@ import { useI18n } from "vue-i18n";
 import { useRoute, useRouter } from "vue-router";
 import { api, ApiError } from "../api/client";
 import ApprovalCard from "../components/ApprovalCard.vue";
+import LibrarySearch from "../components/LibrarySearch.vue";
 import { formatBytes, intlLocale } from "../format";
 import { modelErrorHint } from "../model-errors";
 import { useApprovalsStore } from "../stores/approvals";
@@ -470,6 +471,7 @@ watch(agentId, () => void open());
     </div>
 
     <footer class="composer">
+      <LibrarySearch :key="agentId" :agent-id="agentId" />
       <div v-if="agentVideoJobs.length" class="videos">
         <span v-for="job in agentVideoJobs" :key="job.id" class="file staged-file">
           <film :size="12" /> {{ job.title ?? job.url }} — {{ videoLine(job) }}

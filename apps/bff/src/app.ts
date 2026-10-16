@@ -18,6 +18,9 @@ import type { AuditService } from "./audit/audit-service.js";
 import type { SignInSessionManager } from "./ai-setup/signin-sessions.js";
 import { ChatService } from "./chat/chat-service.js";
 import { VideoService } from "./video/video-service.js";
+import { BudgetService } from "./budget/budget-service.js";
+import { LibraryService } from "./library/library-service.js";
+import { MemoryNoteService } from "./library/memory-note-service.js";
 import { DashboardService } from "./dashboard/dashboard-service.js";
 import { ScheduleService } from "./schedules/schedule-service.js";
 import type { Db } from "./db/client.js";
@@ -29,6 +32,7 @@ import { registerAssistantRoutes } from "./routes/assistant.js";
 import { registerAuthRoutes } from "./routes/auth.js";
 import { registerChatRoutes } from "./routes/chat.js";
 import { registerVideoRoutes } from "./routes/video.js";
+import { registerLibraryRoutes } from "./routes/library.js";
 import { registerDashboardRoutes } from "./routes/dashboard.js";
 import { registerHealthRoutes } from "./routes/health.js";
 import type { FreeModelsService } from "./free-models/free-models-service.js";
@@ -65,6 +69,10 @@ export type AppDeps = {
   video?: VideoService;
   /** Kept video originals, read-only for the panel; absent when this install keeps none. */
   videoDir?: string | undefined;
+  /** The owner's library of read materials; the panel passes its own instance. */
+  library?: LibraryService;
+  /** Spending limits; the panel passes its own instance so startup can apply them. */
+  budget?: BudgetService;
   space: SpaceService;
   teams: TeamService;
   audit: AuditService;
@@ -105,9 +113,13 @@ export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
   registerApprovalRoutes(app, deps);
   registerAssistantRoutes(app, deps);
   registerScheduleRoutes(app, { schedules: new ScheduleService(deps) });
-  const chat = new ChatService(deps.gateway);
+  const library = deps.library ?? new LibraryService(deps.db);
+  const budget = deps.budget ?? new BudgetService({ gateway: deps.gateway, db: deps.db, logger: deps.logger.child({ component: "budget" }) });
+  const chat = new ChatService(deps.gateway, library);
   registerChatRoutes(app, { chat });
-  registerVideoRoutes(app, { video: deps.video ?? new VideoService({ db: deps.db, bridge: deps.bridge, chat, logger: deps.logger.child({ component: "video" }), videoDir: deps.videoDir }) });
+
+  registerLibraryRoutes(app, { library, notes: new MemoryNoteService({ db: deps.db, gateway: deps.gateway, logger: deps.logger.child({ component: "memory-notes" }) }), budget });
+  registerVideoRoutes(app, { video: deps.video ?? new VideoService({ db: deps.db, bridge: deps.bridge, chat, logger: deps.logger.child({ component: "video" }), videoDir: deps.videoDir, library }), budget });
   registerDashboardRoutes(app, { dashboard: new DashboardService(deps) });
   registerSystemRoutes(app, deps);
   registerSpaceRoutes(app, deps);

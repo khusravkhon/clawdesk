@@ -106,7 +106,11 @@ export function toStreamEvent(event: GatewayEvent, sessionKey: string): ChatStre
 }
 
 export class ChatService {
-  constructor(private readonly gateway: GatewayService) {}
+  constructor(
+    private readonly gateway: GatewayService,
+    /** Keeps what the panel read out of a file, so the owner can find it again later. */
+    private readonly library?: { add(item: { agentId: string; kind: "document" | "video"; title: string; source: string; locator?: string | null; text: string }): string | null },
+  ) {}
 
   async history(agentId: string, limit = 60): Promise<ChatHistoryDto> {
     const res = await this.gateway.request<{ messages?: RawChatMessage[]; inFlightRun?: unknown }>("chat.history", {
@@ -130,6 +134,12 @@ export class ChatService {
       ? await extractDocuments(attachments.map((file) => ({ fileName: file.fileName, mimeType: file.mimeType, bytes: Buffer.from(file.content, "base64") })))
       : [];
     const block = documentsBlock(documents);
+    for (const document of documents) {
+      if (!document.text.trim()) continue;
+      const read = document.read;
+      const locator = read.pages !== null ? "страница" : read.sheets !== null ? "лист" : read.slides !== null ? "слайд" : null;
+      this.library?.add({ agentId, kind: "document", title: read.fileName, source: read.fileName, locator, text: document.text });
+    }
     const message = [text || attachmentOnlyMessage(attachments), block].filter(Boolean).join("\n\n");
     const res = await this.gateway.request<{ runId?: string }>("chat.send", {
       sessionKey: mainSessionKey(agentId),

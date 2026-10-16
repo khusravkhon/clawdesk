@@ -27,6 +27,8 @@ type Deps = {
   bridge: BridgeClient;
   chat: ChatService;
   logger: Logger;
+  /** Keeps a transcript, so the owner can search what a video said. */
+  library?: { add(item: { agentId: string; kind: "document" | "video"; title: string; source: string; locator?: string | null; text: string }): string | null };
   /** Where kept originals live, read-only for the panel; absent when this install keeps none. */
   videoDir?: string | undefined;
 };
@@ -199,6 +201,7 @@ export class VideoService {
       }
       const message = transcriptMessage({ title: result.title ?? null, url: job.url, durationSec: result.durationSec ?? null, language: result.language ?? null, source: "subtitles" }, transcript);
       await this.deps.chat.send(job.agentId, message);
+      this.deps.library?.add({ agentId: job.agentId, kind: "video", title: result.title ?? job.url, source: job.url, locator: "таймкод", text: transcript.text });
       this.#done(job.id, { source: "subtitles", chars: transcript.chars, title: result.title ?? null, language: result.language ?? null, durationSec: result.durationSec ?? null });
       return;
     }

@@ -43,6 +43,13 @@
       "when": 1792153060131,
       "tag": "0005_video_modes",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "6",
+      "when": 1792153983107,
+      "tag": "0006_library_and_notes",
+      "breakpoints": true
     }
   ]
 }
