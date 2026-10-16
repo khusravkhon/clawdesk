@@ -62,8 +62,13 @@ services:
       TZ: ${CLAWDESK_TZ:-UTC}
       # The worker image the bridge starts per video job (see clawdesk-video.mjs).
       CLAWDESK_VIDEO_IMAGE: ghcr.io/khusravkhon/clawdesk-video:${CLAWDESK_VERSION:-dev}
+      # Kept video originals. Deliberately outside the agents' exchanged folders: a 2 GiB file
+      # there would hold up every other file of that folder (32 MiB per file).
+      CLAWDESK_VIDEO_DIR: ${CLAWDESK_DATA_DIR:-/var/lib/clawdesk}/videos
     volumes:
       - ${CLAWDESK_DATA_DIR:-/var/lib/clawdesk}/openclaw:${CLAWDESK_DATA_DIR:-/var/lib/clawdesk}/openclaw
+      # Same absolute path inside and outside, so a worker container can bind the same directory.
+      - ${CLAWDESK_DATA_DIR:-/var/lib/clawdesk}/videos:${CLAWDESK_DATA_DIR:-/var/lib/clawdesk}/videos
       - openclaw-auth-secrets:/home/node/.config/openclaw
       - /var/run/docker.sock:/var/run/docker.sock
       # Shared folder from the person's computer: files/ in the main agent's workspace.
@@ -124,9 +129,12 @@ services:
       TRUST_PROXY: loopback,uniquelocal
       # Read-only: the panel lists and hands out backups; the bridge makes them.
       BACKUP_DIR: /backups
+      # Read-only: the panel hands out kept video originals; the worker writes them.
+      VIDEO_DIR: /videos
     volumes:
       - panel-data:/data
       - ${CLAWDESK_DATA_DIR:-/var/lib/clawdesk}/backups:/backups:ro
+      - ${CLAWDESK_DATA_DIR:-/var/lib/clawdesk}/videos:/videos:ro
       # Read-only, only to list what the agent can see.
       - ${CLAWDESK_FILES_DIR:-./files}:/files:ro
     depends_on:

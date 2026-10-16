@@ -561,7 +561,19 @@
         "timeout": "it ran out of time",
         "audio_too_large": "the audio track is over the recognition limit",
         "worker_unavailable": "the video worker is unavailable: update the ClawDesk stack",
-        "panel_restarted": "the panel restarted while it was running — start it again"
+        "panel_restarted": "the panel restarted while it was running — start it again",
+        "file_too_large": "the file is over the size limit — the panel does not keep it",
+        "no_frames": "no frame could be taken: the video has no readable picture",
+        "downloads_unavailable": "this install does not keep video originals"
+      },
+      "frames": "Look at the frames",
+      "download": "Download",
+      "saveFile": "Save the file",
+      "framesSent": "frames sent: {count}",
+      "mode": {
+        "study": "summary",
+        "frames": "frames",
+        "download": "file"
       }
     }
   },

@@ -206,12 +206,19 @@ export const videoJobs = sqliteTable(
     url: text("url").notNull(),
     videoId: text("video_id").notNull(),
     title: text("title"),
+    /** What the owner asked for: a summary, the picture, or the file. */
+    mode: text("mode", { enum: ["study", "frames", "download"] }).notNull().default("study"),
     state: text("state", { enum: ["queued", "running", "ready", "failed", "canceled"] }).notNull(),
-    /** What the text came from: subtitles, recognized speech, or nothing. */
-    source: text("source", { enum: ["subtitles", "speech", "none"] }).notNull(),
+    /** What the material came from: subtitles, speech, frames, the file itself, or nothing. */
+    source: text("source", { enum: ["subtitles", "speech", "frames", "file", "none"] }).notNull(),
     language: text("language"),
     durationSec: integer("duration_sec"),
     chars: integer("chars").notNull().default(0),
+    /** Frames handed to the agent, for a frames job. */
+    frames: integer("frames"),
+    /** The kept original in the panel video directory, and its size on disk. */
+    fileName: text("file_name"),
+    fileBytes: integer("file_bytes"),
     /** A code from VideoJobError; never a raw worker message. */
     error: text("error"),
     createdAt: createdAt(),

@@ -130,3 +130,23 @@ export function transcriptMessage(video: { title: string | null; url: string; du
     .join("\n");
   return `${header}\n\n${transcript.text}`;
 }
+
+/**
+ * The message that goes with sampled frames. It says what was looked at and what was not: no
+ * subtitles and no audio were read for this, so an answer cannot lean on words nobody heard.
+ */
+export function framesMessage(video: { title: string | null; url: string; durationSec: number | null }, timecodes: string[]): string {
+  return [
+    `## Кадры видео: ${video.title ?? video.url}`,
+    "",
+    `Ссылка: ${video.url}`,
+    video.durationSec ? `Длительность: ${timecode(video.durationSec)}` : null,
+    `Прикреплено кадров: ${timecodes.length} (таймкоды: ${timecodes.join(", ")}).`,
+    "Субтитры и звук для этого разбора не читались — только изображение.",
+    "",
+    "Опиши, что видно на кадрах, и ссылайся на таймкод кадра. Между кадрами время пропущено:",
+    "не выдумывай, что происходило в пропусках. Если кадр нечитаем, скажи об этом прямо.",
+  ]
+    .filter((line) => line !== null)
+    .join(String.fromCharCode(10));
+}

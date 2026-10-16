@@ -53,10 +53,10 @@ const backups = new BackupService({ bridge, dir: config.backupDir, logger: logge
 const teams = new TeamService({ gateway, db, logger: logger.child({ component: "teams" }), bridge, space, telegram, sandboxEnabled: config.sandboxEnabled });
 const audit = new AuditService({ db, gateway, logger: logger.child({ component: "audit" }) });
 // Studying videos by link: one queue for the whole panel, so a restart can mark what it left running.
-const video = new VideoService({ db, bridge, chat: new ChatService(gateway), logger: logger.child({ component: "video" }) });
+const video = new VideoService({ db, bridge, chat: new ChatService(gateway), logger: logger.child({ component: "video" }), videoDir: config.videoDir });
 video.recover();
 
-const app = await buildApp({ logger, gateway, db, aiSetup, signIn, telegram, freeModels, sources, approvals, assistant, auth, backups, bridge, space, teams, audit, video, sandboxEnabled: config.sandboxEnabled, webDist: config.webDist, trustProxy: config.trustProxy });
+const app = await buildApp({ logger, gateway, db, aiSetup, signIn, telegram, freeModels, sources, approvals, assistant, auth, backups, bridge, space, teams, audit, video, videoDir: config.videoDir, sandboxEnabled: config.sandboxEnabled, webDist: config.webDist, trustProxy: config.trustProxy });
 
 gateway.start();
 await app.listen({ host: config.host, port: config.port });

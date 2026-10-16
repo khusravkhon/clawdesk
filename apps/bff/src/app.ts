@@ -63,6 +63,8 @@ export type AppDeps = {
   bridge: BridgeClient;
   /** Studying videos by link; the panel passes its own instance so startup can recover jobs. */
   video?: VideoService;
+  /** Kept video originals, read-only for the panel; absent when this install keeps none. */
+  videoDir?: string | undefined;
   space: SpaceService;
   teams: TeamService;
   audit: AuditService;
@@ -105,7 +107,7 @@ export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
   registerScheduleRoutes(app, { schedules: new ScheduleService(deps) });
   const chat = new ChatService(deps.gateway);
   registerChatRoutes(app, { chat });
-  registerVideoRoutes(app, { video: deps.video ?? new VideoService({ db: deps.db, bridge: deps.bridge, chat, logger: deps.logger.child({ component: "video" }) }) });
+  registerVideoRoutes(app, { video: deps.video ?? new VideoService({ db: deps.db, bridge: deps.bridge, chat, logger: deps.logger.child({ component: "video" }), videoDir: deps.videoDir }) });
   registerDashboardRoutes(app, { dashboard: new DashboardService(deps) });
   registerSystemRoutes(app, deps);
   registerSpaceRoutes(app, deps);

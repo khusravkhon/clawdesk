@@ -3,7 +3,7 @@
 // the decisions made before and after it runs.
 import assert from "node:assert/strict";
 import test from "node:test";
-import { errorCode, parseInfo, pickSubtitle, studyVideo, subtitleLanguage, VideoError } from "./clawdesk-video.mjs";
+import { downloadVideo, errorCode, frameFiles, framesOfVideo, parseInfo, parseProgress, pickSubtitle, studyVideo, subtitleLanguage, videoProgress, VideoError } from "./clawdesk-video.mjs";
 
 const JOB = "11111111-1111-4111-8111-111111111111";
 const URL_OK = "https://www.youtube.com/watch?v=dQw4w9WgXcQ";
@@ -43,4 +43,31 @@ test("reads only title and duration out of the tool's JSON, and survives junk", 
   assert.deepEqual(parseInfo('[debug] a line first\n{"title":"T","duration":0}'), { title: "T", durationSec: null });
   assert.deepEqual(parseInfo("not json"), { title: null, durationSec: null });
   assert.equal(parseInfo(`{"title":"${"x".repeat(500)}"}`).title.length, 300);
+});
+
+test("every mode takes only a canonical single-video link", async () => {
+  for (const mode of [studyVideo, framesOfVideo, downloadVideo]) {
+    await assert.rejects(() => mode({ jobId: JOB, url: "https://www.youtube.com/watch?v=dQw4w9WgXcQ&list=PL1" }), (error) => error instanceof VideoError && error.code === "invalid_url");
+    await assert.rejects(() => mode({ jobId: "nope", url: URL_OK }), (error) => error instanceof VideoError && error.code === "invalid_url");
+  }
+});
+
+test("keeping an original needs a directory to keep it in", async () => {
+  // CLAWDESK_VIDEO_DIR is unset in the test environment, so a download has nowhere to go.
+  await assert.rejects(() => downloadVideo({ jobId: JOB, url: URL_OK }), (error) => error instanceof VideoError && error.code === "downloads_unavailable");
+});
+
+test("reads the download percentage out of the tool's progress lines", () => {
+  assert.equal(parseProgress("[download]   4.2% of ~  12.00MiB at    1.00MiB/s ETA 00:11"), 4);
+  assert.equal(parseProgress("[download] 100% of 12.00MiB in 00:11"), 100);
+  assert.equal(parseProgress("[download] Destination: video.mp4"), null);
+  assert.equal(parseProgress("anything else"), null);
+  // Nothing is reported for a job that is not running.
+  assert.equal(videoProgress(JOB), null);
+  assert.equal(videoProgress("not-a-job"), null);
+});
+
+test("takes the frame files in order and ignores everything else in the directory", () => {
+  assert.deepEqual(frameFiles(["frame-002.jpg", "source.mp4", "frame-001.jpg", "frame-010.jpg", "notes.txt"]), ["frame-001.jpg", "frame-002.jpg", "frame-010.jpg"]);
+  assert.deepEqual(frameFiles(["source.webm"]), []);
 });

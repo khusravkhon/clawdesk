@@ -40,6 +40,7 @@ import type {
   ScheduleRunDto,
   SendChatResultDto,
   VideoJobDto,
+  VideoJobMode,
   VideoJobsDto,
   UpdateScheduleRequest,
   InstallProviderResultDto,
@@ -207,7 +208,8 @@ export const api = {
   },
   video: {
     jobs: () => request<VideoJobsDto>("/api/video/jobs"),
-    study: (agentId: string, url: string) => post<VideoJobDto>("/api/video/jobs", { agentId, url }),
+    study: (agentId: string, url: string, mode: VideoJobMode = "study") => post<VideoJobDto>("/api/video/jobs", { agentId, url, mode }),
+    fileUrl: (id: string) => `/api/video/jobs/${encodeURIComponent(id)}/file`,
     cancel: (id: string) => post<VideoJobDto>(`/api/video/jobs/${encodeURIComponent(id)}/cancel`),
   },
   sources: {

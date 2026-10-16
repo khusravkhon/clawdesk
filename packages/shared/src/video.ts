@@ -4,6 +4,21 @@ import { z } from "zod";
 // the agent gets a summary with timestamps. Only what was actually analyzed is ever claimed:
 // subtitles, speech, or neither — the frames of the video are not looked at here.
 
+/**
+ * What the owner asked for. The three are separate on purpose: a summary from subtitles, a look at
+ * the picture, and keeping the file are different questions, and mixing them would let an answer
+ * claim it watched a video it only read.
+ */
+export const VideoJobMode = z.enum([
+  /** Subtitles, or the audio track when there are none. */
+  "study",
+  /** Sampled frames for an agent that can read images. Nothing is listened to or read. */
+  "frames",
+  /** The original file, kept outside the agents' folder exchange. */
+  "download",
+]);
+export type VideoJobMode = z.infer<typeof VideoJobMode>;
+
 export const VideoJobState = z.enum([
   /** Waiting its turn: one video is studied at a time. */
   "queued",
@@ -15,8 +30,8 @@ export const VideoJobState = z.enum([
 ]);
 export type VideoJobState = z.infer<typeof VideoJobState>;
 
-/** Where the text came from; "none" means nothing was read. */
-export const VideoJobSource = z.enum(["subtitles", "speech", "none"]);
+/** Where the material came from; "none" means nothing was obtained. */
+export const VideoJobSource = z.enum(["subtitles", "speech", "frames", "file", "none"]);
 export type VideoJobSource = z.infer<typeof VideoJobSource>;
 
 /** Every way studying a video can fail, so the panel can say what to do next. */
@@ -34,6 +49,12 @@ export const VideoJobError = z.enum([
   "timeout",
   /** The audio is larger than the recognition provider takes. */
   "audio_too_large",
+  /** The file is larger than the panel keeps for one video. */
+  "file_too_large",
+  /** No frame could be taken: the video has no picture the worker could read. */
+  "no_frames",
+  /** The panel has nowhere to keep originals (no video directory in this install). */
+  "downloads_unavailable",
   /** The worker is missing or the bridge is unreachable. */
   "worker_unavailable",
   /** The panel restarted while this job was running; its outcome is unknown. */
@@ -44,6 +65,7 @@ export type VideoJobError = z.infer<typeof VideoJobError>;
 export const VideoJobDto = z.object({
   id: z.string(),
   agentId: z.string(),
+  mode: VideoJobMode,
   /** The canonical link the worker was given, never the owner's original query string. */
   url: z.string(),
   title: z.string().nullable(),
@@ -55,6 +77,13 @@ export const VideoJobDto = z.object({
   /** Characters of text handed to the agent. */
   chars: z.number().int().nonnegative(),
   error: VideoJobError.nullable(),
+  /** Frames handed to the agent, for a "frames" job. */
+  frames: z.number().int().nonnegative().nullable(),
+  /** The kept original: its name in the panel's video directory and its size. */
+  fileName: z.string().nullable(),
+  fileBytes: z.number().int().nonnegative().nullable(),
+  /** 0-100 while a download is running; null when the worker reported nothing yet. */
+  progress: z.number().int().min(0).max(100).nullable(),
   createdAt: z.number(),
   finishedAt: z.number().nullable(),
 });
@@ -62,6 +91,8 @@ export type VideoJobDto = z.infer<typeof VideoJobDto>;
 
 export const VideoJobsDto = z.object({
   jobs: z.array(VideoJobDto),
+  /** Whether this install has a directory to keep originals in. */
+  downloadsAvailable: z.boolean(),
   /** Whether speech recognition is set up; without it a video without subtitles cannot be read. */
   speechConfigured: z.boolean(),
   /** Whether the Gateway bridge that runs the worker is reachable at all. */
@@ -72,6 +103,7 @@ export type VideoJobsDto = z.infer<typeof VideoJobsDto>;
 export const CreateVideoJobRequest = z.object({
   agentId: z.string().regex(/^[a-z0-9][a-z0-9-]{0,63}$/),
   url: z.string().trim().min(1).max(2000),
+  mode: VideoJobMode.default("study"),
 });
 export type CreateVideoJobRequest = z.infer<typeof CreateVideoJobRequest>;
 
@@ -85,6 +117,14 @@ export const VIDEO_LIMITS = {
   maxJobSeconds: 20 * 60,
   /** Characters of transcript handed to the agent. */
   maxTranscriptChars: 60_000,
+  /** Frames sampled from one video, evenly spaced. */
+  maxFrames: 8,
+  /** One frame, as a JPEG. */
+  maxFrameBytes: 2 * 1024 * 1024,
+  /** A kept original. Larger videos are refused rather than filling the disk. */
+  maxFileBytes: 2 * 1024 * 1024 * 1024,
+  /** A download may take longer than reading subtitles. */
+  maxDownloadSeconds: 60 * 60,
 } as const;
 
 // Which links the panel will hand to the worker. The rule is narrow on purpose: one video on one

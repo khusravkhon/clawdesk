@@ -165,6 +165,21 @@ export class ChatService {
     return { runId: res.runId ?? null };
   }
 
+  /**
+   * Sends images with a message — sampled video frames, for an agent whose model can read them.
+   * The panel does not look at them itself and claims nothing about what they show.
+   */
+  async sendImages(agentId: string, text: string, images: { mimeType: string; fileName: string; content: string }[]): Promise<{ runId: string | null }> {
+    const res = await this.gateway.request<{ runId?: string }>("chat.send", {
+      sessionKey: mainSessionKey(agentId),
+      agentId,
+      message: text,
+      idempotencyKey: randomUUID(),
+      attachments: images.map((image) => ({ type: "image", mimeType: image.mimeType, fileName: image.fileName, content: image.content, sizeBytes: Math.floor((image.content.length / 4) * 3) })),
+    });
+    return { runId: res.runId ?? null };
+  }
+
   async abort(agentId: string): Promise<void> {
     await this.gateway.request("chat.abort", { sessionKey: mainSessionKey(agentId), agentId });
   }

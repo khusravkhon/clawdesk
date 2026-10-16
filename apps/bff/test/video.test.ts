@@ -25,10 +25,10 @@ const VTT = `WEBVTT
 Держите спину ровно
 `;
 
-function harness(options: { result?: BridgeVideoResult; fail?: BridgeError; speech?: boolean; hold?: Promise<void> } = {}) {
+function harness(options: { result?: BridgeVideoResult; fail?: BridgeError; speech?: boolean; hold?: Promise<void>; videoDir?: string; progress?: number } = {}) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "clawdesk-video-"));
   const { db, close } = openDb(path.join(dir, "panel.sqlite"));
-  const sent: { agentId: string; text: string; audio?: unknown }[] = [];
+  const sent: { agentId: string; text: string; audio?: unknown; images?: unknown[] }[] = [];
   const canceled: string[] = [];
   const bridge = {
     available: async () => true,
@@ -43,8 +43,21 @@ function harness(options: { result?: BridgeVideoResult; fail?: BridgeError; spee
       canceled.push(jobId);
       return { stopped: true };
     },
+    framesOfVideo: async () => {
+      if (options.hold) await options.hold;
+      return options.result ?? { source: "frames" as const, title: "Разбор", durationSec: 80, frames: [] };
+    },
+    downloadVideo: async () => {
+      if (options.hold) await options.hold;
+      return options.result ?? { source: "file" as const, title: "Разбор", durationSec: 80, file: { name: "job/video.mp4", bytes: 1024 } };
+    },
+    videoProgress: async () => ({ percent: options.progress ?? null }),
   } as unknown as BridgeClient;
   const chat = {
+    sendImages: async (agentId: string, text: string, images: unknown[]) => {
+      sent.push({ agentId, text, images });
+      return { runId: "run" };
+    },
     send: async (agentId: string, text: string) => {
       sent.push({ agentId, text });
       return { runId: "run", reads: [] };
@@ -55,7 +68,7 @@ function harness(options: { result?: BridgeVideoResult; fail?: BridgeError; spee
     },
   } as unknown as ChatService;
   const logger = { warn: () => {}, info: () => {}, child: () => logger } as never;
-  return { video: new VideoService({ db, bridge, chat, logger }), db, sent, canceled, cleanup: () => { close(); fs.rmSync(dir, { recursive: true, force: true }); } };
+  return { video: new VideoService({ db, bridge, chat, logger, videoDir: options.videoDir }), db, dir, sent, canceled, cleanup: () => { close(); fs.rmSync(dir, { recursive: true, force: true }); } };
 }
 
 let open: { cleanup: () => void }[] = [];
@@ -211,5 +224,97 @@ describe("studying a video by link (screen 9)", () => {
     expect(sent).toEqual([]);
     await video.drain();
     expect(sent).toEqual([]);
+  });
+
+  it("sends sampled frames as images, saying the words were not read", async () => {
+    const frames = [
+      { atSec: 0, mimeType: "image/jpeg", fileName: "frame-001.jpg", content: "AAAA" },
+      { atSec: 20, mimeType: "image/jpeg", fileName: "frame-002.jpg", content: "BBBB" },
+    ];
+    const { video, sent } = make({ result: { source: "frames", title: "Приседания", durationSec: 40, frames } });
+    video.create({ agentId: "trainer", url: "https://youtu.be/dQw4w9WgXcQ", mode: "frames" });
+    await video.drain();
+
+    const job = (await video.list()).jobs[0]!;
+    expect(job).toMatchObject({ mode: "frames", state: "ready", source: "frames", frames: 2, chars: 0 });
+    expect(sent[0]!.images).toHaveLength(2);
+    expect(sent[0]!.text).toContain("Прикреплено кадров: 2 (таймкоды: 0:00, 0:20)");
+    expect(sent[0]!.text).toContain("Субтитры и звук для этого разбора не читались");
+  });
+
+  it("calls a video without a readable picture what it is, and sends nothing", async () => {
+    const { video, sent } = make({ result: { source: "frames", title: null, durationSec: 10, frames: [] } });
+    video.create({ agentId: "trainer", url: "https://youtu.be/dQw4w9WgXcQ", mode: "frames" });
+    await video.drain();
+    expect((await video.list()).jobs[0]).toMatchObject({ state: "failed", error: "no_frames" });
+    expect(sent).toEqual([]);
+  });
+
+  it("keeps an original outside the agents' folders and hands it out from the panel", async () => {
+    const store = fs.mkdtempSync(path.join(os.tmpdir(), "clawdesk-videos-"));
+    fs.mkdirSync(path.join(store, "job"));
+    fs.writeFileSync(path.join(store, "job", "video.mp4"), Buffer.alloc(2048, 9));
+    const { video, sent } = make({ videoDir: store, result: { source: "file", title: "Разбор/дома", durationSec: 80, file: { name: "job/video.mp4", bytes: 2048 } } });
+
+    const created = video.create({ agentId: "trainer", url: "https://youtu.be/dQw4w9WgXcQ", mode: "download" });
+    expect(created.mode).toBe("download");
+    await video.drain();
+
+    const job = (await video.list()).jobs[0]!;
+    expect(job).toMatchObject({ state: "ready", source: "file", fileName: "job/video.mp4", fileBytes: 2048 });
+    // The agent is told where the file is, and that nobody watched it.
+    expect(sent[0]!.text).toContain("Файл лежит в хранилище панели, а не в твоей папке");
+    expect(sent[0]!.text).toContain("Содержимое видео не читалось");
+
+    const file = video.file(job.id);
+    expect(file.bytes).toBe(2048);
+    // The name is the video's, without the characters a file name may not carry.
+    expect(file.fileName).toBe("Разбордома.mp4");
+    // The stream really serves the kept file, not just its row.
+    const chunks: Buffer[] = [];
+    for await (const chunk of file.stream) chunks.push(chunk as Buffer);
+    expect(Buffer.concat(chunks)).toHaveLength(2048);
+    fs.rmSync(store, { recursive: true, force: true });
+  });
+
+  it("refuses to keep a file when this install has nowhere to keep it", async () => {
+    const { video } = make();
+    expect(() => video.create({ agentId: "trainer", url: "https://youtu.be/dQw4w9WgXcQ", mode: "download" })).toThrow(VideoJobRejected);
+    expect((await video.list()).downloadsAvailable).toBe(false);
+  });
+
+  it("serves nothing for a job that has no kept file, and nothing outside the video directory", async () => {
+    const store = fs.mkdtempSync(path.join(os.tmpdir(), "clawdesk-videos-"));
+    const { video, db } = make({ videoDir: store });
+    const study = video.create({ agentId: "trainer", url: "https://youtu.be/dQw4w9WgXcQ" });
+    await video.drain();
+    // A study job keeps no file at all.
+    expect(() => video.file(study.id)).toThrow(VideoJobRejected);
+    expect(() => video.file("11111111-1111-4111-8111-111111111111")).toThrow(VideoJobRejected);
+
+    // A row that names a path outside the directory is refused, not served.
+    db.insert(videoJobs)
+      .values({ id: "22222222-2222-4222-8222-222222222222", agentId: "trainer", mode: "download", url: "https://www.youtube.com/watch?v=dQw4w9WgXcQ", videoId: "dQw4w9WgXcQ", state: "ready", source: "file", chars: 0, fileName: "../outside.mp4", fileBytes: 10 })
+      .run();
+    expect(() => video.file("22222222-2222-4222-8222-222222222222")).toThrow(VideoJobRejected);
+    fs.rmSync(store, { recursive: true, force: true });
+  });
+
+  it("shows the download percentage only for the job the worker is on", async () => {
+    let release = () => {};
+    const hold = new Promise<void>((resolve) => (release = resolve));
+    const store = fs.mkdtempSync(path.join(os.tmpdir(), "clawdesk-videos-"));
+    const { video } = make({ videoDir: store, hold, progress: 42, result: { source: "file", title: "T", durationSec: 10, file: { name: "job/video.mp4", bytes: 10 } } });
+    const job = video.create({ agentId: "trainer", url: "https://youtu.be/dQw4w9WgXcQ", mode: "download" });
+    const queued = video.create({ agentId: "trainer", url: "https://youtu.be/dQw4w9WgXcQ", mode: "download" });
+
+    const list = await video.list();
+    expect(list.jobs.find((item) => item.id === job.id)!.progress).toBe(42);
+    // A queued job has no progress of its own.
+    expect(list.jobs.find((item) => item.id === queued.id)!.progress).toBeNull();
+
+    release();
+    await video.drain();
+    fs.rmSync(store, { recursive: true, force: true });
   });
 });
