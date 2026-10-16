@@ -24,6 +24,8 @@ import type {
   FactoryResetResultDto,
   MemoryProvider,
   ExecMode,
+  ChatAttachmentInput,
+  ChatAttachmentLimitsDto,
   ChatHistoryDto,
   ApiErrorDto,
   ApproveTelegramResultDto,
@@ -36,6 +38,15 @@ import type {
   HealthDto,
   ScheduleListDto,
   ScheduleRunDto,
+  SendChatResultDto,
+  BudgetDto,
+  LibrarySearchDto,
+  MemoryNotesDto,
+  SaveBudgetRequest,
+  SaveMemoryNoteRequest,
+  VideoJobDto,
+  VideoJobMode,
+  VideoJobsDto,
   UpdateScheduleRequest,
   InstallProviderResultDto,
   SignInAnswerRequest,
@@ -194,9 +205,43 @@ export const api = {
   },
   chat: {
     history: (agentId: string) => request<ChatHistoryDto>(`/api/chat/${encodeURIComponent(agentId)}/history`),
-    send: (agentId: string, text: string) => post<{ runId: string | null }>(`/api/chat/${encodeURIComponent(agentId)}/send`, { text }),
+    send: (agentId: string, text: string, attachments: ChatAttachmentInput[] = []) =>
+      post<SendChatResultDto>(`/api/chat/${encodeURIComponent(agentId)}/send`, { text, ...(attachments.length ? { attachments } : {}) }),
+    attachmentLimits: () => request<ChatAttachmentLimitsDto>("/api/chat/attachments/limits"),
     abort: (agentId: string) => post<void>(`/api/chat/${encodeURIComponent(agentId)}/abort`),
     eventsUrl: (agentId: string) => `/api/chat/${encodeURIComponent(agentId)}/events`,
+  },
+  library: {
+    search: (query: string, agentId?: string) =>
+      request<LibrarySearchDto>("/api/library/search?q=" + encodeURIComponent(query) + (agentId ? "&agentId=" + encodeURIComponent(agentId) : "")),
+    remove: (id: string) => request<void>("/api/library/" + encodeURIComponent(id), { method: "DELETE" }),
+  },
+  memory: {
+    notes: (agentId: string) => request<MemoryNotesDto>("/api/memory/" + encodeURIComponent(agentId) + "/notes"),
+    add: (agentId: string, body: SaveMemoryNoteRequest) => post<MemoryNotesDto>("/api/memory/" + encodeURIComponent(agentId) + "/notes", body),
+    update: (agentId: string, id: string, body: SaveMemoryNoteRequest) =>
+      request<MemoryNotesDto>("/api/memory/" + encodeURIComponent(agentId) + "/notes/" + encodeURIComponent(id), {
+        method: "PATCH",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(body),
+      }),
+    remove: (agentId: string, id: string) =>
+      request<MemoryNotesDto>("/api/memory/" + encodeURIComponent(agentId) + "/notes/" + encodeURIComponent(id), { method: "DELETE" }),
+  },
+  budget: {
+    get: () => request<BudgetDto>("/api/budget?tz=" + encodeURIComponent(Intl.DateTimeFormat().resolvedOptions().timeZone)),
+    save: (body: SaveBudgetRequest) =>
+      request<BudgetDto>("/api/budget?tz=" + encodeURIComponent(Intl.DateTimeFormat().resolvedOptions().timeZone), {
+        method: "PUT",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(body),
+      }),
+  },
+  video: {
+    jobs: () => request<VideoJobsDto>("/api/video/jobs"),
+    study: (agentId: string, url: string, mode: VideoJobMode = "study") => post<VideoJobDto>("/api/video/jobs", { agentId, url, mode }),
+    fileUrl: (id: string) => `/api/video/jobs/${encodeURIComponent(id)}/file`,
+    cancel: (id: string) => post<VideoJobDto>(`/api/video/jobs/${encodeURIComponent(id)}/cancel`),
   },
   sources: {
     status: () => request<SourcesDto>("/api/sources"),

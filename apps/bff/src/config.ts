@@ -34,6 +34,7 @@ const Env = z.object({
   TRUST_PROXY: z.string().default(""),
   /** Backups folder, read-only for the panel (the bridge writes it). Unset: no backups (host development). */
   BACKUP_DIR: z.string().optional(),
+  VIDEO_DIR: z.string().optional(),
 });
 
 export type AppConfig = {
@@ -51,6 +52,8 @@ export type AppConfig = {
   bridgeUrl: string;
   trustProxy: string | false;
   backupDir: string | undefined;
+  /** Kept video originals, read-only for the panel; absent when this install keeps none. */
+  videoDir: string | undefined;
 };
 
 export function loadConfig(source: NodeJS.ProcessEnv = process.env): AppConfig {
@@ -71,5 +74,6 @@ export function loadConfig(source: NodeJS.ProcessEnv = process.env): AppConfig {
     bridgeUrl: env.CLAWDESK_BRIDGE_URL.replace(/\/$/, ""),
     trustProxy: env.TRUST_PROXY.trim() || false,
     backupDir: env.BACKUP_DIR ? path.resolve(env.BACKUP_DIR) : undefined,
+    videoDir: env.VIDEO_DIR ? path.resolve(env.VIDEO_DIR) : undefined,
   };
 }

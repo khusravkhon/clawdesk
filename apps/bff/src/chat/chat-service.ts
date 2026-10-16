@@ -1,11 +1,13 @@
 import { randomUUID } from "node:crypto";
-import type { ChatHistoryDto, ChatMessageDto, ChatRunPhase, ChatStreamEvent } from "@clawdesk/shared";
+import type { ChatAttachmentInput, ChatAttachmentLimitsDto, ChatHistoryDto, ChatMessageDto, ChatRunPhase, ChatStreamEvent, SendChatResultDto } from "@clawdesk/shared";
+import { documentsBlock, extractDocuments } from "../documents/extract.js";
 import type { GatewayService } from "../gateway/gateway-service.js";
+import { attachmentLimits, attachmentOnlyMessage, attachmentsOf, checkAttachments, toGatewayAttachments } from "./chat-attachments.js";
 
 // Chat with an agent's main session: chat.send / chat.history / chat.abort, and the Gateway's
 // `chat` + `agent` events reduced to what the chat screen draws.
 
-type RawPart = { type: string; text?: string; name?: string };
+type RawPart = { type: string; text?: string; name?: string; fileName?: string; mimeType?: string; sizeBytes?: number };
 export type RawChatMessage = { role: string; content?: string | RawPart[]; timestamp?: number; stopReason?: string };
 
 /** OpenClaw's placeholder when a turn ended without any reply text. */
@@ -33,7 +35,8 @@ export function toChatMessages(raw: RawChatMessage[]): ChatMessageDto[] {
     const at = m.timestamp ?? null;
     if (m.role === "user") {
       const text = textOf(m);
-      if (text) out.push({ id, role: "user", text, tools: [], at, status: "ok" });
+      const attachments = attachmentsOf(partsOf(m));
+      if (text || attachments.length) out.push({ id, role: "user", text, tools: [], attachments, at, status: "ok" });
       pendingTools = [];
       return;
     }
@@ -54,7 +57,7 @@ export function toChatMessages(raw: RawChatMessage[]): ChatMessageDto[] {
       prev.at = at; // the same failure retried
       return;
     }
-    out.push({ id, role: "assistant", text, tools: [...pendingTools, ...tools], at, status });
+    out.push({ id, role: "assistant", text, tools: [...pendingTools, ...tools], attachments: [], at, status });
     pendingTools = [];
   });
   return out;
@@ -103,7 +106,11 @@ export function toStreamEvent(event: GatewayEvent, sessionKey: string): ChatStre
 }
 
 export class ChatService {
-  constructor(private readonly gateway: GatewayService) {}
+  constructor(
+    private readonly gateway: GatewayService,
+    /** Keeps what the panel read out of a file, so the owner can find it again later. */
+    private readonly library?: { add(item: { agentId: string; kind: "document" | "video"; title: string; source: string; locator?: string | null; text: string }): string | null },
+  ) {}
 
   async history(agentId: string, limit = 60): Promise<ChatHistoryDto> {
     const res = await this.gateway.request<{ messages?: RawChatMessage[]; inFlightRun?: unknown }>("chat.history", {
@@ -111,15 +118,74 @@ export class ChatService {
       agentId,
       limit,
     });
-    return { agentId, messages: toChatMessages(res.messages ?? []), running: !!res.inFlightRun };
+    return { agentId, messages: toChatMessages(res.messages ?? []), running: !!res.inFlightRun, attachments: this.attachmentLimits() };
   }
 
-  async send(agentId: string, text: string): Promise<{ runId: string | null }> {
+  /** What this Gateway accepts for attachments right now (empty handshake: the panel's own caps). */
+  attachmentLimits(): ChatAttachmentLimitsDto {
+    return attachmentLimits(this.gateway.hello as Parameters<typeof attachmentLimits>[0]);
+  }
+
+  async send(agentId: string, text: string, attachments: ChatAttachmentInput[] = []): Promise<SendChatResultDto> {
+    if (attachments.length) checkAttachments(attachments, this.attachmentLimits());
+    // The panel reads what it can out of the files and adds that text to the message; the files
+    // themselves still travel to the Gateway, so a tool of the agent can read them its own way.
+    const documents = attachments.length
+      ? await extractDocuments(attachments.map((file) => ({ fileName: file.fileName, mimeType: file.mimeType, bytes: Buffer.from(file.content, "base64") })))
+      : [];
+    const block = documentsBlock(documents);
+    for (const document of documents) {
+      if (!document.text.trim()) continue;
+      const read = document.read;
+      const locator = read.pages !== null ? "страница" : read.sheets !== null ? "лист" : read.slides !== null ? "слайд" : null;
+      this.library?.add({ agentId, kind: "document", title: read.fileName, source: read.fileName, locator, text: document.text });
+    }
+    const message = [text || attachmentOnlyMessage(attachments), block].filter(Boolean).join("\n\n");
+    const res = await this.gateway.request<{ runId?: string }>("chat.send", {
+      sessionKey: mainSessionKey(agentId),
+      agentId,
+      message,
+      idempotencyKey: randomUUID(),
+      ...(attachments.length ? { attachments: toGatewayAttachments(attachments) } : {}),
+    });
+    return { runId: res.runId ?? null, reads: documents.map((document) => document.read) };
+  }
+
+  /**
+   * Sends an audio track with a message, for the agent's own speech recognition (the owner's
+   * configured provider). The panel does not transcribe it and does not claim that it did.
+   */
+  async sendAudio(agentId: string, text: string, audio: { mimeType: string; fileName: string; content: string; durationMs: number | null }): Promise<{ runId: string | null }> {
     const res = await this.gateway.request<{ runId?: string }>("chat.send", {
       sessionKey: mainSessionKey(agentId),
       agentId,
       message: text,
       idempotencyKey: randomUUID(),
+      attachments: [
+        {
+          type: "audio",
+          mimeType: audio.mimeType,
+          fileName: audio.fileName,
+          content: audio.content,
+          sizeBytes: Math.floor((audio.content.length / 4) * 3),
+          ...(audio.durationMs ? { durationMs: audio.durationMs } : {}),
+        },
+      ],
+    });
+    return { runId: res.runId ?? null };
+  }
+
+  /**
+   * Sends images with a message — sampled video frames, for an agent whose model can read them.
+   * The panel does not look at them itself and claims nothing about what they show.
+   */
+  async sendImages(agentId: string, text: string, images: { mimeType: string; fileName: string; content: string }[]): Promise<{ runId: string | null }> {
+    const res = await this.gateway.request<{ runId?: string }>("chat.send", {
+      sessionKey: mainSessionKey(agentId),
+      agentId,
+      message: text,
+      idempotencyKey: randomUUID(),
+      attachments: images.map((image) => ({ type: "image", mimeType: image.mimeType, fileName: image.fileName, content: image.content, sizeBytes: Math.floor((image.content.length / 4) * 3) })),
     });
     return { runId: res.runId ?? null };
   }

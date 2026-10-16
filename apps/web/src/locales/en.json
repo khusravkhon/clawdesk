@@ -401,9 +401,19 @@
       "count": "Files: {n}",
       "empty": "The folder is empty so far.",
       "sync": {
-        "title": "Specialists’ folder exchange", "unavailable": "Exchange status is unavailable. Refresh later or check the Gateway connection.", "empty": "No specialist folders registered.",
-        "lastAttempt": "Last attempt", "lastSuccess": "Last complete exchange", "unknown": "Not yet", "counts": "Preserved conflicts: {conflicts}; skipped paths: {skipped}",
-        "states": { "pending": "Waiting", "ready": "Exchanged", "partial": "Some files skipped", "error": "Exchange stopped" },
+        "title": "Specialists’ folder exchange",
+        "unavailable": "Exchange status is unavailable. Refresh later or check the Gateway connection.",
+        "empty": "No specialist folders registered.",
+        "lastAttempt": "Last attempt",
+        "lastSuccess": "Last complete exchange",
+        "unknown": "Not yet",
+        "counts": "Preserved conflicts: {conflicts}; skipped paths: {skipped}",
+        "states": {
+          "pending": "Waiting",
+          "ready": "Exchanged",
+          "partial": "Some files skipped",
+          "error": "Exchange stopped"
+        },
         "issues": {
           "file_too_large": "Over 32 MiB. Reduce the file or move it outside this folder; other files continue exchanging.",
           "unsupported_file": "Links and special files are skipped. Put a regular file here.",
@@ -500,6 +510,71 @@
       "thinking": "Thinking…",
       "tool": "Using tools…",
       "writing": "Writing…"
+    },
+    "attach": {
+      "add": "Attach a file",
+      "remove": "Remove the file",
+      "tooMany": "A message takes at most {count} files.",
+      "tooLarge": "“{name}” is over the size limit ({limit}). Put it in the agent's folder instead.",
+      "tooMuch": "The files in one message must stay under {limit} together.",
+      "unsupported": "The panel does not pass this file type on: “{name}”.",
+      "readFailed": "The browser could not read “{name}”.",
+      "rejected": "The Gateway did not accept “{name}”."
+    },
+    "read": {
+      "pages": "pages: {pages}, read {read}",
+      "sheets": "sheets: {count}",
+      "slides": "slides: {count}",
+      "encoding": "encoding: {encoding}",
+      "state": {
+        "read": "read in full",
+        "partial": "read in part — the text is cut off after this",
+        "no_text": "no text: looks like a scan or a photo, which needs an agent that can read images",
+        "encrypted": "password protected: the panel does not read it",
+        "unreadable": "could not be read: the file is broken or carries markup the panel refuses",
+        "legacy_format": "pre-2007 Office format (.doc, .xls, .ppt): the panel does not read those — save as .docx, .xlsx or .pptx",
+        "image": "passed on as an image; no text was extracted",
+        "not_read": "the panel does not read this type; the agent got the file itself"
+      }
+    },
+    "video": {
+      "study": "Study the video",
+      "cancel": "Stop",
+      "how": "The panel takes the subtitles; with none, the audio track for recognition. Frames are not analyzed.",
+      "howNoSpeech": "The panel takes the subtitles. Speech recognition is not set up, so a video without subtitles cannot be read.",
+      "state": {
+        "queued": "queued",
+        "running": "being studied",
+        "ready": "done, the transcript went to the agent",
+        "failed": "did not work",
+        "canceled": "stopped"
+      },
+      "error": {
+        "invalid_url": "the link was not recognized",
+        "unsupported_host": "the panel does not study this site yet",
+        "playlist_not_allowed": "that is a playlist: send a link to one video",
+        "too_long": "the video is longer than allowed",
+        "speech_not_configured": "no subtitles, and speech recognition is not set up — turn it on under Telegram",
+        "site_refused": "the site refused: an age or region limit, or a private video",
+        "not_found": "the video was not found or was removed",
+        "download_failed": "neither subtitles nor audio could be fetched",
+        "timeout": "it ran out of time",
+        "audio_too_large": "the audio track is over the recognition limit",
+        "worker_unavailable": "the video worker is unavailable: update the ClawDesk stack",
+        "panel_restarted": "the panel restarted while it was running — start it again",
+        "file_too_large": "the file is over the size limit — the panel does not keep it",
+        "no_frames": "no frame could be taken: the video has no readable picture",
+        "downloads_unavailable": "this install does not keep video originals"
+      },
+      "frames": "Look at the frames",
+      "download": "Download",
+      "saveFile": "Save the file",
+      "framesSent": "frames sent: {count}",
+      "mode": {
+        "study": "summary",
+        "frames": "frames",
+        "download": "file"
+      }
     }
   },
   "approvals": {
@@ -953,6 +1028,55 @@
       "audio_setup_failed": "Could not save transcription settings. Try again; your chat model was not changed.",
       "audio_setup_busy": "Transcription setup is already running. Wait for it to finish.",
       "no_audio_key": "Save an API key for the selected transcription provider first."
+    }
+  },
+  "library": {
+    "placeholder": "Search this agent's materials…",
+    "search": "Search",
+    "remove": "Remove the material",
+    "nothing": "Nothing found. Materials searched: {count}.",
+    "emptyLibrary": "This agent has no read materials yet.",
+    "partial": "Matches from the most recent materials: there are too many to search all of them.",
+    "kind": {
+      "document": "document",
+      "video": "video"
+    }
+  },
+  "memory": {
+    "notes": {
+      "title": "What the agent knows about you",
+      "lead": "The owner's notes: a fact, its source and its date. The panel writes them into the agent's file, where it reads them as its own knowledge. Any note can be corrected or deleted.",
+      "empty": "No notes yet.",
+      "noSource": "no source",
+      "add": "Add",
+      "saveEdit": "Save",
+      "cancel": "Cancel",
+      "edit": "Correct",
+      "remove": "Delete",
+      "textPlaceholder": "For example: left knee hurts, squats without weight",
+      "sourcePlaceholder": "Source: a conversation, a document, a link",
+      "error": {
+        "too_many": "Too many notes: delete some, or the agent reads all of them every time.",
+        "not_found": "That note is already gone."
+      }
+    }
+  },
+  "budget": {
+    "title": "Spending limits",
+    "lead": "What a day and a month may cost. At the limit the panel stops starting work by itself: schedules pause and no new video is taken. Your own messages are never blocked.",
+    "today": "Today",
+    "month": "This month",
+    "dailyLimit": "Daily limit, $",
+    "monthlyLimit": "Monthly limit, $",
+    "save": "Save the limits",
+    "saved": "Limits saved",
+    "zeroHint": "0 means no limit.",
+    "paused": "Schedules paused: {count}.",
+    "incomplete": "The Gateway returned some entries without cost, so the total is a lower bound.",
+    "exceeded": {
+      "daily": "The daily limit is reached.",
+      "monthly": "The monthly limit is reached.",
+      "none": ""
     }
   }
 }

@@ -192,3 +192,83 @@ export const userTemplates = sqliteTable("user_templates", {
   canAskMain: integer("can_ask_main", { mode: "boolean" }).notNull(),
   createdAt: createdAt(),
 });
+
+/**
+ * Videos the owner asked an agent to study (screen 9). The row is the durable part: the worker
+ * runs outside the panel, so a restart must still know whose job this was and how it ended.
+ */
+export const videoJobs = sqliteTable(
+  "video_jobs",
+  {
+    id: text("id").primaryKey(),
+    agentId: text("agent_id").notNull(),
+    /** The canonical link, without the owner's tracking parameters. */
+    url: text("url").notNull(),
+    videoId: text("video_id").notNull(),
+    title: text("title"),
+    /** What the owner asked for: a summary, the picture, or the file. */
+    mode: text("mode", { enum: ["study", "frames", "download"] }).notNull().default("study"),
+    state: text("state", { enum: ["queued", "running", "ready", "failed", "canceled"] }).notNull(),
+    /** What the material came from: subtitles, speech, frames, the file itself, or nothing. */
+    source: text("source", { enum: ["subtitles", "speech", "frames", "file", "none"] }).notNull(),
+    language: text("language"),
+    durationSec: integer("duration_sec"),
+    chars: integer("chars").notNull().default(0),
+    /** Frames handed to the agent, for a frames job. */
+    frames: integer("frames"),
+    /** The kept original in the panel video directory, and its size on disk. */
+    fileName: text("file_name"),
+    fileBytes: integer("file_bytes"),
+    /** A code from VideoJobError; never a raw worker message. */
+    error: text("error"),
+    createdAt: createdAt(),
+    finishedAt: integer("finished_at", { mode: "timestamp_ms" }),
+  },
+  (t) => [index("video_jobs_state_idx").on(t.state), index("video_jobs_created_idx").on(t.createdAt)],
+);
+
+/**
+ * The owner's library: what the panel has already read for an agent — a document from the chat or
+ * a video transcript. The row belongs to the agent the material was sent to, so a search only ever
+ * finds what that agent was actually given.
+ */
+export const libraryItems = sqliteTable(
+  "library_items",
+  {
+    id: text("id").primaryKey(),
+    agentId: text("agent_id").notNull(),
+    kind: text("kind", { enum: ["document", "video"] }).notNull(),
+    /** The file name or the video title. */
+    title: text("title").notNull(),
+    /** Where it came from: the file name, or the canonical video link. */
+    source: text("source").notNull(),
+    /** How to point back into it: "страница", "лист", "таймкод" — set by whoever read it. */
+    locator: text("locator"),
+    /** The text the panel read, as it was handed to the agent (already bounded). */
+    text: text("text").notNull(),
+    chars: integer("chars").notNull(),
+    createdAt: createdAt(),
+  },
+  (t) => [index("library_items_agent_idx").on(t.agentId), index("library_items_created_idx").on(t.createdAt)],
+);
+
+/**
+ * Notes the owner keeps for an agent, with where each one came from and when. The panel writes
+ * them into that agent's USER.md between its own markers, so the agent reads them as its own
+ * knowledge while the owner stays able to correct or delete any of them.
+ */
+export const memoryNotes = sqliteTable(
+  "memory_notes",
+  {
+    id: text("id").primaryKey(),
+    agentId: text("agent_id").notNull(),
+    text: text("text").notNull(),
+    /** Where this came from, in the owner's words: a document, a conversation, a link. */
+    source: text("source"),
+    /** The day the fact is about (YYYY-MM-DD), which is not always the day it was written. */
+    happenedOn: text("happened_on"),
+    createdAt: createdAt(),
+    updatedAt: integer("updated_at", { mode: "timestamp_ms" }),
+  },
+  (t) => [index("memory_notes_agent_idx").on(t.agentId)],
+);

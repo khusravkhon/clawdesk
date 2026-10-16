@@ -14,6 +14,25 @@ export class BridgeError extends Error {
 
 export type McpAuthStatus = { configured: boolean; hasTokens: boolean; state: string | null };
 
+/**
+ * What the video worker reports back. Either subtitles, or the audio track when the video has
+ * none, or an error code — never a free-form message, and never both a result and an error.
+ */
+export type BridgeVideoResult = {
+  source?: "subtitles" | "speech" | "frames" | "file";
+  title?: string | null;
+  durationSec?: number | null;
+  language?: string | null;
+  /** WebVTT or SRT as the site served it; the panel turns it into a transcript. */
+  subtitles?: string;
+  audio?: { mimeType: string; fileName: string; content: string; durationMs?: number | null };
+  /** Sampled frames, each with the second of the video it was taken at. */
+  frames?: { atSec: number; mimeType: string; fileName: string; content: string }[];
+  /** The kept original: its path inside the panel's video directory, and its size. */
+  file?: { name: string; bytes: number };
+  error?: string;
+};
+
 export type BridgeBackup = { name: string; kind: "daily" | "manual" | "before-reset"; createdAt: string; size: number };
 
 export type GoogleLogin = { email: string; services: string[]; readonly: boolean; redirectUri?: string };
@@ -38,6 +57,30 @@ export class BridgeClient {
     } catch {
       return false;
     }
+  }
+
+  /** Starts the pinned worker for one video; the call ends when the worker does. */
+  studyVideo(request: { jobId: string; url: string; maxDurationSec: number; maxAudioBytes: number; maxSeconds: number }): Promise<BridgeVideoResult> {
+    return this.#call("POST", "/video/study", request, (request.maxSeconds + 30) * 1000);
+  }
+
+  /** Frames only: no subtitles and no audio are touched by this call. */
+  framesOfVideo(request: { jobId: string; url: string; maxDurationSec: number; maxFrames: number; maxFrameBytes: number; maxSeconds: number }): Promise<BridgeVideoResult> {
+    return this.#call("POST", "/video/frames", request, (request.maxSeconds + 30) * 1000);
+  }
+
+  /** The original file, written into the panel's video directory by the worker. */
+  downloadVideo(request: { jobId: string; url: string; maxDurationSec: number; maxFileBytes: number; maxSeconds: number }): Promise<BridgeVideoResult> {
+    return this.#call("POST", "/video/download", request, (request.maxSeconds + 60) * 1000);
+  }
+
+  /** How far a running download got, as a percentage, or null when the worker said nothing yet. */
+  videoProgress(jobId: string): Promise<{ percent: number | null }> {
+    return this.#call("GET", "/video/progress?jobId=" + encodeURIComponent(jobId), undefined, 10_000);
+  }
+
+  cancelVideo(jobId: string): Promise<{ stopped: boolean }> {
+    return this.#call("POST", "/video/cancel", { jobId }, 30_000);
   }
 
   mcpStatus(server: string): Promise<McpAuthStatus> {

@@ -1,7 +1,9 @@
 <script setup lang="ts">
 // Chat with an agent (screen 9): its main session, replies streamed live.
-import type { AgentListItemDto, ChatMessageDto, ChatRunPhase, ChatStreamEvent } from "@clawdesk/shared";
-import { AlertCircle, ArrowUp, CircleSlash, Square, Wrench } from "@lucide/vue";
+import type { AgentListItemDto, ChatAttachmentInput, ChatAttachmentLimitsDto, ChatAttachmentReadDto, ChatMessageDto, ChatRunPhase, ChatStreamEvent } from "@clawdesk/shared";
+import type { VideoJobDto, VideoJobMode } from "@clawdesk/shared";
+import { CHAT_ATTACHMENT_ACCEPT, isVideoUrl } from "@clawdesk/shared";
+import { AlertCircle, ArrowUp, CircleSlash, Download, Film, Images, Paperclip, Square, Wrench, X } from "@lucide/vue";
 import MarkdownIt from "markdown-it";
 import { NButton, NSelect, NSpin, useMessage } from "naive-ui";
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue";
@@ -9,7 +11,8 @@ import { useI18n } from "vue-i18n";
 import { useRoute, useRouter } from "vue-router";
 import { api, ApiError } from "../api/client";
 import ApprovalCard from "../components/ApprovalCard.vue";
-import { intlLocale } from "../format";
+import LibrarySearch from "../components/LibrarySearch.vue";
+import { formatBytes, intlLocale } from "../format";
 import { modelErrorHint } from "../model-errors";
 import { useApprovalsStore } from "../stores/approvals";
 
@@ -61,6 +64,129 @@ const slow = computed(() => running.value && !liveText.value && startedAt.value 
 
 const scroller = ref<HTMLElement | null>(null);
 const input = ref<HTMLTextAreaElement | null>(null);
+const picker = ref<HTMLInputElement | null>(null);
+
+// Files staged for the next message: read in the browser, sent with chat.send, never stored by the panel.
+type StagedFile = ChatAttachmentInput & { id: string };
+const staged = ref<StagedFile[]>([]);
+const limits = ref<ChatAttachmentLimitsDto | null>(null);
+const stagedBytes = computed(() => staged.value.reduce((sum, file) => sum + file.sizeBytes, 0));
+const supported = CHAT_ATTACHMENT_ACCEPT.split(",");
+
+const bytes = (value: number) => formatBytes(value, locale.value);
+
+async function toBase64(file: File): Promise<string> {
+  const buffer = new Uint8Array(await file.arrayBuffer());
+  let binary = "";
+  // In chunks: one spread of a whole file would overflow the argument list.
+  for (let i = 0; i < buffer.length; i += 8192) binary += String.fromCharCode(...buffer.subarray(i, i + 8192));
+  return btoa(binary);
+}
+
+async function pick(event: Event): Promise<void> {
+  const target = event.target as HTMLInputElement;
+  const files = [...(target.files ?? [])];
+  target.value = ""; // picking the same file again must count as a new choice
+  const max = limits.value;
+  for (const file of files) {
+    if (max && staged.value.length >= max.maxFiles) {
+      message.error(t("chat.attach.tooMany", { count: max.maxFiles }));
+      break;
+    }
+    const type = file.type as ChatAttachmentInput["mimeType"];
+    if (!supported.includes(type)) {
+      message.error(t("chat.attach.unsupported", { name: file.name }));
+      continue;
+    }
+    const limit = max ? (type.startsWith("image/") ? max.maxImageBytes : max.maxFileBytes) : Infinity;
+    if (file.size > limit) {
+      message.error(t("chat.attach.tooLarge", { name: file.name, limit: bytes(limit) }));
+      continue;
+    }
+    if (max && stagedBytes.value + file.size > max.maxTotalBytes) {
+      message.error(t("chat.attach.tooMuch", { limit: bytes(max.maxTotalBytes) }));
+      break;
+    }
+    try {
+      const content = await toBase64(file);
+      staged.value.push({ id: [file.name, file.size, Date.now()].join("-"), fileName: file.name, mimeType: type, sizeBytes: file.size, content });
+    } catch {
+      message.error(t("chat.attach.readFailed", { name: file.name }));
+    }
+  }
+}
+
+const unstage = (id: string) => (staged.value = staged.value.filter((file) => file.id !== id));
+
+// A video link in the composer: the panel can study it instead of sending the link as text.
+// Studying happens in a worker outside the panel, so a job has its own state and can be stopped.
+const videoJobs = ref<VideoJobDto[]>([]);
+const speechConfigured = ref(true);
+const downloadsAvailable = ref(false);
+const studying = ref(false);
+const videoLink = computed(() => (isVideoUrl(draft.value.trim()) ? draft.value.trim() : null));
+const agentVideoJobs = computed(() => videoJobs.value.filter((job) => job.agentId === agentId.value).slice(0, 5));
+
+async function loadVideoJobs(): Promise<void> {
+  try {
+    const result = await api.video.jobs();
+    videoJobs.value = result.jobs;
+    speechConfigured.value = result.speechConfigured;
+    downloadsAvailable.value = result.downloadsAvailable;
+  } catch {
+    // The list is a convenience; a failure here must not break the chat.
+  }
+}
+
+async function studyVideo(mode: VideoJobMode = "study"): Promise<void> {
+  const url = videoLink.value;
+  if (!url || studying.value) return;
+  studying.value = true;
+  try {
+    const job = await api.video.study(agentId.value, url, mode);
+    videoJobs.value = [job, ...videoJobs.value];
+    draft.value = "";
+  } catch (e) {
+    message.error(e instanceof ApiError ? e.body.message : String(e));
+  } finally {
+    studying.value = false;
+  }
+}
+
+async function cancelVideo(id: string): Promise<void> {
+  try {
+    const job = await api.video.cancel(id);
+    videoJobs.value = videoJobs.value.map((item) => (item.id === job.id ? job : item));
+  } catch (e) {
+    message.error(e instanceof ApiError ? e.body.message : String(e));
+  }
+}
+
+/** One line per job: what was asked, its state, and for a failure the reason the worker reported. */
+function videoLine(job: VideoJobDto): string {
+  if (job.state === "failed" && job.error) return t("chat.video.error." + job.error);
+  const state = t("chat.video.state." + job.state);
+  const mode = t("chat.video.mode." + job.mode);
+  if (job.state === "running" && job.progress !== null) return `${mode}: ${state} ${job.progress}%`;
+  if (job.state === "ready" && job.mode === "frames" && job.frames) return `${mode}: ${t("chat.video.framesSent", { count: job.frames })}`;
+  if (job.state === "ready" && job.mode === "download" && job.fileBytes) return `${mode}: ${bytes(job.fileBytes)}`;
+  return `${mode}: ${state}`;
+}
+
+// What the panel itself read out of the files of the last message, shown under that turn.
+const reads = ref<ChatAttachmentReadDto[]>([]);
+
+/** One line per file: the state, and the numbers that state rests on. */
+function readLine(read: ChatAttachmentReadDto): string {
+  const facts = [
+    read.pages !== null ? t("chat.read.pages", { pages: read.pages, read: read.readPages ?? read.pages }) : null,
+    read.sheets !== null ? t("chat.read.sheets", { count: read.sheets }) : null,
+    read.slides !== null ? t("chat.read.slides", { count: read.slides }) : null,
+    read.encoding && read.encoding !== "utf-8" ? t("chat.read.encoding", { encoding: read.encoding }) : null,
+  ].filter(Boolean);
+  const state = t("chat.read.state." + read.state);
+  return facts.length ? state + " · " + facts.join(" · ") : state;
+}
 
 function scrollDown(): void {
   void nextTick(() => scroller.value?.scrollTo({ top: scroller.value.scrollHeight }));
@@ -71,6 +197,7 @@ async function loadHistory(): Promise<void> {
   try {
     const h = await api.chat.history(agentId.value);
     messages.value = h.messages;
+    limits.value = h.attachments;
     if (h.messages.length !== before) scrollDown();
     if (h.running && !running.value) startRun();
     // The Gateway does not always send a closing chat event (e.g. every model failed before replying);
@@ -134,21 +261,63 @@ async function onEvent(ev: ChatStreamEvent): Promise<void> {
   scrollDown();
 }
 
+/** A rejected file comes back as a reason code; the panel writes that reason in the owner's language. */
+function attachmentError(error: ApiError): string {
+  const details = error.body.details as { code?: string; fileName?: string; limit?: number } | undefined;
+  if (error.body.error !== "attachment_rejected" || !details?.code) return error.body.message;
+  const name = details.fileName ?? "";
+  const limit = details.limit ? bytes(details.limit) : "";
+  switch (details.code) {
+    case "too_many_files":
+      return t("chat.attach.tooMany", { count: details.limit ?? 0 });
+    case "unsupported_type":
+      return t("chat.attach.unsupported", { name });
+    case "file_too_large":
+    case "image_too_large":
+      return t("chat.attach.tooLarge", { name, limit });
+    case "request_too_large":
+      return t("chat.attach.tooMuch", { limit });
+    default:
+      return t("chat.attach.rejected", { name });
+  }
+}
+
 async function send(text = draft.value): Promise<void> {
   const body = text.trim();
-  if (!body || sending.value) return;
+  const files = staged.value;
+  if ((!body && !files.length) || sending.value) return;
   sending.value = true;
   draft.value = "";
+  staged.value = [];
   lastFailure.value = null;
-  messages.value.push({ id: `local-${Date.now()}`, role: "user", text: body, tools: [], at: Date.now(), status: "ok" });
+  const localId = "local-" + Date.now();
+  messages.value.push({
+    id: localId,
+    role: "user",
+    text: body,
+    tools: [],
+    attachments: files.map(({ fileName, mimeType, sizeBytes }) => ({ fileName, mimeType, sizeBytes })),
+    at: Date.now(),
+    status: "ok",
+  });
+  reads.value = [];
   startRun();
   scrollDown();
   try {
-    await api.chat.send(agentId.value, body);
+    const result = await api.chat.send(
+      agentId.value,
+      body,
+      files.map(({ id: _id, ...file }) => file),
+    );
+    reads.value = result.reads;
+    scrollDown();
   } catch (e) {
     endRun();
-    message.error(e instanceof ApiError ? e.body.message : String(e));
+    message.error(e instanceof ApiError ? attachmentError(e) : String(e));
+    // Nothing was sent: the draft and its files go back to the composer.
     draft.value = body;
+    staged.value = files;
+    messages.value = messages.value.filter((m) => m.id !== localId);
   } finally {
     sending.value = false;
     void nextTick(() => input.value?.focus());
@@ -197,7 +366,10 @@ onMounted(async () => {
   clock = setInterval(() => (now.value = Date.now()), 1000);
   poll = setInterval(() => {
     if (running.value) void loadHistory();
+    // A video is studied outside the panel: its state changes without any chat event.
+    if (videoJobs.value.some((job) => job.state === "queued" || job.state === "running")) void loadVideoJobs();
   }, 4_000);
+  void loadVideoJobs();
   try {
     agents.value = (await api.agents()).agents;
   } catch {
@@ -242,7 +414,14 @@ watch(agentId, () => void open());
 
         <template v-for="m in messages" :key="m.id">
           <div v-if="m.role === 'user'" class="row user">
-            <div class="bubble">{{ m.text }}</div>
+            <div class="bubble">
+              <span v-if="m.text">{{ m.text }}</span>
+              <div v-if="m.attachments.length" class="files">
+                <span v-for="file in m.attachments" :key="file.fileName" class="file">
+                  <paperclip :size="12" /> {{ file.fileName }}<template v-if="file.sizeBytes"> · {{ bytes(file.sizeBytes) }}</template>
+                </span>
+              </div>
+            </div>
           </div>
           <div v-else class="row assistant">
             <div class="avatar">{{ agent?.emoji ?? "🧭" }}</div>
@@ -277,6 +456,14 @@ watch(agentId, () => void open());
             <div v-if="waiting.length" class="approvals">
               <approval-card v-for="a in waiting" :key="a.id" :approval="a" :agent-name="agent ? displayName(agent) : undefined" compact />
             </div>
+            <div v-if="reads.length" class="notice files-read">
+              <paperclip :size="14" />
+              <span>
+                <template v-for="read in reads" :key="read.fileName">
+                  <b>{{ read.fileName }}</b> — {{ readLine(read) }}<br />
+                </template>
+              </span>
+            </div>
             <div v-if="slow && !waiting.length" class="slow">{{ t("chat.slow") }}</div>
           </div>
         </div>
@@ -284,7 +471,46 @@ watch(agentId, () => void open());
     </div>
 
     <footer class="composer">
+      <LibrarySearch :key="agentId" :agent-id="agentId" />
+      <div v-if="agentVideoJobs.length" class="videos">
+        <span v-for="job in agentVideoJobs" :key="job.id" class="file staged-file">
+          <film :size="12" /> {{ job.title ?? job.url }} — {{ videoLine(job) }}
+          <a v-if="job.state === 'ready' && job.mode === 'download' && job.fileName" :href="api.video.fileUrl(job.id)" :title="t('chat.video.saveFile')" download>
+            <download :size="12" />
+          </a>
+          <button v-if="job.state === 'queued' || job.state === 'running'" type="button" :aria-label="t('chat.video.cancel')" @click="cancelVideo(job.id)"><x :size="12" /></button>
+        </span>
+      </div>
+      <div v-if="videoLink" class="videos">
+        <n-button size="tiny" secondary :loading="studying" @click="studyVideo('study')">
+          <film :size="12" /> &nbsp;{{ t("chat.video.study") }}
+        </n-button>
+        <n-button size="tiny" secondary :loading="studying" @click="studyVideo('frames')">
+          <images :size="12" /> &nbsp;{{ t("chat.video.frames") }}
+        </n-button>
+        <n-button v-if="downloadsAvailable" size="tiny" secondary :loading="studying" @click="studyVideo('download')">
+          <download :size="12" /> &nbsp;{{ t("chat.video.download") }}
+        </n-button>
+        <span class="hint-inline">{{ speechConfigured ? t("chat.video.how") : t("chat.video.howNoSpeech") }}</span>
+      </div>
+      <div v-if="staged.length" class="staged">
+        <span v-for="file in staged" :key="file.id" class="file staged-file">
+          <paperclip :size="12" /> {{ file.fileName }} · {{ bytes(file.sizeBytes) }}
+          <button type="button" :aria-label="t('chat.attach.remove')" @click="unstage(file.id)"><x :size="12" /></button>
+        </span>
+      </div>
       <div class="box">
+        <input ref="picker" type="file" multiple hidden :accept="CHAT_ATTACHMENT_ACCEPT" @change="pick" />
+        <n-button
+          circle
+          size="small"
+          quaternary
+          :disabled="sending || (limits !== null && staged.length >= limits.maxFiles)"
+          :aria-label="t('chat.attach.add')"
+          @click="picker?.click()"
+        >
+          <paperclip :size="16" />
+        </n-button>
         <textarea
           ref="input"
           v-model="draft"
@@ -296,7 +522,7 @@ watch(agentId, () => void open());
         <n-button v-if="running" circle size="small" secondary :aria-label="t('chat.stop')" @click="stop">
           <square :size="12" fill="currentColor" />
         </n-button>
-        <n-button v-else circle size="small" type="primary" :disabled="!draft.trim()" :loading="sending" :aria-label="t('chat.send')" @click="send()">
+        <n-button v-else circle size="small" type="primary" :disabled="!draft.trim() && !staged.length" :loading="sending" :aria-label="t('chat.send')" @click="send()">
           <arrow-up :size="16" />
         </n-button>
       </div>
@@ -542,6 +768,65 @@ watch(agentId, () => void open());
   margin-top: 8px;
   font-size: 12px;
   color: var(--muted);
+}
+.files-read {
+  align-items: flex-start;
+  line-height: 1.5;
+}
+.videos {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  padding: 0 4px 8px;
+}
+.hint-inline {
+  font-size: 12px;
+  opacity: 0.7;
+}
+.staged {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 0 4px 8px;
+}
+.file {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+  line-height: 1.4;
+}
+.files {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-top: 4px;
+  opacity: 0.85;
+}
+.staged-file {
+  padding: 4px 8px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--surface);
+}
+.staged-file button {
+  display: inline-flex;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  cursor: pointer;
+  opacity: 0.6;
+}
+.staged-file button:hover,
+.staged-file a:hover {
+  opacity: 1;
+}
+.staged-file a {
+  display: inline-flex;
+  color: inherit;
+  opacity: 0.6;
 }
 .composer {
   padding-top: 12px;

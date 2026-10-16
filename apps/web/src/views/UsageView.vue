@@ -8,6 +8,7 @@ import { useI18n } from "vue-i18n";
 import { api, ApiError } from "../api/client";
 import TrendChart from "../components/charts/TrendChart.vue";
 import BarList, { type BarItem } from "../components/ui/BarList.vue";
+import BudgetCard from "../components/BudgetCard.vue";
 import PageHeader from "../components/ui/PageHeader.vue";
 import UsageMetrics from "../components/UsageMetrics.vue";
 import { formatCompact, formatCost, formatDay, formatInt } from "../format";
@@ -113,6 +114,8 @@ const activeAgents = computed(() => (data.value?.agents ?? []).filter((a) => a.t
           </tbody>
         </table>
       </n-card>
+
+      <BudgetCard />
     </template>
   </div>
 </template>

@@ -18,6 +18,10 @@ import { BridgeClient } from "./gateway/bridge-client.js";
 import { SourcesService } from "./sources/sources-service.js";
 import { TelegramService } from "./telegram/telegram-service.js";
 import { FreeModelsService } from "./free-models/free-models-service.js";
+import { ChatService } from "./chat/chat-service.js";
+import { VideoService } from "./video/video-service.js";
+import { BudgetService } from "./budget/budget-service.js";
+import { LibraryService } from "./library/library-service.js";
 import { repairAgentFolders } from "./provision/agent-folders.js";
 import { repairAgentCommunication } from "./provision/agent-communication.js";
 
@@ -50,7 +54,13 @@ const auth = new AuthService({ db, dataDir: config.dataDir, logger: logger.child
 const backups = new BackupService({ bridge, dir: config.backupDir, logger: logger.child({ component: "backups" }) });
 const teams = new TeamService({ gateway, db, logger: logger.child({ component: "teams" }), bridge, space, telegram, sandboxEnabled: config.sandboxEnabled });
 const audit = new AuditService({ db, gateway, logger: logger.child({ component: "audit" }) });
-const app = await buildApp({ logger, gateway, db, aiSetup, signIn, telegram, freeModels, sources, approvals, assistant, auth, backups, bridge, space, teams, audit, sandboxEnabled: config.sandboxEnabled, webDist: config.webDist, trustProxy: config.trustProxy });
+// Studying videos by link: one queue for the whole panel, so a restart can mark what it left running.
+const library = new LibraryService(db);
+const budget = new BudgetService({ gateway, db, logger: logger.child({ component: "budget" }) });
+const video = new VideoService({ db, bridge, chat: new ChatService(gateway, library), logger: logger.child({ component: "video" }), videoDir: config.videoDir, library });
+video.recover();
+
+const app = await buildApp({ logger, gateway, db, aiSetup, signIn, telegram, freeModels, sources, approvals, assistant, auth, backups, bridge, space, teams, audit, video, videoDir: config.videoDir, library, budget, sandboxEnabled: config.sandboxEnabled, webDist: config.webDist, trustProxy: config.trustProxy });
 
 gateway.start();
 await app.listen({ host: config.host, port: config.port });
@@ -83,6 +93,8 @@ async function repairStartup(): Promise<void> {
     ["junior models", repairFollowerModels],
     ["memory provider", repairMemory],
     ["Telegram files and voice messages", () => telegram.ensureMedia()],
+    // Last: the limit may pause scheduled jobs, and that should happen after they are in place.
+    ["spending limits", () => budget.enforce(Intl.DateTimeFormat().resolvedOptions().timeZone)],
   ];
   for (const [name, repair] of repairs) {
     if (shuttingDown) return;
@@ -101,6 +113,16 @@ async function repairStartup(): Promise<void> {
   }
 }
 void repairStartup();
+
+// Spending limits are checked on a timer as well: a day rolls over and a paused schedule must come
+// back by itself, without the owner opening the panel.
+const BUDGET_INTERVAL_MS = 15 * 60_000;
+const budgetTimer = setInterval(() => {
+  void budget
+    .enforce(Intl.DateTimeFormat().resolvedOptions().timeZone)
+    .catch((error: Error) => logger.warn({ err: error }, "could not apply the spending limits"));
+}, BUDGET_INTERVAL_MS);
+budgetTimer.unref();
 
 async function shutdown(signal: string): Promise<void> {
   if (shuttingDown) return;

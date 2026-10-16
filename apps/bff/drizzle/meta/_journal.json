@@ -29,6 +29,27 @@
       "when": 1791953179836,
       "tag": "0003_user_templates",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "6",
+      "when": 1792152028260,
+      "tag": "0004_video_jobs",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "6",
+      "when": 1792153060131,
+      "tag": "0005_video_modes",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "6",
+      "when": 1792153983107,
+      "tag": "0006_library_and_notes",
+      "breakpoints": true
     }
   ]
 }
