@@ -1,7 +1,7 @@
 <script setup lang="ts">
 // Sidebar body: brand, sections, theme and language. Shared by the desktop sidebar and the phone drawer.
 import type { Locale } from "@clawdesk/shared";
-import { Activity, Bot, ChartColumn, FolderGit2, CalendarClock, Database, HardDrive, LayoutDashboard, LogOut, MessagesSquare, ShieldCheck, UserRound, Moon, PanelLeftClose, PanelLeftOpen, Send, Sparkles, Sun } from "@lucide/vue";
+import { Activity, Blocks, Bot, ChartColumn, FolderGit2, CalendarClock, Database, HardDrive, LayoutDashboard, LogOut, MessagesSquare, ShieldCheck, UserRound, Moon, PanelLeftClose, PanelLeftOpen, Send, Sparkles, Sun } from "@lucide/vue";
 import { NButton, NMenu, NSelect, NTooltip, type MenuOption } from "naive-ui";
 import { computed, h, type Component } from "vue";
 import { useI18n } from "vue-i18n";
@@ -35,6 +35,7 @@ const menu = computed<MenuOption[]>(() => [
   ...(space.mode === "company" ? [{ key: "/teams", label: link("/teams", t("nav.teams")), icon: icon(FolderGit2) }] : []),
   { key: "/schedules", label: link("/schedules", t("nav.schedules")), icon: icon(CalendarClock) },
   { key: "/sources", label: link("/sources", t("nav.sources")), icon: icon(Database) },
+  { key: "/skills", label: link("/skills", t("nav.extensions")), icon: icon(Blocks) },
   { key: "/approvals", label: link("/approvals", t("nav.approvals"), () => approvals.count), icon: icon(ShieldCheck) },
   { key: "/telegram", label: link("/telegram", "Telegram"), icon: icon(Send) },
   // Free models are for personal assistants only.

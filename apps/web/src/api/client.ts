@@ -69,6 +69,15 @@ import type {
   TelegramBotDto,
   TelegramVoiceDto,
   TemplateDto,
+  AddClawHubSkillRequest,
+  AddMcpServerRequest,
+  ClawHubSearchDto,
+  McpServersDto,
+  OwnSkillContentDto,
+  OwnSkillRequest,
+  SkillsDto,
+  StartMcpLoginResultDto,
+  UploadSkillRequest,
 } from "@clawdesk/shared";
 
 export class ApiError extends Error {
@@ -100,6 +109,10 @@ function post<T>(path: string, body?: unknown): Promise<T> {
   });
 }
 
+function put<T>(path: string, body: unknown): Promise<T> {
+  return request<T>(path, { method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
+}
+
 /** The person's own time zone; the panel server may run in UTC. */
 export function browserTimeZone(): string {
   return Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
@@ -124,6 +137,24 @@ export const api = {
     push: (id: string) => post<PullRequestDto>(`/api/teams/${encodeURIComponent(id)}/push`),
     linkTelegram: (id: string, topics: LinkTeamTelegramRequest["topics"]) => post<TeamDto>(`/api/teams/${encodeURIComponent(id)}/telegram`, { topics }),
     remove: (id: string) => request<{ ok: true }>(`/api/teams/${encodeURIComponent(id)}`, { method: "DELETE" }),
+  },
+  skills: {
+    list: () => request<SkillsDto>("/api/skills"),
+    search: (query: string) => request<ClawHubSearchDto>(`/api/skills/clawhub?q=${encodeURIComponent(query)}`),
+    addClawHub: (body: AddClawHubSkillRequest) => post<SkillsDto>("/api/skills/clawhub", body),
+    createOwn: (body: OwnSkillRequest) => post<SkillsDto>("/api/skills/own", body),
+    upload: (body: UploadSkillRequest) => post<SkillsDto>("/api/skills/upload", body),
+    content: (id: string) => request<OwnSkillContentDto>(`/api/skills/${encodeURIComponent(id)}/content`),
+    update: (id: string, body: OwnSkillRequest) => put<SkillsDto>(`/api/skills/${encodeURIComponent(id)}`, body),
+    setAgents: (id: string, agentIds: string[]) => put<SkillsDto>(`/api/skills/${encodeURIComponent(id)}/agents`, { agentIds }),
+    remove: (id: string) => request<SkillsDto>(`/api/skills/${encodeURIComponent(id)}`, { method: "DELETE" }),
+  },
+  mcp: {
+    list: () => request<McpServersDto>("/api/mcp"),
+    add: (body: AddMcpServerRequest) => post<McpServersDto>("/api/mcp", body),
+    setAgents: (name: string, agentIds: string[]) => put<McpServersDto>(`/api/mcp/${encodeURIComponent(name)}/agents`, { agentIds }),
+    remove: (name: string) => request<McpServersDto>(`/api/mcp/${encodeURIComponent(name)}`, { method: "DELETE" }),
+    login: (name: string) => post<StartMcpLoginResultDto>(`/api/mcp/${encodeURIComponent(name)}/login`),
   },
   space: {
     get: () => request<{ space: SpaceDto | null }>("/api/space"),

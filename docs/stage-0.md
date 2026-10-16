@@ -405,3 +405,29 @@ Google для этого ключа выбираем Flash, сохраняем �
   в GitHub нужны секреты `TAURI_SIGNING_PRIVATE_KEY` и `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`. Релиз — черновик;
   автообновление видит только опубликованный релиз публичного репозитория.
 - `.dockerignore` исключает `apps/desktop`: иначе `pnpm -r build` в образе панели падал на десктопе без зависимостей.
+
+**Подписка Claude, навыки и MCP по агентам (сделано 2026-10-16).**
+- Подписка Claude (Pro/Max) — только через Claude Code (официальный Agent SDK); с 15.06.2026 Anthropic разрешает так
+  работать на подписке, расход из её лимитов (`/app/docs/providers/anthropic.md`). `setup-token` (прямой токен в
+  OpenClaw) — серый путь, в панели больше не показывается. В образе шлюза — Claude Code 2.1.301 из npm (npm 12 не
+  запускает install-скрипты → `node …/claude-code/install.cjs` вручную), `DISABLE_AUTOUPDATER=1`, вход в
+  `CLAUDE_CONFIG_DIR=<state>/claude-code` (переживает перезапуск, попадает в бэкап; OpenClaw этот путь не стирает).
+- Вход: `claude auth login --claudeai` печатает ссылку и ждёт код со страницы `platform.claude.com/oauth/code/callback`;
+  код принимается через stdin без терминала (проверено: неверный код → «Request failed with status code 400»).
+  Мост держит процесс до кода (`clawdesk-claude.mjs`). Потом `openclaw.setup.activate {agentId, kind: "claude-cli"}`
+  ставит модель на рантайм Claude CLI и делает пробный запрос. Мастер `openclaw.setup.auth.start` с
+  `anthropic-cli` НЕ подходит («That provider setup is not available»: метод `custom`, не oauth/device).
+  Проверено с поддельным `.credentials.json`: шлюз запускает Claude Code, Anthropic отвечает «OAuth session expired»
+  → панель показывает «Claude не пустил», настройки агента не тронуты. С настоящей подпиской не проверено.
+- Навыки ставятся в рабочую папку агента (`<workspace>/skills/<slug>`): ClawHub — `skills.install {agentId, source:
+  "clawhub", slug: "@owner/slug"}`; свои — zip с SKILL.md через `skills.upload.begin/chunk/commit` + `skills.install
+  {source: "upload"}` (нужно `skills.install.allowUploadedArchives: true`). RPC удаления нет — мост удаляет папку и
+  запись в `.clawhub/lock.json` (`clawdesk-skills.mjs`). Песочница младших получает навыки рабочей папки сама.
+- **Кэш навыков:** шлюз кэширует список навыков папки, пока его не сбросит наблюдатель (запускается ходом агента)
+  или правка конфига под `skills.*`. Установка/удаление по RPC кэш не сбрасывают — `skills.status` и следующий ход
+  агента видят старое. Панель пишет `skills.entries.<slug>.config.clawdeskRevision` до и после каждого изменения.
+- MCP: `mcp.servers` общий для всех агентов, инструменты `<server>__<tool>`. Доступ по агентам — запрет
+  `<server>__*` в `agents.entries.<id>.tools.deny` (таблица `mcp_grants`); песочнице нужен `bundle-mcp` в
+  `tools.sandbox.tools.alsoAllow`. Чужие серверы (Notion из «Источников») — только главному. Публичные серверы
+  отвечают ~2 с, а `mcp doctor --probe` ждёт 1,5 с → панель ставит `connectionTimeoutMs: 15000`,
+  `requestTimeoutMs: 60000` (с ними deepwiki проходит проверку). OAuth — `/api/mcp/callback`, как у Notion.

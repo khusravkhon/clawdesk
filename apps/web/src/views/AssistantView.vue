@@ -6,6 +6,7 @@ import { NAlert, NButton, NInput, NInputNumber, NSkeleton, useMessage } from "na
 import { computed, onMounted, reactive, ref } from "vue";
 import { useI18n } from "vue-i18n";
 import { api, ApiError } from "../api/client";
+import AgentExtensions from "../components/AgentExtensions.vue";
 import MemoryNotes from "../components/MemoryNotes.vue";
 import ModelChain from "../components/ModelChain.vue";
 import PageHeader from "../components/ui/PageHeader.vue";
@@ -133,6 +134,7 @@ onMounted(load);
       </div>
 
       <ModelChain agent-id="main" />
+      <AgentExtensions agent-id="main" />
 
       <MemoryNotes agent-id="main" />
 

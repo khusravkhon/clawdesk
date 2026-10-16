@@ -127,6 +127,11 @@ export class BridgeClient {
     return this.#call("POST", "/claude/login/complete", { code }, 150_000);
   }
 
+  /** Removes one agent's skills/<slug> folder (OpenClaw has no RPC for it). */
+  skillsRemove(dir: string): Promise<{ removed: boolean }> {
+    return this.#call("POST", "/skills/remove", { dir }, 60_000);
+  }
+
   claudeLogout(): Promise<{ ok: true }> {
     return this.#call("POST", "/claude/logout", {}, 40_000);
   }

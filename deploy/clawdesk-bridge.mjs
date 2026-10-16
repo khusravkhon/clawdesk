@@ -14,6 +14,7 @@
 //   POST /claude/login/start                → { authorizationUrl }  (Claude plan sign-in, see clawdesk-claude.mjs)
 //   POST /claude/login/complete { code }    → status after the code was accepted
 //   POST /claude/logout
+//   POST /skills/remove      { dir }         a skill folder of one agent (see clawdesk-skills.mjs)
 //   GET  /google/status                     → { installed, clients, accounts }
 //   POST /google/credentials { json }       client_secret JSON of the person's own OAuth client
 //   POST /google/login/start { email, services, readonly, redirectUri? } → { authorizationUrl }
@@ -44,6 +45,7 @@ import { isAuthorizationCode, mcpLoginArgs } from "./clawdesk-oauth.mjs";
 import { AudioSetupError, audioSettings, audioStatus, saveAudioKey, verifyAudioKey } from "./clawdesk-audio.mjs";
 import { AgentFolders } from "./clawdesk-agent-folders.mjs";
 import { ClaudeLogin, ClaudeLoginError } from "./clawdesk-claude.mjs";
+import { removeWorkspaceSkill, SkillRemoveError } from "./clawdesk-skills.mjs";
 import { cancelVideo, downloadVideo, framesOfVideo, studyVideo, videoProgress, VideoError } from "./clawdesk-video.mjs";
 
 const HOST = process.env.CLAWDESK_BRIDGE_HOST || "127.0.0.1";
@@ -472,6 +474,14 @@ async function handle(req) {
   if (url.pathname === "/claude/login/start") return claudeCall(() => claudeLogin.start());
   if (url.pathname === "/claude/login/complete") return claudeCall(() => claudeLogin.complete(body.code));
   if (url.pathname === "/claude/logout") return claudeCall(() => claudeLogin.logout());
+  if (url.pathname === "/skills/remove") {
+    try {
+      return { status: 200, body: await removeWorkspaceSkill(body.dir) };
+    } catch (error) {
+      if (error instanceof SkillRemoveError) return { status: 400, body: { error: error.code, message: error.message } };
+      throw error;
+    }
+  }
   switch (url.pathname) {
     case "/google/credentials":
       return googleCredentials(body);

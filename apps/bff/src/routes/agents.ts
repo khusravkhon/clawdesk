@@ -44,6 +44,8 @@ export type AgentRouteDeps = {
   freeModels: FreeModelsService;
   bridge: BridgeClient;
   space: SpaceService;
+  /** A new agent gets no MCP server until the owner grants one ("Навыки и MCP"). */
+  mcp?: { syncAccess(): Promise<void> };
 };
 
 // OpenClaw is the source of truth for which agents exist; our rows add role/parent.
@@ -96,6 +98,7 @@ export function registerAgentRoutes(app: FastifyInstance, deps: AgentRouteDeps):
     }
     try {
       const result = await createJuniorAgent({ ...deps, telegramDelivery: deps.telegram.ownerDelivery(), folders: deps.bridge }, body);
+      await deps.mcp?.syncAccess().catch((error: Error) => deps.logger.warn({ err: error, agentId: result.agentId }, "could not apply MCP access to the new agent"));
       reply.status(201);
       return result;
     } catch (error) {

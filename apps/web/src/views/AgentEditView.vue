@@ -8,6 +8,7 @@ import { computed, onMounted, reactive, ref } from "vue";
 import { useI18n } from "vue-i18n";
 import { useRoute, useRouter } from "vue-router";
 import { api, ApiError } from "../api/client";
+import AgentExtensions from "../components/AgentExtensions.vue";
 import PageHeader from "../components/ui/PageHeader.vue";
 
 const { t } = useI18n();
@@ -126,6 +127,8 @@ onMounted(load);
         <n-button secondary @click="router.push('/schedules')">{{ t("agentEdit.schedules") }}</n-button>
         <span class="muted small">{{ t("agentEdit.saveHint") }}</span>
       </div>
+
+      <AgentExtensions :agent-id="agentId" />
 
       <section v-if="data.role === 'specialist'" class="card">
         <h2 class="card-title"><bookmark-plus :size="16" /> {{ t("agentEdit.asTemplate") }}</h2>
