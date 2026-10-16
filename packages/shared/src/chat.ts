@@ -40,6 +40,47 @@ export type ChatAttachmentInput = z.infer<typeof ChatAttachmentInput>;
 export const ChatAttachmentDto = z.object({ fileName: z.string(), mimeType: z.string().nullable(), sizeBytes: z.number().nullable() });
 export type ChatAttachmentDto = z.infer<typeof ChatAttachmentDto>;
 
+/**
+ * What the panel itself got out of an attached file. The file always reaches the agent; this says
+ * whether its text also did, and why not when it did not.
+ */
+export const ChatAttachmentState = z.enum([
+  /** Read in full as text. */
+  "read",
+  /** Read, but cut at the character, page or sheet limit. */
+  "partial",
+  /** No text found: a scan or a picture of a document, which needs an image-capable model. */
+  "no_text",
+  /** Protected with a password; the panel does not ask for it. */
+  "encrypted",
+  /** Broken, or it declares markup the panel refuses to resolve. */
+  "unreadable",
+  /** A pre-2007 Office file (.doc, .xls, .ppt); the panel does not read those. */
+  "legacy_format",
+  /** An image: passed on as an image, not read as text. */
+  "image",
+  /** The panel does not read this type; the agent gets the file itself. */
+  "not_read",
+]);
+export type ChatAttachmentState = z.infer<typeof ChatAttachmentState>;
+
+export const ChatAttachmentReadDto = z.object({
+  fileName: z.string(),
+  state: ChatAttachmentState,
+  /** Characters of text handed to the agent. */
+  chars: z.number().int().nonnegative(),
+  pages: z.number().int().nonnegative().nullable(),
+  readPages: z.number().int().nonnegative().nullable(),
+  sheets: z.number().int().nonnegative().nullable(),
+  slides: z.number().int().nonnegative().nullable(),
+  /** Named only when the file was not UTF-8. */
+  encoding: z.string().nullable(),
+});
+export type ChatAttachmentReadDto = z.infer<typeof ChatAttachmentReadDto>;
+
+export const SendChatResultDto = z.object({ runId: z.string().nullable(), reads: z.array(ChatAttachmentReadDto) });
+export type SendChatResultDto = z.infer<typeof SendChatResultDto>;
+
 export const ChatMessageDto = z.object({
   id: z.string(),
   role: z.enum(["user", "assistant"]),

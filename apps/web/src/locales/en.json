@@ -520,6 +520,22 @@
       "unsupported": "The panel does not pass this file type on: “{name}”.",
       "readFailed": "The browser could not read “{name}”.",
       "rejected": "The Gateway did not accept “{name}”."
+    },
+    "read": {
+      "pages": "pages: {pages}, read {read}",
+      "sheets": "sheets: {count}",
+      "slides": "slides: {count}",
+      "encoding": "encoding: {encoding}",
+      "state": {
+        "read": "read in full",
+        "partial": "read in part — the text is cut off after this",
+        "no_text": "no text: looks like a scan or a photo, which needs an agent that can read images",
+        "encrypted": "password protected: the panel does not read it",
+        "unreadable": "could not be read: the file is broken or carries markup the panel refuses",
+        "legacy_format": "pre-2007 Office format (.doc, .xls, .ppt): the panel does not read those — save as .docx, .xlsx or .pptx",
+        "image": "passed on as an image; no text was extracted",
+        "not_read": "the panel does not read this type; the agent got the file itself"
+      }
     }
   },
   "approvals": {

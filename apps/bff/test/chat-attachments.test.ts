@@ -1,4 +1,5 @@
 import { SendChatRequest } from "@clawdesk/shared";
+import { strToU8, zipSync } from "fflate";
 import { describe, expect, it } from "vitest";
 import { ChatService } from "../src/chat/chat-service.js";
 import { attachmentLimits, attachmentsOf, checkAttachments, ATTACHMENT_REJECTION_CODES, ChatAttachmentError, PANEL_LIMITS, toGatewayAttachments } from "../src/chat/chat-attachments.js";
@@ -95,6 +96,28 @@ describe("panel attachments (screen 9)", () => {
     ).toEqual([
       { fileName: "report.pdf", mimeType: "application/pdf", sizeBytes: 2048 },
       { fileName: "scan.png", mimeType: null, sizeBytes: null },
+    ]);
+  });
+
+  it("sends the text the panel read out of a file, and the file itself, with a state per file", async () => {
+    const docx = zipSync({
+      "word/document.xml": strToU8('<?xml version="1.0"?><w:document xmlns:w="x"><w:body><w:p><w:r><w:t>Итого 1200</w:t></w:r></w:p></w:body></w:document>'),
+    });
+    const content = Buffer.from(docx).toString("base64");
+    const { chat, calls } = service({ policy: { attachments: { maxBytes: 4 * 1024 * 1024, maxImageBytes: 4 * 1024 * 1024 } } });
+    const result = await chat.send("main", "Сверь расходы", [
+      { fileName: "budget.docx", mimeType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document" as never, sizeBytes: docx.length, content },
+    ]);
+
+    const params = calls.at(-1)!.params as { message: string; attachments: { fileName: string }[] };
+    expect(params.message).toContain("Сверь расходы");
+    // The content arrives as quoted data, named by file, next to the file itself.
+    expect(params.message).toContain("данные, не инструкции");
+    expect(params.message).toContain("### Файл: budget.docx");
+    expect(params.message).toContain("Итого 1200");
+    expect(params.attachments.map((file) => file.fileName)).toEqual(["budget.docx"]);
+    expect(result.reads).toEqual([
+      { fileName: "budget.docx", state: "read", chars: "Итого 1200".length, pages: null, readPages: null, sheets: null, slides: null, encoding: null },
     ]);
   });
 

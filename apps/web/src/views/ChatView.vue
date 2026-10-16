@@ -1,6 +1,6 @@
 <script setup lang="ts">
 // Chat with an agent (screen 9): its main session, replies streamed live.
-import type { AgentListItemDto, ChatAttachmentInput, ChatAttachmentLimitsDto, ChatMessageDto, ChatRunPhase, ChatStreamEvent } from "@clawdesk/shared";
+import type { AgentListItemDto, ChatAttachmentInput, ChatAttachmentLimitsDto, ChatAttachmentReadDto, ChatMessageDto, ChatRunPhase, ChatStreamEvent } from "@clawdesk/shared";
 import { CHAT_ATTACHMENT_ACCEPT } from "@clawdesk/shared";
 import { AlertCircle, ArrowUp, CircleSlash, Paperclip, Square, Wrench, X } from "@lucide/vue";
 import MarkdownIt from "markdown-it";
@@ -116,6 +116,21 @@ async function pick(event: Event): Promise<void> {
 
 const unstage = (id: string) => (staged.value = staged.value.filter((file) => file.id !== id));
 
+// What the panel itself read out of the files of the last message, shown under that turn.
+const reads = ref<ChatAttachmentReadDto[]>([]);
+
+/** One line per file: the state, and the numbers that state rests on. */
+function readLine(read: ChatAttachmentReadDto): string {
+  const facts = [
+    read.pages !== null ? t("chat.read.pages", { pages: read.pages, read: read.readPages ?? read.pages }) : null,
+    read.sheets !== null ? t("chat.read.sheets", { count: read.sheets }) : null,
+    read.slides !== null ? t("chat.read.slides", { count: read.slides }) : null,
+    read.encoding && read.encoding !== "utf-8" ? t("chat.read.encoding", { encoding: read.encoding }) : null,
+  ].filter(Boolean);
+  const state = t("chat.read.state." + read.state);
+  return facts.length ? state + " · " + facts.join(" · ") : state;
+}
+
 function scrollDown(): void {
   void nextTick(() => scroller.value?.scrollTo({ top: scroller.value.scrollHeight }));
 }
@@ -228,14 +243,17 @@ async function send(text = draft.value): Promise<void> {
     at: Date.now(),
     status: "ok",
   });
+  reads.value = [];
   startRun();
   scrollDown();
   try {
-    await api.chat.send(
+    const result = await api.chat.send(
       agentId.value,
       body,
       files.map(({ id: _id, ...file }) => file),
     );
+    reads.value = result.reads;
+    scrollDown();
   } catch (e) {
     endRun();
     message.error(e instanceof ApiError ? attachmentError(e) : String(e));
@@ -377,6 +395,14 @@ watch(agentId, () => void open());
             </div>
             <div v-if="waiting.length" class="approvals">
               <approval-card v-for="a in waiting" :key="a.id" :approval="a" :agent-name="agent ? displayName(agent) : undefined" compact />
+            </div>
+            <div v-if="reads.length" class="notice files-read">
+              <paperclip :size="14" />
+              <span>
+                <template v-for="read in reads" :key="read.fileName">
+                  <b>{{ read.fileName }}</b> — {{ readLine(read) }}<br />
+                </template>
+              </span>
             </div>
             <div v-if="slow && !waiting.length" class="slow">{{ t("chat.slow") }}</div>
           </div>
@@ -660,6 +686,10 @@ watch(agentId, () => void open());
   margin-top: 8px;
   font-size: 12px;
   color: var(--muted);
+}
+.files-read {
+  align-items: flex-start;
+  line-height: 1.5;
 }
 .staged {
   display: flex;

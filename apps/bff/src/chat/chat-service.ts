@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
-import type { ChatAttachmentInput, ChatAttachmentLimitsDto, ChatHistoryDto, ChatMessageDto, ChatRunPhase, ChatStreamEvent } from "@clawdesk/shared";
+import type { ChatAttachmentInput, ChatAttachmentLimitsDto, ChatHistoryDto, ChatMessageDto, ChatRunPhase, ChatStreamEvent, SendChatResultDto } from "@clawdesk/shared";
+import { documentsBlock, extractDocuments } from "../documents/extract.js";
 import type { GatewayService } from "../gateway/gateway-service.js";
 import { attachmentLimits, attachmentOnlyMessage, attachmentsOf, checkAttachments, toGatewayAttachments } from "./chat-attachments.js";
 
@@ -121,16 +122,23 @@ export class ChatService {
     return attachmentLimits(this.gateway.hello as Parameters<typeof attachmentLimits>[0]);
   }
 
-  async send(agentId: string, text: string, attachments: ChatAttachmentInput[] = []): Promise<{ runId: string | null }> {
+  async send(agentId: string, text: string, attachments: ChatAttachmentInput[] = []): Promise<SendChatResultDto> {
     if (attachments.length) checkAttachments(attachments, this.attachmentLimits());
+    // The panel reads what it can out of the files and adds that text to the message; the files
+    // themselves still travel to the Gateway, so a tool of the agent can read them its own way.
+    const documents = attachments.length
+      ? await extractDocuments(attachments.map((file) => ({ fileName: file.fileName, mimeType: file.mimeType, bytes: Buffer.from(file.content, "base64") })))
+      : [];
+    const block = documentsBlock(documents);
+    const message = [text || attachmentOnlyMessage(attachments), block].filter(Boolean).join("\n\n");
     const res = await this.gateway.request<{ runId?: string }>("chat.send", {
       sessionKey: mainSessionKey(agentId),
       agentId,
-      message: text || attachmentOnlyMessage(attachments),
+      message,
       idempotencyKey: randomUUID(),
       ...(attachments.length ? { attachments: toGatewayAttachments(attachments) } : {}),
     });
-    return { runId: res.runId ?? null };
+    return { runId: res.runId ?? null, reads: documents.map((document) => document.read) };
   }
 
   async abort(agentId: string): Promise<void> {
