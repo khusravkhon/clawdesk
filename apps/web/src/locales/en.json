@@ -536,6 +536,33 @@
         "image": "passed on as an image; no text was extracted",
         "not_read": "the panel does not read this type; the agent got the file itself"
       }
+    },
+    "video": {
+      "study": "Study the video",
+      "cancel": "Stop",
+      "how": "The panel takes the subtitles; with none, the audio track for recognition. Frames are not analyzed.",
+      "howNoSpeech": "The panel takes the subtitles. Speech recognition is not set up, so a video without subtitles cannot be read.",
+      "state": {
+        "queued": "queued",
+        "running": "being studied",
+        "ready": "done, the transcript went to the agent",
+        "failed": "did not work",
+        "canceled": "stopped"
+      },
+      "error": {
+        "invalid_url": "the link was not recognized",
+        "unsupported_host": "the panel does not study this site yet",
+        "playlist_not_allowed": "that is a playlist: send a link to one video",
+        "too_long": "the video is longer than allowed",
+        "speech_not_configured": "no subtitles, and speech recognition is not set up — turn it on under Telegram",
+        "site_refused": "the site refused: an age or region limit, or a private video",
+        "not_found": "the video was not found or was removed",
+        "download_failed": "neither subtitles nor audio could be fetched",
+        "timeout": "it ran out of time",
+        "audio_too_large": "the audio track is over the recognition limit",
+        "worker_unavailable": "the video worker is unavailable: update the ClawDesk stack",
+        "panel_restarted": "the panel restarted while it was running — start it again"
+      }
     }
   },
   "approvals": {

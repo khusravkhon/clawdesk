@@ -14,6 +14,21 @@ export class BridgeError extends Error {
 
 export type McpAuthStatus = { configured: boolean; hasTokens: boolean; state: string | null };
 
+/**
+ * What the video worker reports back. Either subtitles, or the audio track when the video has
+ * none, or an error code — never a free-form message, and never both a result and an error.
+ */
+export type BridgeVideoResult = {
+  source?: "subtitles" | "speech";
+  title?: string | null;
+  durationSec?: number | null;
+  language?: string | null;
+  /** WebVTT or SRT as the site served it; the panel turns it into a transcript. */
+  subtitles?: string;
+  audio?: { mimeType: string; fileName: string; content: string; durationMs?: number | null };
+  error?: string;
+};
+
 export type BridgeBackup = { name: string; kind: "daily" | "manual" | "before-reset"; createdAt: string; size: number };
 
 export type GoogleLogin = { email: string; services: string[]; readonly: boolean; redirectUri?: string };
@@ -38,6 +53,15 @@ export class BridgeClient {
     } catch {
       return false;
     }
+  }
+
+  /** Starts the pinned worker for one video; the call ends when the worker does. */
+  studyVideo(request: { jobId: string; url: string; maxDurationSec: number; maxAudioBytes: number; maxSeconds: number }): Promise<BridgeVideoResult> {
+    return this.#call("POST", "/video/study", request, (request.maxSeconds + 30) * 1000);
+  }
+
+  cancelVideo(jobId: string): Promise<{ stopped: boolean }> {
+    return this.#call("POST", "/video/cancel", { jobId }, 30_000);
   }
 
   mcpStatus(server: string): Promise<McpAuthStatus> {

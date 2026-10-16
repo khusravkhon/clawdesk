@@ -60,6 +60,8 @@ services:
       GOG_KEYRING_BACKEND: file
       GOG_KEYRING_PASSWORD: ${GOG_KEYRING_PASSWORD:-}
       TZ: ${CLAWDESK_TZ:-UTC}
+      # The worker image the bridge starts per video job (see clawdesk-video.mjs).
+      CLAWDESK_VIDEO_IMAGE: ghcr.io/khusravkhon/clawdesk-video:${CLAWDESK_VERSION:-dev}
     volumes:
       - ${CLAWDESK_DATA_DIR:-/var/lib/clawdesk}/openclaw:${CLAWDESK_DATA_DIR:-/var/lib/clawdesk}/openclaw
       - openclaw-auth-secrets:/home/node/.config/openclaw
@@ -85,6 +87,17 @@ services:
       timeout: 5s
       retries: 5
       start_period: 30s
+
+  # Studying a video runs in this image, started per job by the bridge in the Gateway container.
+  # It is built and published with the other images; "docker compose --profile video build" builds
+  # it locally. It never runs as a long-lived service, which is why it sits behind a profile.
+  video:
+    profiles: ["video"]
+    build:
+      context: ..
+      dockerfile: deploy/video.Dockerfile
+    image: ghcr.io/khusravkhon/clawdesk-video:${CLAWDESK_VERSION:-dev}
+    entrypoint: ["yt-dlp", "--version"]
 
   panel:
     <<: *hardening

@@ -192,3 +192,30 @@ export const userTemplates = sqliteTable("user_templates", {
   canAskMain: integer("can_ask_main", { mode: "boolean" }).notNull(),
   createdAt: createdAt(),
 });
+
+/**
+ * Videos the owner asked an agent to study (screen 9). The row is the durable part: the worker
+ * runs outside the panel, so a restart must still know whose job this was and how it ended.
+ */
+export const videoJobs = sqliteTable(
+  "video_jobs",
+  {
+    id: text("id").primaryKey(),
+    agentId: text("agent_id").notNull(),
+    /** The canonical link, without the owner's tracking parameters. */
+    url: text("url").notNull(),
+    videoId: text("video_id").notNull(),
+    title: text("title"),
+    state: text("state", { enum: ["queued", "running", "ready", "failed", "canceled"] }).notNull(),
+    /** What the text came from: subtitles, recognized speech, or nothing. */
+    source: text("source", { enum: ["subtitles", "speech", "none"] }).notNull(),
+    language: text("language"),
+    durationSec: integer("duration_sec"),
+    chars: integer("chars").notNull().default(0),
+    /** A code from VideoJobError; never a raw worker message. */
+    error: text("error"),
+    createdAt: createdAt(),
+    finishedAt: integer("finished_at", { mode: "timestamp_ms" }),
+  },
+  (t) => [index("video_jobs_state_idx").on(t.state), index("video_jobs_created_idx").on(t.createdAt)],
+);

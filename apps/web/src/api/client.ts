@@ -39,6 +39,8 @@ import type {
   ScheduleListDto,
   ScheduleRunDto,
   SendChatResultDto,
+  VideoJobDto,
+  VideoJobsDto,
   UpdateScheduleRequest,
   InstallProviderResultDto,
   SignInAnswerRequest,
@@ -202,6 +204,11 @@ export const api = {
     attachmentLimits: () => request<ChatAttachmentLimitsDto>("/api/chat/attachments/limits"),
     abort: (agentId: string) => post<void>(`/api/chat/${encodeURIComponent(agentId)}/abort`),
     eventsUrl: (agentId: string) => `/api/chat/${encodeURIComponent(agentId)}/events`,
+  },
+  video: {
+    jobs: () => request<VideoJobsDto>("/api/video/jobs"),
+    study: (agentId: string, url: string) => post<VideoJobDto>("/api/video/jobs", { agentId, url }),
+    cancel: (id: string) => post<VideoJobDto>(`/api/video/jobs/${encodeURIComponent(id)}/cancel`),
   },
   sources: {
     status: () => request<SourcesDto>("/api/sources"),

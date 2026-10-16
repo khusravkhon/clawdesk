@@ -1,8 +1,9 @@
 <script setup lang="ts">
 // Chat with an agent (screen 9): its main session, replies streamed live.
 import type { AgentListItemDto, ChatAttachmentInput, ChatAttachmentLimitsDto, ChatAttachmentReadDto, ChatMessageDto, ChatRunPhase, ChatStreamEvent } from "@clawdesk/shared";
-import { CHAT_ATTACHMENT_ACCEPT } from "@clawdesk/shared";
-import { AlertCircle, ArrowUp, CircleSlash, Paperclip, Square, Wrench, X } from "@lucide/vue";
+import type { VideoJobDto } from "@clawdesk/shared";
+import { CHAT_ATTACHMENT_ACCEPT, isVideoUrl } from "@clawdesk/shared";
+import { AlertCircle, ArrowUp, CircleSlash, Film, Paperclip, Square, Wrench, X } from "@lucide/vue";
 import MarkdownIt from "markdown-it";
 import { NButton, NSelect, NSpin, useMessage } from "naive-ui";
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue";
@@ -115,6 +116,52 @@ async function pick(event: Event): Promise<void> {
 }
 
 const unstage = (id: string) => (staged.value = staged.value.filter((file) => file.id !== id));
+
+// A video link in the composer: the panel can study it instead of sending the link as text.
+// Studying happens in a worker outside the panel, so a job has its own state and can be stopped.
+const videoJobs = ref<VideoJobDto[]>([]);
+const speechConfigured = ref(true);
+const studying = ref(false);
+const videoLink = computed(() => (isVideoUrl(draft.value.trim()) ? draft.value.trim() : null));
+const agentVideoJobs = computed(() => videoJobs.value.filter((job) => job.agentId === agentId.value).slice(0, 5));
+
+async function loadVideoJobs(): Promise<void> {
+  try {
+    const result = await api.video.jobs();
+    videoJobs.value = result.jobs;
+    speechConfigured.value = result.speechConfigured;
+  } catch {
+    // The list is a convenience; a failure here must not break the chat.
+  }
+}
+
+async function studyVideo(): Promise<void> {
+  const url = videoLink.value;
+  if (!url || studying.value) return;
+  studying.value = true;
+  try {
+    const job = await api.video.study(agentId.value, url);
+    videoJobs.value = [job, ...videoJobs.value];
+    draft.value = "";
+  } catch (e) {
+    message.error(e instanceof ApiError ? e.body.message : String(e));
+  } finally {
+    studying.value = false;
+  }
+}
+
+async function cancelVideo(id: string): Promise<void> {
+  try {
+    const job = await api.video.cancel(id);
+    videoJobs.value = videoJobs.value.map((item) => (item.id === job.id ? job : item));
+  } catch (e) {
+    message.error(e instanceof ApiError ? e.body.message : String(e));
+  }
+}
+
+/** One line per job: its state, and for a failure the reason the worker reported. */
+const videoLine = (job: VideoJobDto): string =>
+  job.state === "failed" && job.error ? t("chat.video.error." + job.error) : t("chat.video.state." + job.state);
 
 // What the panel itself read out of the files of the last message, shown under that turn.
 const reads = ref<ChatAttachmentReadDto[]>([]);
@@ -309,7 +356,10 @@ onMounted(async () => {
   clock = setInterval(() => (now.value = Date.now()), 1000);
   poll = setInterval(() => {
     if (running.value) void loadHistory();
+    // A video is studied outside the panel: its state changes without any chat event.
+    if (videoJobs.value.some((job) => job.state === "queued" || job.state === "running")) void loadVideoJobs();
   }, 4_000);
+  void loadVideoJobs();
   try {
     agents.value = (await api.agents()).agents;
   } catch {
@@ -411,6 +461,18 @@ watch(agentId, () => void open());
     </div>
 
     <footer class="composer">
+      <div v-if="agentVideoJobs.length" class="videos">
+        <span v-for="job in agentVideoJobs" :key="job.id" class="file staged-file">
+          <film :size="12" /> {{ job.title ?? job.url }} — {{ videoLine(job) }}
+          <button v-if="job.state === 'queued' || job.state === 'running'" type="button" :aria-label="t('chat.video.cancel')" @click="cancelVideo(job.id)"><x :size="12" /></button>
+        </span>
+      </div>
+      <div v-if="videoLink" class="videos">
+        <n-button size="tiny" secondary :loading="studying" @click="studyVideo">
+          <film :size="12" /> &nbsp;{{ t("chat.video.study") }}
+        </n-button>
+        <span class="hint-inline">{{ speechConfigured ? t("chat.video.how") : t("chat.video.howNoSpeech") }}</span>
+      </div>
       <div v-if="staged.length" class="staged">
         <span v-for="file in staged" :key="file.id" class="file staged-file">
           <paperclip :size="12" /> {{ file.fileName }} · {{ bytes(file.sizeBytes) }}
@@ -690,6 +752,17 @@ watch(agentId, () => void open());
 .files-read {
   align-items: flex-start;
   line-height: 1.5;
+}
+.videos {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  padding: 0 4px 8px;
+}
+.hint-inline {
+  font-size: 12px;
+  opacity: 0.7;
 }
 .staged {
   display: flex;

@@ -18,6 +18,8 @@ import { BridgeClient } from "./gateway/bridge-client.js";
 import { SourcesService } from "./sources/sources-service.js";
 import { TelegramService } from "./telegram/telegram-service.js";
 import { FreeModelsService } from "./free-models/free-models-service.js";
+import { ChatService } from "./chat/chat-service.js";
+import { VideoService } from "./video/video-service.js";
 import { repairAgentFolders } from "./provision/agent-folders.js";
 import { repairAgentCommunication } from "./provision/agent-communication.js";
 
@@ -50,7 +52,11 @@ const auth = new AuthService({ db, dataDir: config.dataDir, logger: logger.child
 const backups = new BackupService({ bridge, dir: config.backupDir, logger: logger.child({ component: "backups" }) });
 const teams = new TeamService({ gateway, db, logger: logger.child({ component: "teams" }), bridge, space, telegram, sandboxEnabled: config.sandboxEnabled });
 const audit = new AuditService({ db, gateway, logger: logger.child({ component: "audit" }) });
-const app = await buildApp({ logger, gateway, db, aiSetup, signIn, telegram, freeModels, sources, approvals, assistant, auth, backups, bridge, space, teams, audit, sandboxEnabled: config.sandboxEnabled, webDist: config.webDist, trustProxy: config.trustProxy });
+// Studying videos by link: one queue for the whole panel, so a restart can mark what it left running.
+const video = new VideoService({ db, bridge, chat: new ChatService(gateway), logger: logger.child({ component: "video" }) });
+video.recover();
+
+const app = await buildApp({ logger, gateway, db, aiSetup, signIn, telegram, freeModels, sources, approvals, assistant, auth, backups, bridge, space, teams, audit, video, sandboxEnabled: config.sandboxEnabled, webDist: config.webDist, trustProxy: config.trustProxy });
 
 gateway.start();
 await app.listen({ host: config.host, port: config.port });

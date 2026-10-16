@@ -2,7 +2,10 @@
   "extends": "../../tsconfig.base.json",
   "compilerOptions": {
     "rootDir": "src",
-    "outDir": "dist"
+    "outDir": "dist",
+    // Shared code runs in the panel and in the browser; WHATWG URL exists in both, and its type
+    // lives in the DOM library. No DOM API beyond that is used here.
+    "lib": ["ES2024", "DOM"]
   },
   "include": ["src"]
 }

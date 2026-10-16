@@ -141,6 +141,30 @@ export class ChatService {
     return { runId: res.runId ?? null, reads: documents.map((document) => document.read) };
   }
 
+  /**
+   * Sends an audio track with a message, for the agent's own speech recognition (the owner's
+   * configured provider). The panel does not transcribe it and does not claim that it did.
+   */
+  async sendAudio(agentId: string, text: string, audio: { mimeType: string; fileName: string; content: string; durationMs: number | null }): Promise<{ runId: string | null }> {
+    const res = await this.gateway.request<{ runId?: string }>("chat.send", {
+      sessionKey: mainSessionKey(agentId),
+      agentId,
+      message: text,
+      idempotencyKey: randomUUID(),
+      attachments: [
+        {
+          type: "audio",
+          mimeType: audio.mimeType,
+          fileName: audio.fileName,
+          content: audio.content,
+          sizeBytes: Math.floor((audio.content.length / 4) * 3),
+          ...(audio.durationMs ? { durationMs: audio.durationMs } : {}),
+        },
+      ],
+    });
+    return { runId: res.runId ?? null };
+  }
+
   async abort(agentId: string): Promise<void> {
     await this.gateway.request("chat.abort", { sessionKey: mainSessionKey(agentId), agentId });
   }

@@ -17,6 +17,7 @@ import type { TeamService } from "./teams/team-service.js";
 import type { AuditService } from "./audit/audit-service.js";
 import type { SignInSessionManager } from "./ai-setup/signin-sessions.js";
 import { ChatService } from "./chat/chat-service.js";
+import { VideoService } from "./video/video-service.js";
 import { DashboardService } from "./dashboard/dashboard-service.js";
 import { ScheduleService } from "./schedules/schedule-service.js";
 import type { Db } from "./db/client.js";
@@ -27,6 +28,7 @@ import { registerApprovalRoutes } from "./routes/approvals.js";
 import { registerAssistantRoutes } from "./routes/assistant.js";
 import { registerAuthRoutes } from "./routes/auth.js";
 import { registerChatRoutes } from "./routes/chat.js";
+import { registerVideoRoutes } from "./routes/video.js";
 import { registerDashboardRoutes } from "./routes/dashboard.js";
 import { registerHealthRoutes } from "./routes/health.js";
 import type { FreeModelsService } from "./free-models/free-models-service.js";
@@ -59,6 +61,8 @@ export type AppDeps = {
   auth: AuthService;
   backups: BackupService;
   bridge: BridgeClient;
+  /** Studying videos by link; the panel passes its own instance so startup can recover jobs. */
+  video?: VideoService;
   space: SpaceService;
   teams: TeamService;
   audit: AuditService;
@@ -99,7 +103,9 @@ export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
   registerApprovalRoutes(app, deps);
   registerAssistantRoutes(app, deps);
   registerScheduleRoutes(app, { schedules: new ScheduleService(deps) });
-  registerChatRoutes(app, { chat: new ChatService(deps.gateway) });
+  const chat = new ChatService(deps.gateway);
+  registerChatRoutes(app, { chat });
+  registerVideoRoutes(app, { video: deps.video ?? new VideoService({ db: deps.db, bridge: deps.bridge, chat, logger: deps.logger.child({ component: "video" }) }) });
   registerDashboardRoutes(app, { dashboard: new DashboardService(deps) });
   registerSystemRoutes(app, deps);
   registerSpaceRoutes(app, deps);

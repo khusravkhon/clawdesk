@@ -21,6 +21,8 @@
 //   POST /teams/fetch | /teams/push { teamId, … }  GET /teams/status?teamId=…  POST /teams/remove { teamId }
 //   GET  /backup/list                       → { backups: [{ name, kind, createdAt, size }] }
 //   POST /backup/create      { kind }        daily | manual | before-reset (see clawdesk-backup.mjs)
+//   POST /video/study        { jobId, url, maxSeconds, maxDurationSec, maxAudioBytes } → subtitles | audio | { error }
+//   POST /video/cancel       { jobId }        stops that job's worker container
 //   POST /reset              { ownerCode }   factory reset in a helper container; the stack restarts
 
 import { spawn } from "node:child_process";
@@ -34,6 +36,7 @@ import { cloneTeamRepo, fetchTeamRepo, pushTeamBranch, removeTeamRepo, TeamError
 import { isAuthorizationCode, mcpLoginArgs } from "./clawdesk-oauth.mjs";
 import { AudioSetupError, audioSettings, audioStatus, saveAudioKey, verifyAudioKey } from "./clawdesk-audio.mjs";
 import { AgentFolders } from "./clawdesk-agent-folders.mjs";
+import { cancelVideo, studyVideo, VideoError } from "./clawdesk-video.mjs";
 
 const HOST = process.env.CLAWDESK_BRIDGE_HOST || "127.0.0.1";
 const PORT = Number(process.env.CLAWDESK_BRIDGE_PORT || 18790);
@@ -409,6 +412,17 @@ async function handle(req) {
 
   const body = await readJson(req);
   if (!(await gogInstalled()) && url.pathname.startsWith("/google/")) return { status: 501, body: { error: "gog_missing", message: "gog is not in this Gateway image" } };
+  if (url.pathname === "/video/study" || url.pathname === "/video/cancel") {
+    try {
+      const result = url.pathname === "/video/cancel" ? await cancelVideo(body) : await studyVideo(body);
+      // Only the reason code travels back; yt-dlp's own output stays in this container.
+      return { status: 200, body: result };
+    } catch (error) {
+      if (error instanceof VideoError) return { status: 400, body: { error: error.code, message: error.code } };
+      log("studying a video failed", { path: url.pathname });
+      return { status: 500, body: { error: "download_failed", message: "download_failed" } };
+    }
+  }
   if (url.pathname === "/freellmapi/reset") return freellmapiReset(body);
   if (url.pathname === "/files/folder") return ensureFolder(body);
   if (url.pathname === "/files/agent-folder") {
