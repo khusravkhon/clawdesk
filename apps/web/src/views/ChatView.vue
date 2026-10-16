@@ -1,7 +1,8 @@
 <script setup lang="ts">
 // Chat with an agent (screen 9): its main session, replies streamed live.
-import type { AgentListItemDto, ChatMessageDto, ChatRunPhase, ChatStreamEvent } from "@clawdesk/shared";
-import { AlertCircle, ArrowUp, CircleSlash, Square, Wrench } from "@lucide/vue";
+import type { AgentListItemDto, ChatAttachmentInput, ChatAttachmentLimitsDto, ChatMessageDto, ChatRunPhase, ChatStreamEvent } from "@clawdesk/shared";
+import { CHAT_ATTACHMENT_ACCEPT } from "@clawdesk/shared";
+import { AlertCircle, ArrowUp, CircleSlash, Paperclip, Square, Wrench, X } from "@lucide/vue";
 import MarkdownIt from "markdown-it";
 import { NButton, NSelect, NSpin, useMessage } from "naive-ui";
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue";
@@ -9,7 +10,7 @@ import { useI18n } from "vue-i18n";
 import { useRoute, useRouter } from "vue-router";
 import { api, ApiError } from "../api/client";
 import ApprovalCard from "../components/ApprovalCard.vue";
-import { intlLocale } from "../format";
+import { formatBytes, intlLocale } from "../format";
 import { modelErrorHint } from "../model-errors";
 import { useApprovalsStore } from "../stores/approvals";
 
@@ -61,6 +62,59 @@ const slow = computed(() => running.value && !liveText.value && startedAt.value 
 
 const scroller = ref<HTMLElement | null>(null);
 const input = ref<HTMLTextAreaElement | null>(null);
+const picker = ref<HTMLInputElement | null>(null);
+
+// Files staged for the next message: read in the browser, sent with chat.send, never stored by the panel.
+type StagedFile = ChatAttachmentInput & { id: string };
+const staged = ref<StagedFile[]>([]);
+const limits = ref<ChatAttachmentLimitsDto | null>(null);
+const stagedBytes = computed(() => staged.value.reduce((sum, file) => sum + file.sizeBytes, 0));
+const supported = CHAT_ATTACHMENT_ACCEPT.split(",");
+
+const bytes = (value: number) => formatBytes(value, locale.value);
+
+async function toBase64(file: File): Promise<string> {
+  const buffer = new Uint8Array(await file.arrayBuffer());
+  let binary = "";
+  // In chunks: one spread of a whole file would overflow the argument list.
+  for (let i = 0; i < buffer.length; i += 8192) binary += String.fromCharCode(...buffer.subarray(i, i + 8192));
+  return btoa(binary);
+}
+
+async function pick(event: Event): Promise<void> {
+  const target = event.target as HTMLInputElement;
+  const files = [...(target.files ?? [])];
+  target.value = ""; // picking the same file again must count as a new choice
+  const max = limits.value;
+  for (const file of files) {
+    if (max && staged.value.length >= max.maxFiles) {
+      message.error(t("chat.attach.tooMany", { count: max.maxFiles }));
+      break;
+    }
+    const type = file.type as ChatAttachmentInput["mimeType"];
+    if (!supported.includes(type)) {
+      message.error(t("chat.attach.unsupported", { name: file.name }));
+      continue;
+    }
+    const limit = max ? (type.startsWith("image/") ? max.maxImageBytes : max.maxFileBytes) : Infinity;
+    if (file.size > limit) {
+      message.error(t("chat.attach.tooLarge", { name: file.name, limit: bytes(limit) }));
+      continue;
+    }
+    if (max && stagedBytes.value + file.size > max.maxTotalBytes) {
+      message.error(t("chat.attach.tooMuch", { limit: bytes(max.maxTotalBytes) }));
+      break;
+    }
+    try {
+      const content = await toBase64(file);
+      staged.value.push({ id: [file.name, file.size, Date.now()].join("-"), fileName: file.name, mimeType: type, sizeBytes: file.size, content });
+    } catch {
+      message.error(t("chat.attach.readFailed", { name: file.name }));
+    }
+  }
+}
+
+const unstage = (id: string) => (staged.value = staged.value.filter((file) => file.id !== id));
 
 function scrollDown(): void {
   void nextTick(() => scroller.value?.scrollTo({ top: scroller.value.scrollHeight }));
@@ -71,6 +125,7 @@ async function loadHistory(): Promise<void> {
   try {
     const h = await api.chat.history(agentId.value);
     messages.value = h.messages;
+    limits.value = h.attachments;
     if (h.messages.length !== before) scrollDown();
     if (h.running && !running.value) startRun();
     // The Gateway does not always send a closing chat event (e.g. every model failed before replying);
@@ -134,21 +189,60 @@ async function onEvent(ev: ChatStreamEvent): Promise<void> {
   scrollDown();
 }
 
+/** A rejected file comes back as a reason code; the panel writes that reason in the owner's language. */
+function attachmentError(error: ApiError): string {
+  const details = error.body.details as { code?: string; fileName?: string; limit?: number } | undefined;
+  if (error.body.error !== "attachment_rejected" || !details?.code) return error.body.message;
+  const name = details.fileName ?? "";
+  const limit = details.limit ? bytes(details.limit) : "";
+  switch (details.code) {
+    case "too_many_files":
+      return t("chat.attach.tooMany", { count: details.limit ?? 0 });
+    case "unsupported_type":
+      return t("chat.attach.unsupported", { name });
+    case "file_too_large":
+    case "image_too_large":
+      return t("chat.attach.tooLarge", { name, limit });
+    case "request_too_large":
+      return t("chat.attach.tooMuch", { limit });
+    default:
+      return t("chat.attach.rejected", { name });
+  }
+}
+
 async function send(text = draft.value): Promise<void> {
   const body = text.trim();
-  if (!body || sending.value) return;
+  const files = staged.value;
+  if ((!body && !files.length) || sending.value) return;
   sending.value = true;
   draft.value = "";
+  staged.value = [];
   lastFailure.value = null;
-  messages.value.push({ id: `local-${Date.now()}`, role: "user", text: body, tools: [], at: Date.now(), status: "ok" });
+  const localId = "local-" + Date.now();
+  messages.value.push({
+    id: localId,
+    role: "user",
+    text: body,
+    tools: [],
+    attachments: files.map(({ fileName, mimeType, sizeBytes }) => ({ fileName, mimeType, sizeBytes })),
+    at: Date.now(),
+    status: "ok",
+  });
   startRun();
   scrollDown();
   try {
-    await api.chat.send(agentId.value, body);
+    await api.chat.send(
+      agentId.value,
+      body,
+      files.map(({ id: _id, ...file }) => file),
+    );
   } catch (e) {
     endRun();
-    message.error(e instanceof ApiError ? e.body.message : String(e));
+    message.error(e instanceof ApiError ? attachmentError(e) : String(e));
+    // Nothing was sent: the draft and its files go back to the composer.
     draft.value = body;
+    staged.value = files;
+    messages.value = messages.value.filter((m) => m.id !== localId);
   } finally {
     sending.value = false;
     void nextTick(() => input.value?.focus());
@@ -242,7 +336,14 @@ watch(agentId, () => void open());
 
         <template v-for="m in messages" :key="m.id">
           <div v-if="m.role === 'user'" class="row user">
-            <div class="bubble">{{ m.text }}</div>
+            <div class="bubble">
+              <span v-if="m.text">{{ m.text }}</span>
+              <div v-if="m.attachments.length" class="files">
+                <span v-for="file in m.attachments" :key="file.fileName" class="file">
+                  <paperclip :size="12" /> {{ file.fileName }}<template v-if="file.sizeBytes"> · {{ bytes(file.sizeBytes) }}</template>
+                </span>
+              </div>
+            </div>
           </div>
           <div v-else class="row assistant">
             <div class="avatar">{{ agent?.emoji ?? "🧭" }}</div>
@@ -284,7 +385,24 @@ watch(agentId, () => void open());
     </div>
 
     <footer class="composer">
+      <div v-if="staged.length" class="staged">
+        <span v-for="file in staged" :key="file.id" class="file staged-file">
+          <paperclip :size="12" /> {{ file.fileName }} · {{ bytes(file.sizeBytes) }}
+          <button type="button" :aria-label="t('chat.attach.remove')" @click="unstage(file.id)"><x :size="12" /></button>
+        </span>
+      </div>
       <div class="box">
+        <input ref="picker" type="file" multiple hidden :accept="CHAT_ATTACHMENT_ACCEPT" @change="pick" />
+        <n-button
+          circle
+          size="small"
+          quaternary
+          :disabled="sending || (limits !== null && staged.length >= limits.maxFiles)"
+          :aria-label="t('chat.attach.add')"
+          @click="picker?.click()"
+        >
+          <paperclip :size="16" />
+        </n-button>
         <textarea
           ref="input"
           v-model="draft"
@@ -296,7 +414,7 @@ watch(agentId, () => void open());
         <n-button v-if="running" circle size="small" secondary :aria-label="t('chat.stop')" @click="stop">
           <square :size="12" fill="currentColor" />
         </n-button>
-        <n-button v-else circle size="small" type="primary" :disabled="!draft.trim()" :loading="sending" :aria-label="t('chat.send')" @click="send()">
+        <n-button v-else circle size="small" type="primary" :disabled="!draft.trim() && !staged.length" :loading="sending" :aria-label="t('chat.send')" @click="send()">
           <arrow-up :size="16" />
         </n-button>
       </div>
@@ -542,6 +660,44 @@ watch(agentId, () => void open());
   margin-top: 8px;
   font-size: 12px;
   color: var(--muted);
+}
+.staged {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 0 4px 8px;
+}
+.file {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+  line-height: 1.4;
+}
+.files {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-top: 4px;
+  opacity: 0.85;
+}
+.staged-file {
+  padding: 4px 8px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--surface);
+}
+.staged-file button {
+  display: inline-flex;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  cursor: pointer;
+  opacity: 0.6;
+}
+.staged-file button:hover {
+  opacity: 1;
 }
 .composer {
   padding-top: 12px;

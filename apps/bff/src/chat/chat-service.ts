@@ -1,11 +1,12 @@
 import { randomUUID } from "node:crypto";
-import type { ChatHistoryDto, ChatMessageDto, ChatRunPhase, ChatStreamEvent } from "@clawdesk/shared";
+import type { ChatAttachmentInput, ChatAttachmentLimitsDto, ChatHistoryDto, ChatMessageDto, ChatRunPhase, ChatStreamEvent } from "@clawdesk/shared";
 import type { GatewayService } from "../gateway/gateway-service.js";
+import { attachmentLimits, attachmentOnlyMessage, attachmentsOf, checkAttachments, toGatewayAttachments } from "./chat-attachments.js";
 
 // Chat with an agent's main session: chat.send / chat.history / chat.abort, and the Gateway's
 // `chat` + `agent` events reduced to what the chat screen draws.
 
-type RawPart = { type: string; text?: string; name?: string };
+type RawPart = { type: string; text?: string; name?: string; fileName?: string; mimeType?: string; sizeBytes?: number };
 export type RawChatMessage = { role: string; content?: string | RawPart[]; timestamp?: number; stopReason?: string };
 
 /** OpenClaw's placeholder when a turn ended without any reply text. */
@@ -33,7 +34,8 @@ export function toChatMessages(raw: RawChatMessage[]): ChatMessageDto[] {
     const at = m.timestamp ?? null;
     if (m.role === "user") {
       const text = textOf(m);
-      if (text) out.push({ id, role: "user", text, tools: [], at, status: "ok" });
+      const attachments = attachmentsOf(partsOf(m));
+      if (text || attachments.length) out.push({ id, role: "user", text, tools: [], attachments, at, status: "ok" });
       pendingTools = [];
       return;
     }
@@ -54,7 +56,7 @@ export function toChatMessages(raw: RawChatMessage[]): ChatMessageDto[] {
       prev.at = at; // the same failure retried
       return;
     }
-    out.push({ id, role: "assistant", text, tools: [...pendingTools, ...tools], at, status });
+    out.push({ id, role: "assistant", text, tools: [...pendingTools, ...tools], attachments: [], at, status });
     pendingTools = [];
   });
   return out;
@@ -111,15 +113,22 @@ export class ChatService {
       agentId,
       limit,
     });
-    return { agentId, messages: toChatMessages(res.messages ?? []), running: !!res.inFlightRun };
+    return { agentId, messages: toChatMessages(res.messages ?? []), running: !!res.inFlightRun, attachments: this.attachmentLimits() };
   }
 
-  async send(agentId: string, text: string): Promise<{ runId: string | null }> {
+  /** What this Gateway accepts for attachments right now (empty handshake: the panel's own caps). */
+  attachmentLimits(): ChatAttachmentLimitsDto {
+    return attachmentLimits(this.gateway.hello as Parameters<typeof attachmentLimits>[0]);
+  }
+
+  async send(agentId: string, text: string, attachments: ChatAttachmentInput[] = []): Promise<{ runId: string | null }> {
+    if (attachments.length) checkAttachments(attachments, this.attachmentLimits());
     const res = await this.gateway.request<{ runId?: string }>("chat.send", {
       sessionKey: mainSessionKey(agentId),
       agentId,
-      message: text,
+      message: text || attachmentOnlyMessage(attachments),
       idempotencyKey: randomUUID(),
+      ...(attachments.length ? { attachments: toGatewayAttachments(attachments) } : {}),
     });
     return { runId: res.runId ?? null };
   }

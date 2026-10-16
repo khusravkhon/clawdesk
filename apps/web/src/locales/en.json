@@ -401,9 +401,19 @@
       "count": "Files: {n}",
       "empty": "The folder is empty so far.",
       "sync": {
-        "title": "Specialists’ folder exchange", "unavailable": "Exchange status is unavailable. Refresh later or check the Gateway connection.", "empty": "No specialist folders registered.",
-        "lastAttempt": "Last attempt", "lastSuccess": "Last complete exchange", "unknown": "Not yet", "counts": "Preserved conflicts: {conflicts}; skipped paths: {skipped}",
-        "states": { "pending": "Waiting", "ready": "Exchanged", "partial": "Some files skipped", "error": "Exchange stopped" },
+        "title": "Specialists’ folder exchange",
+        "unavailable": "Exchange status is unavailable. Refresh later or check the Gateway connection.",
+        "empty": "No specialist folders registered.",
+        "lastAttempt": "Last attempt",
+        "lastSuccess": "Last complete exchange",
+        "unknown": "Not yet",
+        "counts": "Preserved conflicts: {conflicts}; skipped paths: {skipped}",
+        "states": {
+          "pending": "Waiting",
+          "ready": "Exchanged",
+          "partial": "Some files skipped",
+          "error": "Exchange stopped"
+        },
         "issues": {
           "file_too_large": "Over 32 MiB. Reduce the file or move it outside this folder; other files continue exchanging.",
           "unsupported_file": "Links and special files are skipped. Put a regular file here.",
@@ -500,6 +510,16 @@
       "thinking": "Thinking…",
       "tool": "Using tools…",
       "writing": "Writing…"
+    },
+    "attach": {
+      "add": "Attach a file",
+      "remove": "Remove the file",
+      "tooMany": "A message takes at most {count} files.",
+      "tooLarge": "“{name}” is over the size limit ({limit}). Put it in the agent's folder instead.",
+      "tooMuch": "The files in one message must stay under {limit} together.",
+      "unsupported": "The panel does not pass this file type on: “{name}”.",
+      "readFailed": "The browser could not read “{name}”.",
+      "rejected": "The Gateway did not accept “{name}”."
     }
   },
   "approvals": {

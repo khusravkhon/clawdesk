@@ -24,6 +24,8 @@ import type {
   FactoryResetResultDto,
   MemoryProvider,
   ExecMode,
+  ChatAttachmentInput,
+  ChatAttachmentLimitsDto,
   ChatHistoryDto,
   ApiErrorDto,
   ApproveTelegramResultDto,
@@ -194,7 +196,9 @@ export const api = {
   },
   chat: {
     history: (agentId: string) => request<ChatHistoryDto>(`/api/chat/${encodeURIComponent(agentId)}/history`),
-    send: (agentId: string, text: string) => post<{ runId: string | null }>(`/api/chat/${encodeURIComponent(agentId)}/send`, { text }),
+    send: (agentId: string, text: string, attachments: ChatAttachmentInput[] = []) =>
+      post<{ runId: string | null }>(`/api/chat/${encodeURIComponent(agentId)}/send`, { text, ...(attachments.length ? { attachments } : {}) }),
+    attachmentLimits: () => request<ChatAttachmentLimitsDto>("/api/chat/attachments/limits"),
     abort: (agentId: string) => post<void>(`/api/chat/${encodeURIComponent(agentId)}/abort`),
     eventsUrl: (agentId: string) => `/api/chat/${encodeURIComponent(agentId)}/events`,
   },
