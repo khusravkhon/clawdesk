@@ -65,10 +65,15 @@ services:
       # Kept video originals. Deliberately outside the agents' exchanged folders: a 2 GiB file
       # there would hold up every other file of that folder (32 MiB per file).
       CLAWDESK_VIDEO_DIR: ${CLAWDESK_DATA_DIR:-/var/lib/clawdesk}/videos
+      # Scratch of a running job (subtitles, audio, frames). A worker container is a sibling on the
+      # host, so its output mount must be the SAME absolute path here and there — the Gateway's own
+      # /tmp is not a path the worker can write into. Emptied per job, nothing is kept here.
+      CLAWDESK_VIDEO_WORK_DIR: ${CLAWDESK_DATA_DIR:-/var/lib/clawdesk}/video-work
     volumes:
       - ${CLAWDESK_DATA_DIR:-/var/lib/clawdesk}/openclaw:${CLAWDESK_DATA_DIR:-/var/lib/clawdesk}/openclaw
       # Same absolute path inside and outside, so a worker container can bind the same directory.
       - ${CLAWDESK_DATA_DIR:-/var/lib/clawdesk}/videos:${CLAWDESK_DATA_DIR:-/var/lib/clawdesk}/videos
+      - ${CLAWDESK_DATA_DIR:-/var/lib/clawdesk}/video-work:${CLAWDESK_DATA_DIR:-/var/lib/clawdesk}/video-work
       - openclaw-auth-secrets:/home/node/.config/openclaw
       - /var/run/docker.sock:/var/run/docker.sock
       # Shared folder from the person's computer: files/ in the main agent's workspace.

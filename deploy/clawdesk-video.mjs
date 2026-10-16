@@ -14,6 +14,15 @@ import path from "node:path";
 
 /** Where kept originals go: a directory outside the agents' folder exchange, or nothing. */
 const VIDEO_DIR = process.env.CLAWDESK_VIDEO_DIR || "";
+/**
+ * Scratch for subtitles, audio and frames. A worker container is a sibling on the host, so the
+ * path of its output mount is resolved by the Docker daemon, not inside this container: a
+ * directory in this container's own /tmp is NOT the directory the worker writes into, and
+ * everything it leaves behind would be invisible here. This path is bind-mounted at the same
+ * absolute path on both sides (compose does that), which makes the two the same directory.
+ * Empty only where the bridge runs on the host itself (development), where /tmp already is.
+ */
+const WORK_DIR = process.env.CLAWDESK_VIDEO_WORK_DIR || "";
 /** Progress of the running downloads, read by the panel while a job is on. */
 const PROGRESS = new Map();
 
@@ -37,6 +46,25 @@ const URL_ALLOWED = /^https:\/\/www\.youtube\.com\/watch\?v=[A-Za-z0-9_-]{11}$/;
 
 /** The container name of a job, so a cancel can stop exactly that one. */
 const containerName = (jobId) => `clawdesk-video-${jobId}`;
+
+/**
+ * The directory a job's worker writes into, readable by whoever started it: under WORK_DIR when
+ * the worker is a sibling container (the same path on both sides), else a temporary directory.
+ * Left over work of the same job is removed first, so one job never reads another run's files.
+ */
+export async function jobWorkDir(prefix, jobId) {
+  if (!WORK_DIR) return fs.mkdtemp(path.join(os.tmpdir(), prefix));
+  const dir = path.join(WORK_DIR, `${prefix}${jobId}`);
+  await fs.rm(dir, { recursive: true, force: true }).catch(() => {});
+  await fs.mkdir(dir, { recursive: true });
+  return dir;
+}
+
+/**
+ * The worker runs as this process's user, not as the image's own: it writes into a directory this
+ * container owns, and files owned by a stranger could not be read back here. Still never root.
+ */
+const workerUser = () => (typeof process.getuid === "function" ? ["--user", `${process.getuid()}:${process.getgid()}`] : []);
 
 function run(argv, { timeoutMs, onLine }) {
   return new Promise((resolve) => {
@@ -73,11 +101,12 @@ function run(argv, { timeoutMs, onLine }) {
 }
 
 /** Fixed docker arguments: no network namespace sharing, no mounts but the output, no privileges. */
-const dockerArgs = (jobId, outDir, args, { memory = "1g", cpus = "1.0", entrypoint = null, network = "bridge" } = {}) => [
+export const dockerArgs = (jobId, outDir, args, { memory = "1g", cpus = "1.0", entrypoint = null, network = "bridge" } = {}) => [
   "run",
   "--rm",
   "--name",
   containerName(jobId),
+  ...workerUser(),
   ...(entrypoint ? ["--entrypoint", entrypoint] : []),
   "--network",
   network,
@@ -172,7 +201,7 @@ export const videoProgress = (jobId) => (JOB_ID.test(String(jobId)) ? (PROGRESS.
 export async function framesOfVideo(body) {
   const { jobId, url, maxSeconds, maxDurationSec, maxFrames, maxFrameBytes } = checkRequest(body);
   CANCELED.delete(jobId);
-  const outDir = await fs.mkdtemp(path.join(os.tmpdir(), "clawdesk-frames-"));
+  const outDir = await jobWorkDir("clawdesk-frames-", jobId);
   const deadline = Date.now() + maxSeconds * 1000;
   const left = () => Math.max(5_000, deadline - Date.now());
   try {
@@ -272,7 +301,7 @@ function setProgress(jobId, percent) {
 export async function studyVideo(body) {
   const { jobId, url, maxSeconds, maxDurationSec, maxAudioBytes } = checkRequest(body);
   CANCELED.delete(jobId);
-  const outDir = await fs.mkdtemp(path.join(os.tmpdir(), "clawdesk-video-"));
+  const outDir = await jobWorkDir("clawdesk-video-", jobId);
   const deadline = Date.now() + maxSeconds * 1000;
   const left = () => Math.max(5_000, deadline - Date.now());
   try {

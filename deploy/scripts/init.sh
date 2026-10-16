@@ -90,7 +90,10 @@ step "Preparing OpenClaw state at $STATE_DIR (same path on host and in the Gatew
 # Created through Docker so it works the same on Linux hosts and inside Docker Desktop's VM; owned by uid 1000 (node).
 # workspace/files is where the shared folder is mounted: made here, or Docker creates it (and workspace/) as root
 # and OpenClaw's onboarding cannot write the main workspace.
-docker run --rm --user 0 -v "$DATA_DIR:$DATA_DIR" debian:bookworm-slim   sh -c "mkdir -p '$STATE_DIR/workspace/files' '$DATA_DIR/backups' && chown 1000:1000 '$STATE_DIR' '$STATE_DIR/workspace' '$STATE_DIR/workspace/files' '$DATA_DIR/backups' && chmod 700 '$STATE_DIR' '$DATA_DIR/backups'"
+# videos/ keeps the originals the owner asked for and video-work/ is the scratch of a running job;
+# both are bind-mounted, so Docker would otherwise create them as root and the Gateway (node)
+# could not write a single video there.
+docker run --rm --user 0 -v "$DATA_DIR:$DATA_DIR" debian:bookworm-slim   sh -c "mkdir -p '$STATE_DIR/workspace/files' '$DATA_DIR/backups' '$DATA_DIR/videos' '$DATA_DIR/video-work' && chown 1000:1000 '$STATE_DIR' '$STATE_DIR/workspace' '$STATE_DIR/workspace/files' '$DATA_DIR/backups' '$DATA_DIR/videos' '$DATA_DIR/video-work' && chmod 700 '$STATE_DIR' '$DATA_DIR/backups' && chmod 755 '$DATA_DIR/videos' '$DATA_DIR/video-work'"
 
 # A shared folder inside the data folder (servers: install.sh puts it there) belongs to the agent user too.
 FILES_DIR="$(env_get CLAWDESK_FILES_DIR)"
