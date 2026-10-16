@@ -15,10 +15,11 @@ import type { FreeModelsService } from "../free-models/free-models-service.js";
 import type { GatewayService } from "../gateway/gateway-service.js";
 import { listAgents } from "../routes/agents.js";
 import type { TelegramService } from "../telegram/telegram-service.js";
+import { isSystemJob } from "../schedules/job-policy.js";
 
 // Raw Gateway shapes (OpenClaw 2026.8.1), only the fields the dashboard reads.
 
-type CostTotals = { totalTokens?: number; totalCost?: number; missingCostEntries?: number };
+type CostTotals = { input?: number; output?: number; cacheRead?: number; cacheWrite?: number; totalTokens?: number; totalCost?: number; missingCostEntries?: number };
 
 export type RawSessionsUsage = {
   sessions?: unknown[];
@@ -48,6 +49,7 @@ export type RawCronJob = {
   name?: string;
   displayName?: string;
   declarationKey?: string;
+  payload?: { kind?: string };
   enabled?: boolean;
   nextRunAtMs?: number;
   state?: { nextRunAtMs?: number; lastRunStatus?: string };
@@ -86,6 +88,10 @@ export function buildUsage(raw: RawSessionsUsage, days: string[]): DashboardUsag
   return {
     totals: {
       tokens: num(raw.totals?.totalTokens),
+      tokenBreakdown: raw.totals && [raw.totals.input, raw.totals.output, raw.totals.cacheRead, raw.totals.cacheWrite].some((v) => Number.isFinite(v))
+        ? { input: num(raw.totals.input), output: num(raw.totals.output), cacheRead: num(raw.totals.cacheRead), cacheWrite: num(raw.totals.cacheWrite) }
+        : null,
+      modelCalls: agg.byModel?.some((m) => Number.isFinite(m.count)) ? agg.byModel.reduce((sum, m) => sum + num(m.count), 0) : null,
       cost: num(raw.totals?.totalCost),
       messages: num(agg.messages?.total),
       toolCalls: num(agg.messages?.toolCalls),
@@ -157,8 +163,7 @@ export function buildAgents(agents: AgentListItemDto[], sessions: RawSession[], 
 
 const runStatus = (s: string | undefined): CronRunStatus | null => (s === "ok" || s === "error" || s === "skipped" ? s : null);
 
-/** OpenClaw declares its own housekeeping jobs (heartbeat, memory, skill review); panel jobs have no declaration key. */
-const isSystemJob = (job: RawCronJob) => !!job.declarationKey;
+/** OpenClaw declares its own housekeeping jobs (heartbeat, memory, skill review); user jobs may also have declaration keys. */
 
 export function buildSchedules(jobs: RawCronJob[], runs: RawCronRun[], days: string[], timeZone: string): DashboardSchedulesDto {
   const userJobs = jobs.filter((j) => !isSystemJob(j));

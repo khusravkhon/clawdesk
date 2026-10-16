@@ -1,4 +1,4 @@
-import type { PullRequestDto, TeamRepoStatusDto } from "@clawdesk/shared";
+import { FolderSyncStatusesDto, type PullRequestDto, type TeamRepoStatusDto } from "@clawdesk/shared";
 
 // Client for the ClawDesk bridge in the Gateway container (deploy/clawdesk-bridge.mjs):
 // OpenClaw CLI steps that have no RPC, such as signing in to an OAuth MCP server.
@@ -44,6 +44,18 @@ export class BridgeClient {
     return this.#call("GET", `/mcp/status?server=${encodeURIComponent(server)}`);
   }
 
+  telegramApproved(accountId: string): Promise<{ senderIds: string[] }> {
+    return this.#call("GET", `/telegram/approved?accountId=${encodeURIComponent(accountId)}`);
+  }
+
+  telegramAudioStatus(): Promise<{ configured: boolean; providers?: { openai: boolean; groq: boolean } }> {
+    return this.#call("GET", "/telegram/audio");
+  }
+
+  telegramAudioKey(apiKey: string, provider = "openai", model?: string): Promise<{ configured: boolean }> {
+    return this.#call("POST", "/telegram/audio", { apiKey, provider, model }, 120_000);
+  }
+
   mcpLoginStart(server: string): Promise<{ authorizationUrl?: string; authorized?: boolean }> {
     return this.#call("POST", "/mcp/login/start", { server });
   }
@@ -84,6 +96,15 @@ export class BridgeClient {
   /** Makes (or finds) a junior agent's folder in the shared files folder. */
   ensureFolder(name: string): Promise<{ hostPath: string; gatewayPath: string }> {
     return this.#call("POST", "/files/folder", { name });
+  }
+
+  /** Exchanges files with the junior's managed workspace, without a host bind in its sandbox. */
+  ensureAgentFolder(agentId: string, name: string): Promise<{ hostPath: string; gatewayPath: string }> {
+    return this.#call("POST", "/files/agent-folder", { agentId, name }, 120_000);
+  }
+
+  async folderSyncStatus(): Promise<FolderSyncStatusesDto> {
+    return FolderSyncStatusesDto.parse(await this.#call("GET", "/files/sync-status", undefined, 5_000));
   }
 
   /** Clones a team's repository (a read-only copy and the developer's branch); the token stays aside. */

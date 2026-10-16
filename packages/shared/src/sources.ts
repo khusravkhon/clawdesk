@@ -21,6 +21,20 @@ export type NotionSourceDto = z.infer<typeof NotionSourceDto>;
 export const FolderFileDto = z.object({ name: z.string(), size: z.number(), modifiedAt: z.number(), isDir: z.boolean() });
 export type FolderFileDto = z.infer<typeof FolderFileDto>;
 
+export const FolderSyncIssueDto = z.object({
+  code: z.enum(["file_too_large", "unsupported_file", "file_unavailable", "file_changed", "folder_depth_limit", "folder_entry_limit", "folder_size_limit", "conflict_requires_review", "folder_unavailable"]),
+  path: z.string().max(500).refine((value) => !/[\x00-\x1f\x7f\\]/.test(value) && !/^[A-Za-z]:/.test(value) && !value.startsWith("/") && !value.split("/").some((part) => part === ".." || part === ".")).nullable(),
+});
+export const FolderSyncStatusDto = z.object({
+  agentId: z.string().regex(/^[a-z0-9][a-z0-9_-]{0,79}$/), folder: z.string().max(60),
+  state: z.enum(["pending", "ready", "partial", "error"]),
+  lastAttempt: z.number().int().positive().max(8_640_000_000_000_000).nullable(), lastSuccess: z.number().int().positive().max(8_640_000_000_000_000).nullable(),
+  conflicts: z.number().int().nonnegative(), skipped: z.number().int().nonnegative(),
+  issues: z.array(FolderSyncIssueDto).max(20),
+});
+export const FolderSyncStatusesDto = z.object({ folders: z.array(FolderSyncStatusDto).max(1000) });
+export type FolderSyncStatusesDto = z.infer<typeof FolderSyncStatusesDto>;
+
 export const FolderSourceDto = z.object({
   /** The shared folder is mounted into the Gateway. */
   available: z.boolean(),
@@ -30,6 +44,7 @@ export const FolderSourceDto = z.object({
   agentPath: z.string(),
   files: z.array(FolderFileDto),
   total: z.number(),
+  sync: FolderSyncStatusesDto.nullable().optional(),
 });
 export type FolderSourceDto = z.infer<typeof FolderSourceDto>;
 

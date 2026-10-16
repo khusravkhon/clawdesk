@@ -43,6 +43,24 @@ describe("toSchedule", () => {
       everyMs: 60_000,
     });
   });
+
+  it("shows reminders created in chat with a declaration key, including paused pool training", () => {
+    expect(toSchedule({ id: "morning", agentId: "trainer", declarationKey: "trainer:morning-run", payload: { kind: "agentTurn", message: "Run" } }))
+      .toMatchObject({ id: "morning", agentId: "trainer", prompt: "Run" });
+    expect(toSchedule({ id: "pool", agentId: "trainer", declarationKey: "trainer:pool-tuth", enabled: false }))
+      .toMatchObject({ id: "pool", enabled: false, nextRunAt: null });
+  });
+
+  it("shows a one-time command without an explicit agent and keeps its exact date", () => {
+    expect(toSchedule({ id: "enable-pool", declarationKey: "trainer:enable-pool-2027", schedule: { kind: "at", at: "2026-12-31T19:05:00.000Z" }, payload: { kind: "command" } }))
+      .toMatchObject({ id: "enable-pool", agentId: "main", at: "2026-12-31T19:05:00.000Z", cron: null });
+  });
+
+  it("keeps actual housekeeping hidden even when it uses an agentTurn payload", () => {
+    expect(toSchedule({ id: "memory", declarationKey: "memory-core:memory-dreaming-promotion", payload: { kind: "agentTurn" } })).toBeNull();
+    expect(toSchedule({ id: "review", agentId: "trainer", declarationKey: "skill-collection-review:trainer" })).toBeNull();
+    expect(toSchedule({ id: "heartbeat", payload: { kind: "heartbeat" } })).toBeNull();
+  });
 });
 
 describe("CreateScheduleRequest", () => {

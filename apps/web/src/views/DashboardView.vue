@@ -8,9 +8,7 @@ import {
   CheckCircle2,
   CircleDashed,
   CircleSlash,
-  Coins,
   Cpu,
-  MessageSquare,
   RefreshCw,
   Send,
   Sparkles,
@@ -25,6 +23,7 @@ import TrendChart from "../components/charts/TrendChart.vue";
 import BarList, { type BarItem } from "../components/ui/BarList.vue";
 import PageHeader from "../components/ui/PageHeader.vue";
 import StatTile from "../components/ui/StatTile.vue";
+import UsageMetrics from "../components/UsageMetrics.vue";
 import { formatCompact, formatCost, formatDay, formatInt, formatRelative } from "../format";
 import { modelErrorHint } from "../model-errors";
 
@@ -150,19 +149,7 @@ const subtitle = computed(() => t("dash.subtitle", { days: range.value.replace("
     <!-- KPI tiles -->
     <section class="tiles">
       <template v-if="data">
-        <stat-tile :icon="Zap" :label="t('dash.kpi.tokens')" :value="formatCompact(usage?.totals.tokens ?? 0, loc)" :note="t('dash.kpi.sessions', { n: usage?.totals.sessions ?? 0 })" />
-        <stat-tile
-          :icon="Coins"
-          :label="t('dash.kpi.cost')"
-          :value="formatCost(usage?.totals.cost ?? 0, loc)"
-          :note="usage?.costIncomplete ? t('dash.kpi.costIncomplete') : t('dash.kpi.costNote')"
-        />
-        <stat-tile
-          :icon="MessageSquare"
-          :label="t('dash.kpi.messages')"
-          :value="formatCompact(usage?.totals.messages ?? 0, loc)"
-          :note="t('dash.kpi.tools', { n: usage?.totals.toolCalls ?? 0, e: usage?.totals.errors ?? 0 })"
-        />
+        <usage-metrics :usage="usage" />
         <stat-tile :icon="Bot" :label="t('dash.kpi.agents')" :value="String(agentCounts.total)">
           <template #note>
             <span v-if="agentCounts.working" class="good-text">{{ t("dash.kpi.working", { n: agentCounts.working }) }}</span>

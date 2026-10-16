@@ -195,4 +195,13 @@ describe("sources", () => {
     const { folder } = await service(gateway, notionApi(200), path.join(dir, "nope")).status();
     expect(folder.available).toBe(false);
   });
+
+  it("reports safe folder sync status and tolerates unavailable older bridges", async () => {
+    const { gateway } = fakeGateway();
+    const sync = { folders: [{ agentId: "trainer", folder: "Training", state: "ready", lastAttempt: 1000, lastSuccess: 1000, conflicts: 0, skipped: 0, issues: [] }] };
+    const bridge = { available: async () => false, folderSyncStatus: async () => sync } as unknown as BridgeClient;
+    expect((await service(gateway, notionApi(200), undefined, bridge).status()).folder.sync).toEqual(sync);
+    bridge.folderSyncStatus = async () => { throw new Error("private exception"); };
+    expect((await service(gateway, notionApi(200), undefined, bridge).status()).folder.sync).toBe(null);
+  });
 });

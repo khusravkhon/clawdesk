@@ -9,6 +9,7 @@ export type SimpleSchedule = { hour: number; minute: number; days: number[] };
 export function parseCron(expr: string | null): SimpleSchedule | null {
   const m = expr?.match(/^(\d{1,2}) (\d{1,2}) \* \* (\*|[0-6](?:,[0-6])*)$/);
   if (!m) return null;
+  if (Number(m[1]) > 59 || Number(m[2]) > 23) return null;
   const days = m[3] === "*" ? [] : [...new Set(m[3]!.split(",").map(Number))].sort();
   return { minute: Number(m[1]), hour: Number(m[2]), days: days.length === 7 ? [] : days };
 }
@@ -17,6 +18,13 @@ export function parseCron(expr: string | null): SimpleSchedule | null {
 export function toCron(s: SimpleSchedule): string {
   const days = [...new Set(s.days)].sort();
   return `${s.minute} ${s.hour} * * ${days.length === 0 || days.length === 7 ? "*" : days.join(",")}`;
+}
+
+export function cronFromTime(time: string | null, days: string): string | null {
+  const match = time?.match(/^([01]\d|2[0-3]):([0-5]\d)$/);
+  if (!match) return null;
+  const parsed = parseCron(`${Number(match[2])} ${Number(match[1])} * * ${days}`);
+  return parsed ? toCron(parsed) : null;
 }
 
 type Translate = (key: string, values?: Record<string, unknown>) => string;

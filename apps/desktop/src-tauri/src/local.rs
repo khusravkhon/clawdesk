@@ -121,12 +121,43 @@ fn find_bash() -> Result<PathBuf> {
     Ok(PathBuf::from("bash"))
 }
 
-/// Unpacks the bundled server code over the previous copy; deploy/.env (settings and secrets) is not in the
+/// Unpacks the bundled server code into a fresh copy; deploy/.env (settings and secrets) is not in the
 /// archive, so it survives updates.
 fn unpack(archive: &Path, dir: &Path) -> Result<()> {
-    std::fs::create_dir_all(dir)?;
+    let parent = dir.parent().context("server directory has no parent")?;
+    std::fs::create_dir_all(parent)?;
     let file = std::fs::File::open(archive).with_context(|| format!("cannot read {}", archive.display()))?;
-    tar::Archive::new(flate2::read::GzDecoder::new(file)).unpack(dir).context("could not unpack the server code")
+    let revision = uuid::Uuid::new_v4();
+    let staged = parent.join(format!("server-next-{revision}"));
+    let backup = parent.join(format!("server-previous-{revision}"));
+    std::fs::create_dir(&staged)?;
+    let result = (|| -> Result<()> {
+        tar::Archive::new(flate2::read::GzDecoder::new(file)).unpack(&staged).context("could not unpack the server code")?;
+        for required in ["deploy/scripts/local.sh", "apps/web/package.json", "apps/bff/package.json", "packages/shared/package.json"] {
+            if !staged.join(required).is_file() {
+                bail!("server archive is missing {required}");
+            }
+        }
+        let settings = dir.join("deploy/.env");
+        if settings.is_file() {
+            std::fs::copy(&settings, staged.join("deploy/.env")).context("could not preserve server settings")?;
+        }
+        let previous = dir.exists();
+        if previous {
+            std::fs::rename(dir, &backup).context("could not back up the previous server code")?;
+        }
+        if let Err(error) = std::fs::rename(&staged, dir) {
+            if previous {
+                std::fs::rename(&backup, dir).context("could not restore the previous server code")?;
+            }
+            return Err(error).context("could not activate the new server code");
+        }
+        Ok(())
+    })();
+    if result.is_err() {
+        let _ = std::fs::remove_dir_all(&staged);
+    }
+    result
 }
 
 pub async fn install(app: &AppHandle, store: &Store, name: String) -> Result<InstallResult> {
@@ -192,4 +223,79 @@ pub async fn install(app: &AppHandle, store: &Store, name: String) -> Result<Ins
     store.save(&server)?;
     step("Done");
     Ok(InstallResult { server, setup_url })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    struct Fixture(PathBuf);
+
+    impl Fixture {
+        fn new() -> Self {
+            let root = std::env::temp_dir().join(format!("clawdesk-unpack-{}", uuid::Uuid::new_v4()));
+            std::fs::create_dir(&root).unwrap();
+            Self(root)
+        }
+
+        fn archive(&self) -> PathBuf {
+            let path = self.0.join("source.tar.gz");
+            let file = std::fs::File::create(&path).unwrap();
+            let mut archive = tar::Builder::new(flate2::write::GzEncoder::new(file, flate2::Compression::default()));
+            for name in ["deploy/scripts/local.sh", "apps/web/package.json", "apps/bff/package.json", "packages/shared/package.json"] {
+                let content = b"new version";
+                let mut header = tar::Header::new_gnu();
+                header.set_size(content.len() as u64);
+                header.set_mode(0o644);
+                header.set_cksum();
+                archive.append_data(&mut header, name, &content[..]).unwrap();
+            }
+            archive.into_inner().unwrap().finish().unwrap();
+            path
+        }
+    }
+
+    impl Drop for Fixture {
+        fn drop(&mut self) {
+            let _ = std::fs::remove_dir_all(&self.0);
+        }
+    }
+
+    #[test]
+    fn update_replaces_source_preserves_settings_and_keeps_backup() {
+        let fixture = Fixture::new();
+        let dir = fixture.0.join("server");
+        std::fs::create_dir_all(dir.join("deploy")).unwrap();
+        std::fs::write(dir.join("obsolete.vue"), "old code").unwrap();
+        std::fs::write(dir.join("deploy/.env"), "EXAMPLE_SECRET=keep-me\n").unwrap();
+        unpack(&fixture.archive(), &dir).unwrap();
+        assert!(!dir.join("obsolete.vue").exists());
+        assert_eq!(std::fs::read_to_string(dir.join("deploy/.env")).unwrap(), "EXAMPLE_SECRET=keep-me\n");
+        assert_eq!(std::fs::read_to_string(dir.join("apps/web/package.json")).unwrap(), "new version");
+        let backup = std::fs::read_dir(&fixture.0).unwrap().map(|entry| entry.unwrap().path())
+            .find(|path| path.file_name().unwrap().to_string_lossy().starts_with("server-previous-")).unwrap();
+        assert!(backup.join("obsolete.vue").is_file());
+    }
+
+    #[test]
+    fn broken_archive_keeps_existing_installation() {
+        let fixture = Fixture::new();
+        let dir = fixture.0.join("server");
+        std::fs::create_dir(&dir).unwrap();
+        std::fs::write(dir.join("existing"), "keep").unwrap();
+        let archive = fixture.0.join("broken.tar.gz");
+        std::fs::write(&archive, "invalid archive").unwrap();
+        assert!(unpack(&archive, &dir).is_err());
+        assert_eq!(std::fs::read_to_string(dir.join("existing")).unwrap(), "keep");
+        assert_eq!(std::fs::read_dir(&fixture.0).unwrap().count(), 2);
+    }
+
+    #[test]
+    fn fresh_install_without_settings() {
+        let fixture = Fixture::new();
+        let dir = fixture.0.join("server");
+        unpack(&fixture.archive(), &dir).unwrap();
+        assert!(dir.join("deploy/scripts/local.sh").is_file());
+        assert!(!dir.join("deploy/.env").exists());
+    }
 }

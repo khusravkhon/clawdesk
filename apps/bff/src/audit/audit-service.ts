@@ -1,4 +1,4 @@
-import type { AgentAuditEventDto, AuditEventDto, AuditPageDto } from "@clawdesk/shared";
+import { AuditDiagnosticCode, AuditDiagnostics, type AgentAuditEventDto, type AuditEventDto, type AuditPageDto } from "@clawdesk/shared";
 import { desc, lt, sql } from "drizzle-orm";
 import type { FastifyInstance } from "fastify";
 import type { Logger } from "pino";
@@ -89,6 +89,19 @@ export class AuditService {
 
   /** Registers the recording hook; call once, before the routes. */
   attach(app: FastifyInstance): void {
+    const diagnostics = new WeakMap<object, AuditDiagnostics>();
+    app.addHook("onSend", async (request, reply, payload) => {
+      if (reply.statusCode < 400 || typeof payload !== "string" || payload.length > 32_768) return payload;
+      let code: AuditDiagnostics["code"] = "http_error";
+      try {
+        const parsed: unknown = JSON.parse(payload);
+        const known = AuditDiagnosticCode.safeParse(parsed && typeof parsed === "object" ? (parsed as { error?: unknown }).error : undefined);
+        if (known.success) code = known.data;
+      } catch { /* Non-JSON errors keep a generic explanation. */ }
+      const safe = AuditDiagnostics.safeParse({ code, requestId: request.id });
+      if (safe.success) diagnostics.set(request, safe.data);
+      return payload;
+    });
     app.addHook("onResponse", async (request, reply) => {
       const route = request.routeOptions.url;
       if (!route?.startsWith("/api/")) return;
@@ -99,21 +112,34 @@ export class AuditService {
       const params = (request.params ?? {}) as Record<string, string>;
       const target = Object.values(params).join(" ") || null;
       // OAuth return trips redirect either way; the outcome is in the address they redirect to.
-      const failedRedirect = /[?&]w+=(error|denied)/.test(String(reply.getHeader("location") ?? ""));
+      let redirectCode: "oauth_error" | "oauth_denied" | undefined;
+      try {
+        const location = new URL(String(reply.getHeader("location") ?? ""), "http://localhost");
+        for (const provider of ["notion", "google"]) {
+          const outcome = location.searchParams.get(provider);
+          if (outcome === "error" || outcome === "denied") redirectCode = outcome === "denied" ? "oauth_denied" : "oauth_error";
+        }
+      } catch { /* Invalid redirect addresses do not provide an OAuth outcome. */ }
+      const failedRedirect = !!redirectCode;
       const ok = reply.statusCode < 400 && !failedRedirect;
+      const safe = redirectCode ? AuditDiagnostics.safeParse({ code: redirectCode, requestId: request.id }) : undefined;
+      const diagnostic = safe?.success ? safe.data : diagnostics.get(request);
       this.record({
         actor: route.startsWith("/api/auth/") ? "anonymous" : "owner",
         action: ACTIONS[key] ?? key,
         target,
         result: ok ? "ok" : "error",
         detail: ok ? null : String(reply.statusCode),
+        ...(!ok && diagnostic ? { diagnostics: diagnostic } : {}),
       });
     });
   }
 
   record(event: Omit<AuditEventDto, "id" | "at">): void {
     try {
-      this.deps.db.insert(auditEvents).values(event).run();
+      const { diagnostics, ...row } = event;
+      const safe = AuditDiagnostics.safeParse(diagnostics);
+      this.deps.db.insert(auditEvents).values({ ...row, detail: safe.success ? JSON.stringify({ version: 1, status: row.detail, ...safe.data }) : row.detail }).run();
       // Bounded: drop the oldest rows now and then.
       if (++this.#writes % 500 === 0) {
         this.deps.db.run(sql`DELETE FROM audit_events WHERE id <= (SELECT id FROM audit_events ORDER BY id DESC LIMIT 1 OFFSET ${KEEP_ROWS})`);
@@ -131,7 +157,7 @@ export class AuditService {
       .orderBy(desc(auditEvents.id))
       .limit(PAGE)
       .all();
-    const panel = rows.map((r) => ({ id: r.id, at: r.at.getTime(), actor: r.actor, action: r.action, target: r.target, result: r.result, detail: r.detail }));
+    const panel = rows.map((r) => ({ id: r.id, at: r.at.getTime(), actor: r.actor, action: r.action, target: r.target, result: r.result, ...decodeDetail(r.detail) }));
 
     let agents: AgentAuditEventDto[] = [];
     let nextAgents: string | null = null;
@@ -147,4 +173,16 @@ export class AuditService {
     }
     return { panel, agents, nextPanel: rows.length === PAGE ? rows.at(-1)!.id : null, nextAgents };
   }
+}
+
+function decodeDetail(detail: string | null): Pick<AuditEventDto, "detail" | "diagnostics"> {
+  if (!detail?.startsWith("{")) return { detail };
+  try {
+    const value = JSON.parse(detail) as Record<string, unknown>;
+    const safe = AuditDiagnostics.safeParse(value);
+    if (value.version === 1 && typeof value.status === "string" && /^\d{3}$/.test(value.status) && safe.success) {
+      return { detail: value.status, diagnostics: safe.data };
+    }
+  } catch { /* Old or damaged rows remain readable without exposing stored JSON. */ }
+  return { detail: null };
 }

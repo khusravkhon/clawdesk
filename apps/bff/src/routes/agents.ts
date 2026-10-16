@@ -62,9 +62,10 @@ export async function listAgents(deps: { gateway: GatewayService; db: Db; sandbo
   );
   const items: AgentListItemDto[] = result.agents.map((agent) => {
     const row = meta.get(agent.id);
+    const gatewayName = agent.identity?.name ?? agent.name;
     return {
       id: agent.id,
-      name: row?.displayName ?? agent.identity?.name ?? agent.name ?? agent.id,
+      name: (agent.id === "main" ? gatewayName ?? row?.displayName : row?.displayName ?? gatewayName) ?? agent.id,
       emoji: agent.identity?.emoji ?? row?.avatar ?? null,
       model: agent.model?.primary ?? null,
       isDefault: agent.id === result.defaultId,
@@ -135,7 +136,8 @@ export function registerAgentRoutes(app: FastifyInstance, deps: AgentRouteDeps):
 
   app.delete("/api/agents/:agentId", async (request, reply) => {
     const { agentId } = AgentParams.parse(request.params);
-    const topics = deps.telegram.agentTopics();
+    const bots = await deps.telegram.accounts();
+    const topics = bots.map((bot) => ({ accountId: bot.accountId, before: deps.telegram.agentTopics(bot.accountId) }));
     try {
       await deleteJuniorAgent(deps, agentId);
     } catch (error) {
@@ -143,7 +145,12 @@ export function registerAgentRoutes(app: FastifyInstance, deps: AgentRouteDeps):
       throw error;
     }
     // Its Telegram topic (if any) must not keep pointing at an agent that is gone.
-    await deps.telegram.forgetAgentTopic(topics, agentId).catch((error: Error) => deps.logger.warn({ err: error, agentId }, "could not free the agent's Telegram topic"));
+    for (const topic of topics) {
+      await deps.telegram.forgetAgentTopic(topic.before, agentId, topic.accountId).catch((error: Error) => deps.logger.warn({ err: error, agentId }, "could not free the agent's Telegram topic"));
+    }
+    for (const bot of bots.filter((b) => b.agentId === agentId)) {
+      await deps.telegram.assignAgent(bot.accountId, "main").catch((error: Error) => deps.logger.warn({ err: error, agentId }, "could not restore the bot's main agent"));
+    }
     return reply.status(204).send();
   });
 }

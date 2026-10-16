@@ -2,6 +2,17 @@ import { z } from "zod";
 
 // Action log (screen 14): what people did in the panel, and what agents did (OpenClaw's audit ledger).
 
+export const AuditDiagnosticCode = z.enum([
+  "invalid_request", "gateway_unavailable", "gateway_timeout", "gateway_error",
+  "internal_error", "request_error", "create_failed", "invalid_values", "invalid_template",
+  "oauth_denied", "oauth_error", "http_error",
+]);
+export const AuditDiagnostics = z.object({
+  code: AuditDiagnosticCode,
+  requestId: z.string().regex(/^[a-zA-Z0-9_-]{1,128}$/),
+});
+export type AuditDiagnostics = z.infer<typeof AuditDiagnostics>;
+
 export const AuditEventDto = z.object({
   id: z.number(),
   at: z.number(),
@@ -14,6 +25,7 @@ export const AuditEventDto = z.object({
   result: z.enum(["ok", "error"]),
   /** HTTP status of a failed action. */
   detail: z.string().nullable(),
+  diagnostics: AuditDiagnostics.optional(),
 });
 export type AuditEventDto = z.infer<typeof AuditEventDto>;
 

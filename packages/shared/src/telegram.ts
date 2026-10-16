@@ -18,11 +18,34 @@ export const TelegramStatusDto = z.object({
 });
 export type TelegramStatusDto = z.infer<typeof TelegramStatusDto>;
 
+export const TelegramAccountId = z.string().regex(/^[a-z0-9][a-z0-9_-]{0,63}$/);
+export const TelegramBotDto = TelegramStatusDto.extend({ accountId: TelegramAccountId, agentId: z.string() });
+export type TelegramBotDto = z.infer<typeof TelegramBotDto>;
+export const TelegramAudioProvider = z.enum(["openai", "groq"]);
+export type TelegramAudioProvider = z.infer<typeof TelegramAudioProvider>;
+export const TELEGRAM_AUDIO_PROVIDERS = {
+  openai: { label: "OpenAI", models: ["gpt-4o-mini-transcribe", "gpt-4o-transcribe", "whisper-1"], baseUrl: "https://api.openai.com/v1", keyUrl: "https://platform.openai.com/api-keys", profile: "openai:clawdesk-audio", keyPrefix: "sk-" },
+  groq: { label: "Groq", models: ["whisper-large-v3-turbo", "whisper-large-v3"], baseUrl: "https://api.groq.com/openai/v1", keyUrl: "https://console.groq.com/keys", profile: "groq:clawdesk-audio", keyPrefix: "gsk_" },
+} as const;
+export const TelegramVoiceDto = z.object({ configured: z.boolean(), enabled: z.boolean(), provider: TelegramAudioProvider, configuredProviders: z.array(TelegramAudioProvider), model: z.string(), maxAudioMb: z.number() });
+export type TelegramVoiceDto = z.infer<typeof TelegramVoiceDto>;
+export const TelegramVoiceKeyRequest = z.object({
+  apiKey: z.string().trim().min(20).max(1024).regex(/^[A-Za-z0-9_-]+$/),
+  provider: TelegramAudioProvider.default("openai"), model: z.string().min(1).max(100).optional(),
+}).superRefine((value, ctx) => {
+  const provider = TELEGRAM_AUDIO_PROVIDERS[value.provider];
+  if (!value.apiKey.startsWith(provider.keyPrefix)) ctx.addIssue({ code: "custom", path: ["apiKey"], message: "audio_key_provider_mismatch" });
+  if (value.model && !(provider.models as readonly string[]).includes(value.model)) ctx.addIssue({ code: "custom", path: ["model"], message: "audio_model_unavailable" });
+});
+export const TelegramVoiceSettingsRequest = z.object({ enabled: z.boolean(), provider: TelegramAudioProvider.optional(), model: z.string().min(1).max(100).optional() });
+export const AssignTelegramAgentRequest = z.object({ agentId: z.string().regex(/^[a-z0-9][a-z0-9-]{0,63}$/) });
+
 export const ConnectTelegramRequest = z.object({
   token: z
     .string()
     .trim()
     .regex(/^\d{5,}:[A-Za-z0-9_-]{30,}$/, "this does not look like a Telegram bot token"),
+  agentId: z.string().regex(/^[a-z0-9][a-z0-9-]{0,63}$/).default("main"),
 });
 export type ConnectTelegramRequest = z.infer<typeof ConnectTelegramRequest>;
 
@@ -38,7 +61,7 @@ export type TelegramPairingRequestDto = z.infer<typeof TelegramPairingRequestDto
 
 export const ApproveTelegramRequest = z.object({
   requestId: z.string().min(1),
-  accountId: z.string().min(1),
+  accountId: TelegramAccountId,
 });
 export type ApproveTelegramRequest = z.infer<typeof ApproveTelegramRequest>;
 

@@ -55,6 +55,8 @@ import type {
   SaveModelChainRequest,
   TelegramPairingRequestDto,
   TelegramStatusDto,
+  TelegramBotDto,
+  TelegramVoiceDto,
   TemplateDto,
 } from "@clawdesk/shared";
 
@@ -145,17 +147,23 @@ export const api = {
   saveAsTemplate: (agentId: string, body: SaveAsTemplateRequest) => post<TemplateDto>(`/api/agents/${encodeURIComponent(agentId)}/template`, body),
   deleteTemplate: (templateId: string) => request<void>(`/api/templates/${encodeURIComponent(templateId)}`, { method: "DELETE" }),
   telegram: {
-    status: () => request<TelegramStatusDto>("/api/telegram"),
-    connect: (token: string) => post<TelegramStatusDto>("/api/telegram/connect", { token }),
-    disconnect: () => post<void>("/api/telegram/disconnect"),
-    pairing: () => request<TelegramPairingRequestDto[]>("/api/telegram/pairing"),
+    voice: () => request<TelegramVoiceDto>("/api/telegram/voice"),
+    saveVoiceKey: (apiKey: string, provider = "openai", model?: string) => request<TelegramVoiceDto>("/api/telegram/voice/key", { method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify({ apiKey, provider, model }) }),
+    setVoice: (enabled: boolean, provider?: string, model?: string) => request<TelegramVoiceDto>("/api/telegram/voice", { method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify({ enabled, provider, model }) }),
+    status: (accountId = "default") => request<TelegramStatusDto>(`/api/telegram?accountId=${encodeURIComponent(accountId)}`),
+    accounts: () => request<TelegramBotDto[]>("/api/telegram/accounts"),
+    addBot: (token: string, agentId: string) => post<TelegramBotDto>("/api/telegram/accounts", { token, agentId }),
+    assignAgent: (accountId: string, agentId: string) => request<TelegramBotDto>(`/api/telegram/accounts/${encodeURIComponent(accountId)}/agent`, { method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify({ agentId }) }),
+    connect: (token: string, agentId = "main", accountId = "default") => post<TelegramStatusDto>(`/api/telegram/connect?accountId=${encodeURIComponent(accountId)}`, { token, agentId }),
+    disconnect: (accountId = "default") => post<void>(`/api/telegram/disconnect?accountId=${encodeURIComponent(accountId)}`),
+    pairing: (accountId = "default") => request<TelegramPairingRequestDto[]>(`/api/telegram/pairing?accountId=${encodeURIComponent(accountId)}`),
     approve: (requestId: string, accountId: string) => post<ApproveTelegramResultDto>("/api/telegram/pairing/approve", { requestId, accountId }),
-    test: (text: string) => post<void>("/api/telegram/test", { text }),
-    approvals: (enabled: boolean) => post<TelegramStatusDto>("/api/telegram/approvals", { enabled }),
-    topics: () => request<AgentTopicsDto>("/api/telegram/topics"),
-    saveTopics: (body: LinkAgentTopicsRequest) =>
-      request<AgentTopicsDto>("/api/telegram/topics", { method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify(body) }),
-    removeTopics: () => request<AgentTopicsDto>("/api/telegram/topics", { method: "DELETE" }),
+    test: (text: string, accountId = "default") => post<void>(`/api/telegram/test?accountId=${encodeURIComponent(accountId)}`, { text }),
+    approvals: (enabled: boolean, accountId = "default") => post<TelegramStatusDto>(`/api/telegram/approvals?accountId=${encodeURIComponent(accountId)}`, { enabled }),
+    topics: (accountId = "default") => request<AgentTopicsDto>(`/api/telegram/topics?accountId=${encodeURIComponent(accountId)}`),
+    saveTopics: (body: LinkAgentTopicsRequest, accountId = "default") =>
+      request<AgentTopicsDto>(`/api/telegram/topics?accountId=${encodeURIComponent(accountId)}`, { method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify(body) }),
+    removeTopics: (accountId = "default") => request<AgentTopicsDto>(`/api/telegram/topics?accountId=${encodeURIComponent(accountId)}`, { method: "DELETE" }),
   },
   freeModels: {
     status: () => request<FreeModelsStatusDto>("/api/free-models"),

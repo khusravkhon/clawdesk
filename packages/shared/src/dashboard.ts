@@ -22,6 +22,8 @@ export type UsageDayDto = z.infer<typeof UsageDayDto>;
 export const DashboardUsageDto = z.object({
   totals: z.object({
     tokens: z.number(),
+    tokenBreakdown: z.object({ input: z.number(), output: z.number(), cacheRead: z.number(), cacheWrite: z.number() }).nullable().default(null),
+    modelCalls: z.number().nullable().default(null),
     cost: z.number(),
     messages: z.number(),
     toolCalls: z.number(),
