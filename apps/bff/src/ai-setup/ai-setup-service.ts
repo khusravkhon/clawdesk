@@ -33,6 +33,8 @@ export class AiSetupService {
     private readonly gateway: GatewayService,
     private readonly logger: Logger,
     private readonly db: Db,
+    /** True when the Gateway carries Claude Code, so a Claude plan can be signed in. */
+    private readonly claudePlanAvailable: () => Promise<boolean> = async () => false,
   ) {}
 
   /** Juniors with the main agent's AI follow its model chain; never fails the caller. */
@@ -46,11 +48,12 @@ export class AiSetupService {
   }
 
   async catalog(agentId: string): Promise<AiCatalogDto> {
-    const [detect, plugins] = await Promise.all([
+    const [detect, plugins, claudePlan] = await Promise.all([
       this.gateway.request<DetectResult>("openclaw.setup.detect", { agentId }, { timeoutMs: 60_000 }),
       this.gateway.request<{ plugins: PluginEntry[] }>("plugins.list", {}),
+      this.claudePlanAvailable(),
     ]);
-    return buildCatalog(agentId, detect, plugins.plugins);
+    return buildCatalog(agentId, detect, plugins.plugins, { claudePlan });
   }
 
   /** Cheap check for routing (first-run window): does this agent have any model credential? */

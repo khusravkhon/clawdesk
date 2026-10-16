@@ -124,7 +124,12 @@
     "done": "Subscription connected",
     "doneModel": "Model: {model}",
     "details": "Details from the server",
-    "cancel": "Cancel"
+    "cancel": "Cancel",
+    "claudeSteps": "Open the sign-in page and sign in to your Claude account (Pro or Max). At the end Claude shows a code — copy it and paste it below.",
+    "claudeCodePlaceholder": "Paste the code from the Claude page",
+    "claudeRejected": "Claude did not accept the code. A code works once and expires quickly — press Retry, open the new link and paste a fresh code.",
+    "claudeLimits": "Agents use your Claude plan's limits — the same ones as your own chat on claude.ai.",
+    "claudeAuth": "Claude refused this sign-in (the plan ended or the sign-in was revoked). Press Retry and sign in again."
   },
   "agents": {
     "title": "My agents",

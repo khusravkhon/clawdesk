@@ -10,6 +10,10 @@
 //   POST /mcp/login/start    { server }     → { authorizationUrl } | { authorized: true }
 //   POST /mcp/login/complete { server, code }
 //   POST /mcp/logout         { server }
+//   GET  /claude/status                     → { installed, loggedIn, method, subscription, email }
+//   POST /claude/login/start                → { authorizationUrl }  (Claude plan sign-in, see clawdesk-claude.mjs)
+//   POST /claude/login/complete { code }    → status after the code was accepted
+//   POST /claude/logout
 //   GET  /google/status                     → { installed, clients, accounts }
 //   POST /google/credentials { json }       client_secret JSON of the person's own OAuth client
 //   POST /google/login/start { email, services, readonly, redirectUri? } → { authorizationUrl }
@@ -39,6 +43,7 @@ import { cloneTeamRepo, fetchTeamRepo, pushTeamBranch, removeTeamRepo, TeamError
 import { isAuthorizationCode, mcpLoginArgs } from "./clawdesk-oauth.mjs";
 import { AudioSetupError, audioSettings, audioStatus, saveAudioKey, verifyAudioKey } from "./clawdesk-audio.mjs";
 import { AgentFolders } from "./clawdesk-agent-folders.mjs";
+import { ClaudeLogin, ClaudeLoginError } from "./clawdesk-claude.mjs";
 import { cancelVideo, downloadVideo, framesOfVideo, studyVideo, videoProgress, VideoError } from "./clawdesk-video.mjs";
 
 const HOST = process.env.CLAWDESK_BRIDGE_HOST || "127.0.0.1";
@@ -357,6 +362,16 @@ function readJson(req) {
 }
 
 let audioSetupBusy = false;
+const claudeLogin = new ClaudeLogin();
+
+async function claudeCall(fn) {
+  try {
+    return { status: 200, body: await fn() };
+  } catch (error) {
+    if (error instanceof ClaudeLoginError) return { status: error.status, body: { error: error.code, message: error.message } };
+    throw error;
+  }
+}
 
 async function handle(req) {
   const url = new URL(req.url, "http://bridge");
@@ -406,6 +421,7 @@ async function handle(req) {
   if (req.method === "GET" && url.pathname === "/google/status") return googleStatus();
   if (req.method === "GET" && url.pathname === "/backup/list") return { status: 200, body: { backups: await listBackups() } };
   if (req.method === "GET" && url.pathname === "/teams/status") return teamCall(() => teamRepoStatus({ teamId: url.searchParams.get("teamId") }));
+  if (req.method === "GET" && url.pathname === "/claude/status") return claudeCall(() => claudeLogin.status());
   if (req.method === "GET" && url.pathname === "/mcp/status") {
     const server = url.searchParams.get("server") || "";
     if (!SERVER_NAME.test(server)) return { status: 400, body: { error: "invalid_server" } };
@@ -453,6 +469,9 @@ async function handle(req) {
       throw error;
     }
   }
+  if (url.pathname === "/claude/login/start") return claudeCall(() => claudeLogin.start());
+  if (url.pathname === "/claude/login/complete") return claudeCall(() => claudeLogin.complete(body.code));
+  if (url.pathname === "/claude/logout") return claudeCall(() => claudeLogin.logout());
   switch (url.pathname) {
     case "/google/credentials":
       return googleCredentials(body);

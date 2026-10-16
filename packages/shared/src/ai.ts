@@ -105,12 +105,16 @@ export const SignInStateDto = z.object({
   progress: z.string().nullable(),
   /** Link to open in the person's own browser. */
   url: z.string().nullable(),
+  /** What goes back after the page: the address it redirected to, or a code it shows (Claude). */
+  paste: z.enum(["redirect", "code"]).nullable(),
   deviceCode: z.object({ code: z.string(), expiresInMinutes: z.number().nullable() }).nullable(),
   /** Informational text the Gateway showed with the link or code. */
   note: z.string().nullable(),
   prompt: SignInPromptDto.nullable(),
   modelRef: z.string().nullable(),
   error: z.string().nullable(),
+  /** Known failure the panel explains in its own words, e.g. "claude_code_rejected". */
+  errorCode: z.string().nullable(),
 });
 export type SignInStateDto = z.infer<typeof SignInStateDto>;
 

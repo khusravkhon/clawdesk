@@ -14,6 +14,9 @@ export class BridgeError extends Error {
 
 export type McpAuthStatus = { configured: boolean; hasTokens: boolean; state: string | null };
 
+/** Claude Code's login in the Gateway (Claude plan sign-in). */
+export type ClaudeLoginStatus = { installed: boolean; loggedIn: boolean; method?: string | null; subscription: string | null; email?: string | null };
+
 /**
  * What the video worker reports back. Either subtitles, or the audio track when the video has
  * none, or an error code — never a free-form message, and never both a result and an error.
@@ -109,6 +112,23 @@ export class BridgeClient {
 
   mcpLogout(server: string): Promise<{ ok: true }> {
     return this.#call("POST", "/mcp/logout", { server });
+  }
+
+  claudeStatus(): Promise<ClaudeLoginStatus> {
+    return this.#call("GET", "/claude/status", undefined, 40_000);
+  }
+
+  /** Starts Claude Code's own sign-in; it then waits in the Gateway for the code from the page. */
+  claudeLoginStart(): Promise<{ authorizationUrl: string }> {
+    return this.#call("POST", "/claude/login/start", {}, 60_000);
+  }
+
+  claudeLoginComplete(code: string): Promise<ClaudeLoginStatus> {
+    return this.#call("POST", "/claude/login/complete", { code }, 150_000);
+  }
+
+  claudeLogout(): Promise<{ ok: true }> {
+    return this.#call("POST", "/claude/logout", {}, 40_000);
   }
 
   googleStatus(): Promise<GoogleBridgeStatus> {

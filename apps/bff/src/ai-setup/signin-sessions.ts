@@ -1,6 +1,7 @@
 import crypto from "node:crypto";
 import type { SignInAnswerRequest, SignInPromptDto, SignInStateDto } from "@clawdesk/shared";
 import type { Logger } from "pino";
+import type { ClaudeLoginStatus } from "../gateway/bridge-client.js";
 import type { GatewayService } from "../gateway/gateway-service.js";
 import { assertRoomForBackup, keepAsBackup, readChain } from "./model-chain.js";
 
@@ -9,6 +10,21 @@ import { assertRoomForBackup, keepAsBackup, readChain } from "./model-chain.js";
 // Gateway-side steps (progress) and informational notes are acknowledged here;
 // only steps that need the person (paste a URL, confirm, choose) are handed to
 // the browser, which polls this session's state.
+//
+// A Claude plan is the exception: Anthropic lets it drive other programs only
+// through its own Claude Code, so the person first signs in to Claude Code in
+// the Gateway (link, then the code the page shows), and only then the Gateway's
+// "claude-cli" activation switches the agent to Claude on that login (and checks it answers).
+
+/** Sign-in option id for a Claude plan (Pro/Max) through Claude Code in the Gateway. */
+export const CLAUDE_PLAN_CHOICE = "claude-plan";
+
+/** Claude Code's sign-in in the Gateway (the ClawDesk bridge). */
+export type ClaudeCodeLogin = {
+  claudeStatus(): Promise<ClaudeLoginStatus>;
+  claudeLoginStart(): Promise<{ authorizationUrl: string }>;
+  claudeLoginComplete(code: string): Promise<ClaudeLoginStatus>;
+};
 
 type WizardStep = {
   id: string;
@@ -20,6 +36,7 @@ type WizardStep = {
   externalUrl?: string;
   deviceCode?: { code: string; expiresInMinutes?: number; message?: string };
 };
+type ActivateResult = { ok: boolean; status?: string; modelRef?: string; error?: string };
 type WizardNext = {
   done: boolean;
   step?: WizardStep;
@@ -50,11 +67,13 @@ class SignInSession {
       status: "running",
       progress: null,
       url: null,
+      paste: null,
       deviceCode: null,
       note: null,
       prompt: null,
       modelRef: null,
       error: null,
+      errorCode: null,
     };
   }
 }
@@ -77,19 +96,83 @@ export class SignInSessionManager {
     private readonly logger: Logger,
     /** Called after a sign-in changed the main agent's models (juniors follow them). */
     private readonly onMainModelsChanged: () => Promise<void> = async () => {},
+    private readonly claude: ClaudeCodeLogin | null = null,
   ) {}
+
+  /** A Claude plan can be offered only when this Gateway carries Claude Code. */
+  async claudePlanAvailable(): Promise<boolean> {
+    if (!this.claude) return false;
+    try {
+      return (await this.claude.claudeStatus()).installed;
+    } catch {
+      return false;
+    }
+  }
 
   async start(agentId: string, authChoice: string, asBackup = false): Promise<SignInStateDto> {
     this.#sweep();
     const backupOf = asBackup ? await readChain(this.gateway, agentId) : null;
     if (backupOf) assertRoomForBackup(backupOf);
     const sessionId = crypto.randomUUID();
+    if (authChoice === CLAUDE_PLAN_CHOICE) return this.#startClaudePlan(sessionId, agentId, backupOf);
     await this.gateway.request("openclaw.setup.auth.start", { sessionId, agentId, authChoice });
     const session = new SignInSession(sessionId, agentId, backupOf);
     this.#sessions.set(sessionId, session);
     this.logger.info({ sessionId, agentId, authChoice, asBackup }, "subscription sign-in started");
     void this.#drive(session);
     return session.state;
+  }
+
+  async #startClaudePlan(sessionId: string, agentId: string, backupOf: string[] | null): Promise<SignInStateDto> {
+    if (!this.claude) throw new SignInError("not_found", "Claude Code is not available in this Gateway");
+    const status = await this.claude.claudeStatus();
+    if (!status.installed) throw new SignInError("not_found", "Claude Code is not available in this Gateway");
+    const session = new SignInSession(sessionId, agentId, backupOf);
+    this.#sessions.set(sessionId, session);
+    this.logger.info({ sessionId, agentId, signedIn: status.loggedIn }, "Claude plan sign-in started");
+    if (!status.loggedIn) {
+      const { authorizationUrl } = await this.claude.claudeLoginStart();
+      session.state = { ...session.state, url: authorizationUrl, paste: "code" };
+    }
+    void this.#driveClaudePlan(session, status.loggedIn);
+    return session.state;
+  }
+
+  /** Claude Code login (when needed), then the Gateway's own "claude-cli" activation. */
+  async #driveClaudePlan(session: SignInSession, signedIn: boolean): Promise<void> {
+    const { sessionId, agentId } = session.state;
+    try {
+      while (!signedIn) {
+        const code = await this.#ask(session, { id: "claude-code", type: "text", sensitive: true });
+        if (session.cancelled) return;
+        session.state = { ...session.state, progress: null };
+        try {
+          signedIn = (await this.claude!.claudeLoginComplete(String(code))).loggedIn;
+        } catch (error) {
+          // One code per sign-in: a wrong or old code needs a fresh link.
+          this.#finish(session, { status: "error", error: (error as Error).message, errorCode: "claude_code_rejected" });
+          return;
+        }
+      }
+      if (session.cancelled) return;
+      session.state = { ...session.state, url: null, paste: null };
+      // Sets the agent's model on the Claude CLI runtime and makes one test call through it.
+      const res = await this.gateway.request<ActivateResult>("openclaw.setup.activate", { agentId, kind: "claude-cli" }, { timeoutMs: 180_000 });
+      this.logger.info({ sessionId, agentId, ok: res.ok, status: res.status }, "Claude plan activation");
+      if (session.cancelled) return;
+      if (!res.ok) {
+        this.#finish(session, { status: "error", error: res.error ?? res.status ?? "Claude did not answer", errorCode: res.status === "auth" ? "claude_auth" : null });
+        return;
+      }
+      let modelRef = res.modelRef ?? null;
+      if (session.backupOf) modelRef = (await keepAsBackup(this.gateway, agentId, session.backupOf)) ?? modelRef;
+      if (agentId === "main") await this.onMainModelsChanged();
+      this.#finish(session, { status: "done", modelRef });
+    } catch (error) {
+      if (session.cancelled) return;
+      this.logger.warn({ sessionId, err: error }, "Claude plan sign-in failed");
+      this.#finish(session, { status: "error", error: (error as Error).message });
+    }
   }
 
   get(sessionId: string): SignInStateDto {

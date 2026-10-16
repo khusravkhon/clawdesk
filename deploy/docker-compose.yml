@@ -59,6 +59,9 @@ services:
       GOG_HOME: ${CLAWDESK_DATA_DIR:-/var/lib/clawdesk}/openclaw/gog
       GOG_KEYRING_BACKEND: file
       GOG_KEYRING_PASSWORD: ${GOG_KEYRING_PASSWORD:-}
+      # Claude Code's own login (Claude plan sign-in from the panel), kept with OpenClaw's state.
+      CLAUDE_CONFIG_DIR: ${CLAWDESK_DATA_DIR:-/var/lib/clawdesk}/openclaw/claude-code
+      DISABLE_AUTOUPDATER: "1"
       TZ: ${CLAWDESK_TZ:-UTC}
       # The worker image the bridge starts per video job (see clawdesk-video.mjs).
       CLAWDESK_VIDEO_IMAGE: ghcr.io/khusravkhon/clawdesk-video:${CLAWDESK_VERSION:-dev}

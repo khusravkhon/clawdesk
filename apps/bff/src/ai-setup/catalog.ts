@@ -54,6 +54,22 @@ const KEY_PAGES: Record<string, string> = {
  */
 const NEEDS_MORE_THAN_A_KEY = new Set(["lmstudio", "github-copilot", "litellm-api-key"]);
 
+/**
+ * Not offered at all. Anthropic's setup-token lets OpenClaw call the API with a Claude plan token
+ * directly, which Anthropic does not allow for other programs; a Claude plan goes through Claude
+ * Code instead (CLAUDE_PLAN_OPTION). "anthropic-cli" is the second half of that flow, never alone.
+ */
+const HIDDEN_CHOICES = new Set(["setup-token", "anthropic-cli", "claude-cli"]);
+
+/** Claude Pro/Max sign-in through Claude Code in the Gateway (see signin-sessions.ts). */
+export const CLAUDE_PLAN_OPTION: AiSignInOption = {
+  id: "claude-plan",
+  providerId: "anthropic",
+  label: "Claude Pro / Max",
+  hint: null,
+  kind: "oauth",
+};
+
 const PROVIDER_PACKAGE = /^@openclaw\/([a-z0-9-]+)-provider$/;
 
 export function providerPluginId(plugin: PluginEntry): string | null {
@@ -61,11 +77,11 @@ export function providerPluginId(plugin: PluginEntry): string | null {
   return match && plugin.origin === "official" ? match[1]! : null;
 }
 
-export function buildCatalog(agentId: string, detect: DetectResult, plugins: PluginEntry[]): AiCatalogDto {
+export function buildCatalog(agentId: string, detect: DetectResult, plugins: PluginEntry[], options: { claudePlan?: boolean } = {}): AiCatalogDto {
   const providers = new Map<string, AiProvider>();
 
   for (const manual of detect.manualProviders) {
-    if (NEEDS_MORE_THAN_A_KEY.has(manual.id)) continue;
+    if (NEEDS_MORE_THAN_A_KEY.has(manual.id) || HIDDEN_CHOICES.has(manual.id)) continue;
     const id = manual.brandId ?? manual.id;
     const provider = providers.get(id) ?? newProvider(id, manual.groupLabel ?? manual.label, manual.website ?? null, null);
     provider.methods.push(toMethod(manual));
@@ -78,7 +94,7 @@ export function buildCatalog(agentId: string, detect: DetectResult, plugins: Plu
     providers.set(pluginId, newProvider(pluginId, cleanPluginName(plugin.name ?? pluginId), null, pluginId));
   }
 
-  const signIn: AiSignInOption[] = (detect.authOptions ?? []).map((o) => ({
+  const signIn: AiSignInOption[] = (detect.authOptions ?? []).filter((o) => !HIDDEN_CHOICES.has(o.id)).map((o) => ({
     id: o.id,
     providerId: o.brandId ?? o.id,
     label: o.label,
@@ -87,7 +103,13 @@ export function buildCatalog(agentId: string, detect: DetectResult, plugins: Plu
   }));
 
   // Brands reachable only by subscription sign-in (e.g. GitHub Copilot) still get a card.
+  if (options.claudePlan) {
+    signIn.unshift(CLAUDE_PLAN_OPTION);
+    if (!providers.has("anthropic")) providers.set("anthropic", newProvider("anthropic", "Anthropic", null, null));
+  }
+
   for (const option of detect.authOptions ?? []) {
+    if (HIDDEN_CHOICES.has(option.id)) continue;
     const id = option.brandId ?? option.id;
     if (!providers.has(id)) providers.set(id, newProvider(id, option.groupLabel ?? option.label, option.website ?? null, null));
   }

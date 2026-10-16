@@ -19,7 +19,13 @@ const sending = ref(false);
 let timer: ReturnType<typeof setTimeout> | undefined;
 
 const active = computed(() => state.value?.status === "running" || state.value?.status === "waiting_for_user");
-const pastesRedirect = computed(() => !!state.value?.url && !state.value.deviceCode);
+/** What the person brings back from the page: a code (Claude) or the address it redirected to. */
+const paste = computed(() => state.value?.paste ?? (state.value?.url && !state.value.deviceCode ? "redirect" : null));
+const KNOWN_ERRORS: Record<string, string> = { claude_code_rejected: "signIn.claudeRejected", claude_auth: "signIn.claudeAuth" };
+const errorMessage = computed(() => {
+  const known = state.value?.errorCode ? KNOWN_ERRORS[state.value.errorCode] : undefined;
+  return known ? t(known) : state.value?.error;
+});
 
 async function start(): Promise<void> {
   startError.value = null;
@@ -108,13 +114,13 @@ onBeforeUnmount(() => {
         <p v-if="state.deviceCode.expiresInMinutes" class="hint">{{ t("signIn.expires", { n: state.deviceCode.expiresInMinutes }) }}</p>
       </div>
 
-      <!-- browser OAuth: open the page, then paste the redirect address back -->
-      <div v-else-if="pastesRedirect" class="mb">
-        <p>{{ t("signIn.oauthSteps") }}</p>
+      <!-- browser OAuth: open the page, then paste the redirect address (or Claude's code) back -->
+      <div v-else-if="paste" class="mb">
+        <p>{{ paste === "code" ? t("signIn.claudeSteps") : t("signIn.oauthSteps") }}</p>
         <n-button tag="a" :href="state.url!" target="_blank" rel="noopener noreferrer" type="primary">{{ t("signIn.openPage") }}</n-button>
       </div>
 
-      <n-alert v-if="state.deviceCode || pastesRedirect" type="warning" :show-icon="false" class="mb">
+      <n-alert v-if="state.deviceCode || paste" type="warning" :show-icon="false" class="mb">
         {{ t("signIn.onlyYou") }}
       </n-alert>
 
@@ -125,7 +131,7 @@ onBeforeUnmount(() => {
           <n-input
             v-model:value="textAnswer"
             :type="state.prompt.sensitive ? 'password' : 'text'"
-            :placeholder="pastesRedirect ? t('signIn.pastePlaceholder') : ''"
+            :placeholder="paste === 'code' ? t('signIn.claudeCodePlaceholder') : paste ? t('signIn.pastePlaceholder') : ''"
             :input-props="{ autocomplete: 'off', spellcheck: false }"
             class="mb"
             @keyup.enter="textAnswer.trim() && answer(textAnswer.trim())"
@@ -150,7 +156,8 @@ onBeforeUnmount(() => {
       <n-alert v-if="state.status === 'done'" type="success" :title="t('signIn.done')" class="mb">
         {{ state.modelRef ? t("signIn.doneModel", { model: state.modelRef }) : "" }}
       </n-alert>
-      <n-alert v-if="state.status === 'error'" type="error" class="mb">{{ state.error }}</n-alert>
+      <n-alert v-if="state.status === 'error'" type="error" class="mb">{{ errorMessage }}</n-alert>
+      <p v-if="option.id === 'claude-plan' && state.status !== 'error'" class="hint">{{ t("signIn.claudeLimits") }}</p>
 
       <details v-if="state.note && active" class="note">
         <summary>{{ t("signIn.details") }}</summary>
