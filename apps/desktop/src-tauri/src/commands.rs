@@ -9,6 +9,7 @@ use serde::Deserialize;
 use std::collections::HashMap;
 use std::time::{SystemTime, UNIX_EPOCH};
 use tauri::{AppHandle, Manager, State, WebviewUrl, WebviewWindowBuilder};
+use tauri_plugin_notification::NotificationExt;
 use tokio::sync::Mutex;
 
 pub struct AppState {
@@ -111,6 +112,22 @@ fn panel_label(id: &str) -> String {
     format!("panel-{}", id.chars().filter(|c| c.is_ascii_alphanumeric()).collect::<String>())
 }
 
+fn is_panel_navigation(panel: &tauri::Url, target: &tauri::Url) -> bool {
+    panel.origin() == target.origin()
+}
+
+fn open_browser(app: &AppHandle, url: &tauri::Url) {
+    if matches!(url.scheme(), "https" | "http") {
+        if tauri_plugin_opener::open_url(url.as_str(), None::<&str>).is_err() {
+            eprintln!("ClawDesk: failed to open the system browser");
+            let _ = app.notification().builder()
+                .title("ClawDesk")
+                .body("Could not open the browser. Copy the sign-in link and open it in your browser.")
+                .show();
+        }
+    }
+}
+
 /// Opens (or focuses) the panel of a server in its own window: straight to its HTTPS address, or through the tunnel.
 #[tauri::command]
 pub async fn open_panel(app: AppHandle, state: State<'_, AppState>, id: String, path: Option<String>) -> Res<()> {
@@ -140,10 +157,25 @@ pub async fn open_panel(app: AppHandle, state: State<'_, AppState>, id: String, 
         let _ = window.set_focus();
         return Ok(());
     }
+    let browser_app = app.clone();
+    let navigation_app = app.clone();
+    let panel_url = url.clone();
     WebviewWindowBuilder::new(&app, label, WebviewUrl::External(url))
         .title(format!("ClawDesk — {}", server.name))
         .inner_size(1280.0, 820.0)
         .min_inner_size(420.0, 520.0)
+        .on_navigation(move |target| {
+            if is_panel_navigation(&panel_url, target) {
+                return true;
+            }
+            open_browser(&navigation_app, target);
+            false
+        })
+        .on_new_window(move |url, _features| {
+            // OAuth must use the system browser; remote panel pages get no shell access.
+            open_browser(&browser_app, &url);
+            tauri::webview::NewWindowResponse::Deny
+        })
         .build()
         .map_err(|e| e.to_string())?;
     Ok(())
@@ -166,4 +198,34 @@ async fn ensure_tunnel(state: &AppState, server: &Server) -> anyhow::Result<u16>
     let port = t.local_port;
     tunnels.insert(server.id.clone(), t);
     Ok(port)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn panel_routes_and_oauth_callbacks_stay_in_panel() {
+        let panel = tauri::Url::parse("http://127.0.0.1:18080/").unwrap();
+        for path in ["sources", "api/sources/notion/callback?code=example&state=example"] {
+            assert!(is_panel_navigation(&panel, &panel.join(path).unwrap()));
+        }
+    }
+
+    #[test]
+    fn external_login_and_other_local_apps_leave_panel() {
+        let panel = tauri::Url::parse("http://127.0.0.1:18080/").unwrap();
+        for target in ["https://www.notion.so/login", "https://accounts.google.com/", "http://127.0.0.1:18081/", "file:///C:/example.html", "about:blank"] {
+            assert!(!is_panel_navigation(&panel, &tauri::Url::parse(target).unwrap()));
+        }
+    }
+
+    #[test]
+    fn similar_hostnames_are_not_the_panel() {
+        let panel = tauri::Url::parse("https://panel.example.com/").unwrap();
+        for target in ["https://panel.example.com.attacker.test/", "https://panel.example.com@attacker.test/", "http://panel.example.com/", "https://panel.example.com:8443/"] {
+            assert!(!is_panel_navigation(&panel, &tauri::Url::parse(target).unwrap()));
+        }
+        assert!(is_panel_navigation(&panel, &panel.join("sources").unwrap()));
+    }
 }

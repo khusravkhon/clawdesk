@@ -3,13 +3,13 @@
 import type { AgentListItemDto, ScheduleDto, ScheduleListDto, ScheduleRunDto } from "@clawdesk/shared";
 import { AlertCircle, CalendarClock, CheckCircle2, CircleSlash, History, Pencil, Play, Plus, Send, Trash2 } from "@lucide/vue";
 import { NButton, NEmpty, NPopconfirm, NSkeleton, NSwitch, NTooltip, useMessage } from "naive-ui";
-import { computed, onMounted, ref } from "vue";
+import { computed, onMounted, onUnmounted, ref } from "vue";
 import { useI18n } from "vue-i18n";
 import { api, ApiError, browserTimeZone } from "../api/client";
 import ScheduleForm from "../components/ScheduleForm.vue";
 import PageHeader from "../components/ui/PageHeader.vue";
 import { describeSchedule } from "../cron";
-import { formatRelative } from "../format";
+import { formatRelative, intlLocale } from "../format";
 import { modelErrorHint } from "../model-errors";
 
 const { t, locale } = useI18n();
@@ -38,13 +38,18 @@ const groups = computed(() => {
   return [...by.entries()].sort(([a], [b]) => (a === "main" ? -1 : b === "main" ? 1 : a.localeCompare(b)));
 });
 
-async function load(): Promise<void> {
+let loading = false;
+async function load(silent = false): Promise<void> {
+  if (loading) return;
+  loading = true;
   try {
     const [list, ag] = await Promise.all([api.schedules.list(), api.agents()]);
     data.value = list;
     agents.value = ag.agents;
   } catch (e) {
-    message.error(errText(e));
+    if (!silent) message.error(errText(e));
+  } finally {
+    loading = false;
   }
 }
 
@@ -64,7 +69,8 @@ async function create(v: { agentId: string; label: string; prompt: string; cron:
 async function update(id: string, v: { label: string; prompt: string; cron: string }): Promise<void> {
   saving.value = true;
   try {
-    data.value = await api.schedules.update(id, { label: v.label, prompt: v.prompt, cron: v.cron, tz: browserTimeZone() });
+    const tz = data.value?.schedules.find((schedule) => schedule.id === id)?.tz ?? browserTimeZone();
+    data.value = await api.schedules.update(id, { label: v.label, prompt: v.prompt, cron: v.cron, tz });
     editing.value = null;
     message.success(t("schedules.saved"));
   } catch (e) {
@@ -120,7 +126,28 @@ async function toggleRuns(s: ScheduleDto): Promise<void> {
   }
 }
 
-onMounted(load);
+function refresh(): void {
+  if (!document.hidden && !creating.value && !editing.value && !saving.value && !busy.value) void load(true);
+}
+
+function scheduledAt(s: ScheduleDto): string {
+  return new Intl.DateTimeFormat(intlLocale(locale.value), {
+    year: "numeric", month: "short", day: "numeric", hour: "2-digit", minute: "2-digit", timeZone: s.tz ?? browserTimeZone(),
+  }).format(new Date(s.at!));
+}
+
+let timer: ReturnType<typeof setInterval> | undefined;
+onMounted(() => {
+  void load();
+  timer = setInterval(refresh, 15_000);
+  window.addEventListener("focus", refresh);
+  document.addEventListener("visibilitychange", refresh);
+});
+onUnmounted(() => {
+  clearInterval(timer);
+  window.removeEventListener("focus", refresh);
+  document.removeEventListener("visibilitychange", refresh);
+});
 </script>
 
 <template>
@@ -157,7 +184,8 @@ onMounted(load);
               <div class="job-main">
                 <div class="job-name">{{ s.label }}</div>
                 <div class="job-when">
-                  {{ describeSchedule(t, s.cron, s.everyMs, locale) }}
+                  {{ s.at ? scheduledAt(s) : describeSchedule(t, s.cron, s.everyMs, locale) }}
+                  <template v-if="s.tz && s.tz !== browserTimeZone()"> · {{ s.tz }}</template>
                   <template v-if="s.enabled && s.nextRunAt"> · {{ t("schedules.next", { when: formatRelative(s.nextRunAt, locale) }) }}</template>
                   <template v-if="!s.enabled"> · {{ t("schedules.paused") }}</template>
                 </div>

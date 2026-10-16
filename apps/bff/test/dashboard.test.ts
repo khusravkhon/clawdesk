@@ -51,7 +51,7 @@ describe("buildUsage", () => {
       },
       ["2026-10-09", "2026-10-10", "2026-10-11"],
     );
-    expect(usage.totals).toEqual({ tokens: 1500, cost: 0.02, messages: 12, toolCalls: 4, errors: 1, sessions: 3 });
+    expect(usage.totals).toEqual({ tokens: 1500, tokenBreakdown: null, modelCalls: 6, cost: 0.02, messages: 12, toolCalls: 4, errors: 1, sessions: 3 });
     expect(usage.daily.map((d) => d.tokens)).toEqual([0, 1500, 0]);
     expect(usage.byAgent.map((a) => a.agentId)).toEqual(["coach", "main"]);
     expect(usage.byModel[0]).toEqual({ provider: "google", model: "gemini-3.7-flash", tokens: 1500, cost: 0, calls: 6 });
@@ -62,6 +62,19 @@ describe("buildUsage", () => {
     const usage = buildUsage({}, ["2026-10-11"]);
     expect(usage.totals.tokens).toBe(0);
     expect(usage.daily).toHaveLength(1);
+    expect(usage.totals.tokenBreakdown).toBeNull();
+    expect(usage.totals.modelCalls).toBeNull();
+  });
+
+  it("keeps cached context separate from fresh input and output, and counts model calls instead of transcript records", () => {
+    const usage = buildUsage({
+      totals: { input: 32631, output: 824, cacheRead: 90880, cacheWrite: 0, totalTokens: 124335, totalCost: 0.183356 },
+      aggregates: { messages: { total: 13, toolCalls: 3 }, byModel: [{ model: "gpt-5.6-sol", count: 7 }] },
+    }, ["2026-10-14"]);
+    expect(usage.totals.tokenBreakdown).toEqual({ input: 32631, output: 824, cacheRead: 90880, cacheWrite: 0 });
+    expect(usage.totals.tokens).toBe(124335);
+    expect(usage.totals.modelCalls).toBe(7);
+    expect(usage.totals.messages).toBe(13);
   });
 });
 
@@ -103,6 +116,15 @@ describe("isStaleFailure", () => {
 
 describe("buildSchedules", () => {
   const days = rangeDays("7d", NOW, TZ);
+  it("includes declared user reminders in upcoming tasks and run totals", () => {
+    const result = buildSchedules([
+      { id: "run", agentId: "trainer", declarationKey: "trainer:morning-run", nextRunAtMs: NOW + 5000 },
+      { id: "memory", declarationKey: "memory-core:memory-dreaming-promotion" },
+    ], [{ jobId: "run", ts: NOW, status: "ok" }], days, TZ);
+    expect(result.upcoming.map((job) => job.id)).toEqual(["run"]);
+    expect(result.runs.ok).toBe(1);
+    expect(result.systemJobs).toBe(1);
+  });
   const jobs = [
     { id: "hb", declarationKey: "heartbeat:main", agentId: "main", nextRunAtMs: NOW + 1000 },
     { id: "plan", name: "morning-plan", displayName: "Morning plan", agentId: "main", nextRunAtMs: NOW + 5000, state: { lastRunStatus: "ok" } },

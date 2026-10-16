@@ -1,6 +1,7 @@
 <script setup lang="ts">
 // Junior-agent builder (screen 8): template → about → data → schedule → AI access → create.
 import { FolderName, type CreateAgentResultDto, type ScheduleInput, type TemplateDto } from "@clawdesk/shared";
+import { Plus, Trash2 } from "@lucide/vue";
 import {
   NAlert,
   NButton,
@@ -20,6 +21,7 @@ import {
   NSwitch,
   NText,
   NTimePicker,
+  NTooltip,
 } from "naive-ui";
 import { computed, onMounted, reactive, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
@@ -29,8 +31,10 @@ import { api, ApiError } from "../api/client";
 import AiConnect from "../components/AiConnect.vue";
 import { useLocalized } from "../localized";
 import { useSpaceStore } from "../stores/space";
+import ScheduleDays from "../components/ScheduleDays.vue";
+import { cronFromTime } from "../cron";
 
-type ScheduleRow = { presetId: string | null; label: string; time: string; days: string; prompt: string; enabled: boolean };
+type ScheduleRow = { id: string; presetId: string | null; label: string; time: string | null; days: string; prompt: string; enabled: boolean };
 
 const { t, locale } = useI18n();
 const tx = useLocalized();
@@ -64,7 +68,8 @@ const created = ref<CreateAgentResultDto | null>(null);
 const aiDone = ref(false);
 
 const missingRequired = computed(() => template.value?.fields.filter((f) => f.required && !values[f.key]?.trim()).map((f) => tx(f.label)) ?? []);
-const enabledSchedules = computed(() => schedules.value.filter((s) => s.enabled && s.time && s.prompt.trim()));
+const enabledSchedules = computed(() => schedules.value.filter((s) => s.enabled));
+const schedulesOk = computed(() => enabledSchedules.value.every((s) => cronFromTime(s.time, s.days) && s.prompt.trim()));
 
 async function load(): Promise<void> {
   loading.value = true;
@@ -95,7 +100,7 @@ function pick(tpl: TemplateDto): void {
   useFolder.value = !!tpl.folder;
   folderName.value = tpl.folder ? tx(tpl.folder) : "";
   // Preset labels start with their time ("06:30 тренировка дня"); keep only the words so editing the time cannot contradict them.
-  schedules.value = tpl.cronPresets.map((p) => ({ presetId: p.id, label: tx(p.label).replace(/^(\S+\s)?\d{1,2}:\d{2}\s*/, ""), ...parseCron(p.cron), prompt: p.prompt, enabled: true }));
+  schedules.value = tpl.cronPresets.map((p) => ({ id: crypto.randomUUID(), presetId: p.id, label: tx(p.label).replace(/^(\S+\s)?\d{1,2}:\d{2}\s*/, ""), ...parseCron(p.cron), prompt: p.prompt, enabled: true }));
   step.value = 2;
 }
 
@@ -114,17 +119,18 @@ async function removeTemplate(tpl: TemplateDto): Promise<void> {
 }
 
 function addSchedule(): void {
-  schedules.value.push({ presetId: null, label: "", time: "09:00", days: "*", prompt: "", enabled: true });
+  if (schedules.value.length >= 10) return;
+  schedules.value.push({ id: crypto.randomUUID(), presetId: null, label: "", time: "09:00", days: "*", prompt: "", enabled: true });
 }
 
 async function create(): Promise<void> {
-  if (!template.value) return;
+  if (!template.value || !schedulesOk.value) return;
   creating.value = true;
   createError.value = null;
   const payload: ScheduleInput[] = enabledSchedules.value.map((s) => ({
     presetId: s.presetId,
     label: `${s.time} ${s.label.trim() || daysText(s.days)}`,
-    cron: toCron(s.time, s.days),
+    cron: cronFromTime(s.time, s.days)!,
     prompt: s.prompt.trim(),
   }));
   try {
@@ -150,11 +156,6 @@ async function create(): Promise<void> {
 function parseCron(cron: string): { time: string; days: string } {
   const [m = "0", h = "9", , , d = "*"] = cron.split(" ");
   return { time: `${h.padStart(2, "0")}:${m.padStart(2, "0")}`, days: d };
-}
-
-function toCron(time: string, days: string): string {
-  const [h = "9", m = "0"] = time.split(":");
-  return `${Number(m)} ${Number(h)} * * ${days}`;
 }
 
 function daysText(days: string): string {
@@ -269,18 +270,24 @@ onMounted(load);
         <n-card v-else-if="step === 4" :title="t('builder.stepSchedule')">
           <p class="hint">{{ t("builder.scheduleHint", { tz: timezone }) }}</p>
           <n-space vertical size="large">
-            <div v-for="(s, i) in schedules" :key="i" class="schedule">
-              <n-space align="center">
-                <n-switch v-model:value="s.enabled" />
-                <n-time-picker v-model:formatted-value="s.time" value-format="HH:mm" format="HH:mm" :minutes="5" :disabled="!s.enabled" style="width: 110px" />
-                <n-text>{{ daysText(s.days) }}</n-text>
-                <n-input v-if="!s.presetId" v-model:value="s.label" :placeholder="t('builder.scheduleLabel')" size="small" style="width: 200px" />
-                <n-text v-else depth="3">{{ s.label }}</n-text>
-              </n-space>
-              <n-input v-model:value="s.prompt" type="textarea" :autosize="{ minRows: 1, maxRows: 4 }" :placeholder="t('builder.schedulePrompt')" :disabled="!s.enabled" class="mt-s" />
+            <div v-for="s in schedules" :key="s.id" class="schedule">
+              <div class="schedule-head">
+                <n-switch v-model:value="s.enabled" :aria-label="t('schedules.turnOn')" />
+                <n-input v-model:value="s.label" :placeholder="t('builder.scheduleLabel')" :aria-label="t('schedules.name')" :disabled="!s.enabled" maxlength="114" />
+                <n-tooltip>
+                  <template #trigger><n-button quaternary circle type="error" :aria-label="t('schedules.remove')" @click="schedules = schedules.filter((row) => row.id !== s.id)"><trash-2 :size="16" /></n-button></template>
+                  {{ t('schedules.remove') }}
+                </n-tooltip>
+              </div>
+              <div class="schedule-timing">
+                <label><span>{{ t('schedules.time') }}</span><n-time-picker v-model:formatted-value="s.time" value-format="HH:mm" format="HH:mm" :disabled="!s.enabled" :actions="null" /></label>
+                <div><span class="field-label">{{ t('schedules.repeat') }}</span><schedule-days v-model="s.days" :disabled="!s.enabled" /></div>
+              </div>
+              <n-input v-model:value="s.prompt" type="textarea" :autosize="{ minRows: 1, maxRows: 4 }" :placeholder="t('builder.schedulePrompt')" :aria-label="t('schedules.task')" :disabled="!s.enabled" maxlength="4000" class="mt-s" />
+              <span v-if="s.enabled && (!cronFromTime(s.time, s.days) || !s.prompt.trim())" class="schedule-validation" role="alert">{{ t('schedules.incomplete') }}</span>
             </div>
             <n-text v-if="!schedules.length" depth="3">{{ t("builder.noSchedules") }}</n-text>
-            <n-button dashed @click="addSchedule">+ {{ t("builder.addSchedule") }}</n-button>
+            <n-button dashed :disabled="schedules.length >= 10" @click="addSchedule"><template #icon><plus :size="15" /></template>{{ t("builder.addSchedule") }}</n-button>
             <n-space v-if="telegramReady" align="center">
               <n-switch v-model:value="deliverToTelegram" />
               <n-text>{{ t("builder.deliverToTelegram") }}</n-text>
@@ -289,7 +296,7 @@ onMounted(load);
           </n-space>
           <n-space class="mt">
             <n-button @click="step = 3">{{ t("builder.back") }}</n-button>
-            <n-button type="primary" @click="step = 5">{{ t("builder.next") }}</n-button>
+            <n-button type="primary" :disabled="!schedulesOk" @click="step = 5">{{ t("builder.next") }}</n-button>
           </n-space>
         </n-card>
 
@@ -394,7 +401,19 @@ onMounted(load);
 .schedule {
   padding: 12px;
   border: 1px solid rgba(128, 128, 128, 0.2);
-  border-radius: 10px;
+  border-radius: 8px;
+}
+.schedule-head { display: grid; grid-template-columns: auto minmax(0, 1fr) 34px; align-items: center; gap: 12px; }
+.schedule-timing { display: grid; grid-template-columns: 130px minmax(0, 1fr); gap: 14px; margin-top: 12px; }
+.schedule-timing label, .field-label { display: block; font-size: 13px; }
+.schedule-timing label > span, .field-label { display: block; margin-bottom: 6px; color: var(--text-2); }
+.schedule-validation { display: block; margin-top: 6px; color: var(--critical); font-size: 12px; }
+@media (max-width: 600px) {
+  .schedule-timing { grid-template-columns: minmax(0, 1fr); }
+  :deep(.n-steps) { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px 8px; }
+  :deep(.n-step), :deep(.n-step-content) { min-width: 0; }
+  :deep(.n-step-splitor) { display: none; }
+  :deep(.n-step-content-header__title) { white-space: normal; }
 }
 .block {
   display: block;

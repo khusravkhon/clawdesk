@@ -356,7 +356,9 @@ export class SourcesService {
 
   async #folder(): Promise<FolderSourceDto> {
     const { dir, hostPath } = this.deps.files;
-    const empty: FolderSourceDto = { available: false, hostPath: hostPath ?? null, agentPath: FOLDER_AGENT_PATH, files: [], total: 0 };
+    let sync: FolderSourceDto["sync"] = null;
+    try { sync = await this.deps.bridge?.folderSyncStatus() ?? null; } catch { /* Older bridges may not expose synchronization status yet. */ }
+    const empty: FolderSourceDto = { available: false, hostPath: hostPath ?? null, agentPath: FOLDER_AGENT_PATH, files: [], total: 0, sync };
     if (!dir) return empty;
     let names: string[];
     try {
@@ -371,7 +373,7 @@ export class SourcesService {
       }),
     );
     const files = entries.filter((e) => e !== null).sort((a, b) => b.modifiedAt - a.modifiedAt);
-    return { available: true, hostPath: hostPath ?? dir, agentPath: FOLDER_AGENT_PATH, files: files.slice(0, FOLDER_LIST_LIMIT), total: files.length };
+    return { available: true, hostPath: hostPath ?? dir, agentPath: FOLDER_AGENT_PATH, files: files.slice(0, FOLDER_LIST_LIMIT), total: files.length, sync };
   }
 
   #saveRow(id: string, connectorRef: string, scope: string, status: "pending" | "connected" | "error", kind: "notion" | "figma" = "notion"): void {

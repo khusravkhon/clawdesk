@@ -1,0 +1,19 @@
+{
+  "id": "clawdesk-ask-main",
+  "name": "ClawDesk Ask Main",
+  "description": "Bounded questions from granted specialists to a fresh main-agent session.",
+  "activation": { "onStartup": true },
+  "configSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "required": ["allowedAgentIds"],
+    "properties": {
+      "allowedAgentIds": {
+        "type": "array", "maxItems": 1000, "uniqueItems": true,
+        "items": { "type": "string", "pattern": "^[a-z0-9][a-z0-9_-]{0,79}$" }
+      }
+    }
+  },
+  "contracts": { "tools": ["clawdesk_ask_main"] },
+  "toolMetadata": { "clawdesk_ask_main": { "optional": true } }
+}

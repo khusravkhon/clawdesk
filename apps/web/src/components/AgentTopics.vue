@@ -9,6 +9,7 @@ import { api, ApiError } from "../api/client";
 
 const { t } = useI18n();
 const message = useMessage();
+const props = withDefaults(defineProps<{ accountId?: string }>(), { accountId: "default" });
 
 const agents = ref<AgentListItemDto[]>([]);
 const current = ref<AgentTopicsDto | null>(null);
@@ -42,7 +43,7 @@ function fill(dto: AgentTopicsDto): void {
 async function load(): Promise<void> {
   loading.value = true;
   try {
-    const [list, topics] = await Promise.all([api.agents(), api.telegram.topics()]);
+    const [list, topics] = await Promise.all([api.agents(), api.telegram.topics(props.accountId)]);
     agents.value = list.agents;
     fill(topics);
   } catch (e) {
@@ -56,8 +57,8 @@ async function save(): Promise<void> {
   saving.value = true;
   error.value = null;
   try {
-    fill(await api.telegram.saveTopics({ topics: filled.value.map((a) => ({ agentId: a.id, link: links[a.id]!.trim() })) }));
-    message.success(t("telegram.topics.saved"));
+    fill(await api.telegram.saveTopics({ topics: filled.value.map((a) => ({ agentId: a.id, link: links[a.id]!.trim() })) }, props.accountId));
+    message.success(t("telegramTopics.saved"));
   } catch (e) {
     error.value = errText(e);
   } finally {
@@ -68,8 +69,8 @@ async function save(): Promise<void> {
 async function removeAll(): Promise<void> {
   saving.value = true;
   try {
-    fill(await api.telegram.removeTopics());
-    message.success(t("telegram.topics.removed"));
+    fill(await api.telegram.removeTopics(props.accountId));
+    message.success(t("telegramTopics.removed"));
   } catch (e) {
     error.value = errText(e);
   } finally {
@@ -82,31 +83,31 @@ onMounted(load);
 
 <template>
   <n-spin :show="loading">
-    <p class="hint">{{ t("telegram.topics.lead") }}</p>
+    <p class="hint">{{ t("telegramTopics.lead") }}</p>
     <ol class="howto">
-      <li>{{ t("telegram.topics.step1") }}</li>
-      <li>{{ t("telegram.topics.step2") }}</li>
-      <li>{{ t("telegram.topics.step3") }}</li>
+      <li>{{ t("telegramTopics.step1") }}</li>
+      <li>{{ t("telegramTopics.step2") }}</li>
+      <li>{{ t("telegramTopics.step3") }}</li>
     </ol>
-    <n-alert type="warning" :show-icon="false" class="block">{{ t("telegram.topics.privacy") }}</n-alert>
+    <n-alert type="warning" :show-icon="false" class="block">{{ t("telegramTopics.privacy") }}</n-alert>
 
     <div v-for="a in candidates" :key="a.id" class="row">
       <span class="name">{{ a.emoji ?? (a.role === 'main' ? '🧭' : '🤖') }} {{ a.name }}</span>
       <n-input v-model:value="links[a.id]" size="small" clearable :placeholder="EXAMPLE_LINK" :status="linkStatus(a.id)" />
     </div>
-    <p v-if="!candidates.length" class="hint">{{ t("telegram.topics.noAgents") }}</p>
-    <n-alert v-if="invalid.length" type="error" :show-icon="false" class="block">{{ t("telegram.topics.invalid", { names: invalid.join(", ") }) }}</n-alert>
+    <p v-if="!candidates.length" class="hint">{{ t("telegramTopics.noAgents") }}</p>
+    <n-alert v-if="invalid.length" type="error" :show-icon="false" class="block">{{ t("telegramTopics.invalid", { names: invalid.join(", ") }) }}</n-alert>
     <n-alert v-if="error" type="error" :show-icon="false" class="block">{{ error }}</n-alert>
 
     <n-space align="center">
-      <n-button type="primary" :loading="saving" :disabled="!dirty || !filled.length || invalid.length > 0" @click="save">{{ t("telegram.topics.save") }}</n-button>
+      <n-button type="primary" :loading="saving" :disabled="!dirty || !filled.length || invalid.length > 0" @click="save">{{ t("telegramTopics.save") }}</n-button>
       <n-popconfirm v-if="current?.chatId" @positive-click="removeAll">
         <template #trigger>
-          <n-button quaternary type="error" :disabled="saving">{{ t("telegram.topics.remove") }}</n-button>
+          <n-button quaternary type="error" :disabled="saving">{{ t("telegramTopics.remove") }}</n-button>
         </template>
-        {{ t("telegram.topics.removeConfirm") }}
+        {{ t("telegramTopics.removeConfirm") }}
       </n-popconfirm>
-      <span class="hint">{{ t("telegram.topics.restartHint") }}</span>
+      <span class="hint">{{ t("telegramTopics.restartHint") }}</span>
     </n-space>
   </n-spin>
 </template>

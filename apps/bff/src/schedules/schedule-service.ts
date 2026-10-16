@@ -6,9 +6,10 @@ import type { Db } from "../db/client.js";
 import { agents, schedules } from "../db/schema.js";
 import type { GatewayService } from "../gateway/gateway-service.js";
 import type { TelegramService } from "../telegram/telegram-service.js";
+import { isSystemJob } from "./job-policy.js";
 
 // Schedules (screen 10): OpenClaw cron jobs of the panel's agents. OpenClaw's own housekeeping
-// jobs (heartbeat, memory, skill review — they carry a declaration key) are counted, not shown.
+// jobs (heartbeat, memory, skill review — they carry reserved declaration keys) are counted, not shown.
 
 export type RawJob = {
   id: string;
@@ -17,7 +18,7 @@ export type RawJob = {
   displayName?: string;
   declarationKey?: string;
   enabled?: boolean;
-  schedule?: { kind?: string; expr?: string; tz?: string; everyMs?: number };
+  schedule?: { kind?: string; expr?: string; tz?: string; everyMs?: number; at?: string };
   payload?: { kind?: string; message?: string };
   delivery?: { mode?: string; channel?: string };
   nextRunAtMs?: number;
@@ -31,15 +32,16 @@ const STATUS = new Set(["ok", "error", "skipped"]);
 const status = (s: string | undefined) => (s && STATUS.has(s) ? (s as "ok" | "error" | "skipped") : null);
 
 export function toSchedule(job: RawJob): ScheduleDto | null {
-  if (job.declarationKey || !job.agentId) return null;
+  if (isSystemJob(job)) return null;
   const s = job.schedule ?? {};
   return {
     id: job.id,
-    agentId: job.agentId,
+    agentId: job.agentId ?? "main",
     label: job.displayName ?? job.name ?? job.id,
     prompt: job.payload?.message ?? "",
     cron: s.kind === "cron" && s.expr ? s.expr : null,
     everyMs: s.kind === "every" && s.everyMs ? s.everyMs : null,
+    ...(s.kind === "at" && s.at ? { at: s.at } : {}),
     tz: s.tz ?? null,
     enabled: job.enabled !== false,
     nextRunAt: job.enabled === false ? null : (job.nextRunAtMs ?? job.state?.nextRunAtMs ?? null),

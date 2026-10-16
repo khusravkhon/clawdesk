@@ -21,6 +21,7 @@ export const ScheduleDto = z.object({
   cron: z.string().nullable(),
   /** Human text for non-cron kinds (e.g. "every 30 min"), computed by the panel. */
   everyMs: z.number().nullable(),
+  at: z.string().optional(),
   tz: z.string().nullable(),
   enabled: z.boolean(),
   nextRunAt: z.number().nullable(),

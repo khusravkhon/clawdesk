@@ -129,19 +129,24 @@ export function followerIds(db: Db): string[] {
 export async function syncFollowers(gateway: GatewayService, db: Db): Promise<string[]> {
   const ids = followerIds(db);
   if (!ids.length) return [];
-  const { config } = await getConfig<AgentsConfig>(gateway);
-  const main = chainFromSetting(config.agents?.entries?.main?.model ?? config.agents?.defaults?.model);
-  if (!main.length) return [];
-  const entries = config.agents?.entries ?? {};
-  // Agents removed outside the panel are skipped: patching them would recreate a config entry.
-  const stale = ids.filter((id) => id in entries && JSON.stringify(chainFromSetting(entries[id]!.model)) !== JSON.stringify(main));
-  if (!stale.length) return [];
-  const [primary, ...fallbacks] = main;
-  await patchConfig(
+  const plan = (snapshot: unknown) => {
+    const config = snapshot as AgentsConfig;
+    const main = chainFromSetting(config.agents?.entries?.main?.model ?? config.agents?.defaults?.model);
+    const entries = config.agents?.entries ?? {};
+    // Agents removed outside the panel are skipped: patching them would recreate a config entry.
+    const stale = ids.filter((id) => id in entries && JSON.stringify(chainFromSetting(entries[id]!.model)) !== JSON.stringify(main));
+    const [primary, ...fallbacks] = main;
+    return { primary, stale, patch: primary && stale.length ? { agents: { entries: Object.fromEntries(stale.map((id) => [id, { model: { primary, fallbacks } }])) } } : null };
+  };
+  const applied = await patchConfig(
     gateway,
-    { agents: { entries: Object.fromEntries(stale.map((id) => [id, { model: { primary, fallbacks } }])) } },
-    { replacePaths: stale.map((id) => `agents.entries.${id}.model.fallbacks`), note: "clawdesk: juniors follow the main agent's models" },
+    (snapshot) => plan(snapshot).patch,
+    { replacePaths: (snapshot) => plan(snapshot).stale.map((id) => `agents.entries.${id}.model.fallbacks`), note: "clawdesk: juniors follow the main agent's models" },
   );
+  if (!applied) return [];
+  const entries = (applied as NonNullable<ReturnType<typeof plan>["patch"]>).agents.entries;
+  const stale = Object.keys(entries);
+  const primary = entries[stale[0]!]!.model.primary;
   db.update(agents).set({ model: primary }).where(inArray(agents.id, stale)).run();
   return stale;
 }

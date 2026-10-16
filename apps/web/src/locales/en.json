@@ -231,7 +231,7 @@
     "notRunning": "not running",
     "bot": "Bot",
     "owner": "Owner",
-    "doneHint": "Message the bot directly to talk to the main assistant. Schedule results arrive here too. Group topics for separate agents come next.",
+    "doneHint": "Direct messages go to the selected agent. Group topics are configured separately for this bot.",
     "sendTest": "Send a test message",
     "testText": "Hi! This is a test message from ClawDesk ✅",
     "testSent": "Message sent — check Telegram",
@@ -247,7 +247,10 @@
     "approvals": "Approvals in Telegram",
     "approvalsHint": "When an agent wants to run a command on the server, the bot sends you Allow and Deny buttons in a private chat. Only you can decide. Switching restarts the system (about 10 seconds).",
     "topics": "Telegram topics linked to agents",
-    "topicsRemove": "Telegram agents' group unlinked"
+    "topicsRemove": "Telegram agents' group unlinked",
+    "addBot": "Add bot",
+    "agent": "Agent for direct messages",
+    "routeSaved": "Bot agent updated"
   },
   "free": {
     "title": "Free models (experimental)",
@@ -305,10 +308,10 @@
     "kpi": {
       "tokens": "Tokens",
       "sessions": "{n} sessions",
-      "cost": "Spend",
-      "costNote": "at provider prices",
+      "cost": "Estimated cost",
+      "costNote": "OpenClaw estimate, not a charge",
       "costIncomplete": "some models have no price",
-      "messages": "Messages",
+      "messages": "Session records",
       "tools": "tools: {n} · errors: {e}",
       "agents": "Agents",
       "working": "{n} working",
@@ -320,9 +323,9 @@
     },
     "trend": {
       "title": "Daily activity",
-      "tokens": "Tokens",
-      "cost": "Spend",
-      "messages": "Messages",
+      "tokens": "All tokens",
+      "cost": "Estimate",
+      "messages": "Records",
       "empty": "Nothing yet — message an agent and the chart appears here"
     },
     "models": {
@@ -397,6 +400,22 @@
       "hint": "Put files in this folder — the main assistant sees them in its “{path}” folder.",
       "count": "Files: {n}",
       "empty": "The folder is empty so far.",
+      "sync": {
+        "title": "Specialists’ folder exchange", "unavailable": "Exchange status is unavailable. Refresh later or check the Gateway connection.", "empty": "No specialist folders registered.",
+        "lastAttempt": "Last attempt", "lastSuccess": "Last complete exchange", "unknown": "Not yet", "counts": "Preserved conflicts: {conflicts}; skipped paths: {skipped}",
+        "states": { "pending": "Waiting", "ready": "Exchanged", "partial": "Some files skipped", "error": "Exchange stopped" },
+        "issues": {
+          "file_too_large": "Over 32 MiB. Reduce the file or move it outside this folder; other files continue exchanging.",
+          "unsupported_file": "Links and special files are skipped. Put a regular file here.",
+          "file_unavailable": "Cannot safely read this path. Check access and replace links with regular files or folders.",
+          "file_changed": "File changed during exchange. Wait for the next automatic attempt.",
+          "folder_depth_limit": "Folder exceeds 30 levels. Reduce nesting; exchange will retry automatically.",
+          "folder_entry_limit": "Folder exceeds 10,000 entries. Move some items outside the exchange folder.",
+          "folder_size_limit": "Readable files exceed 256 MiB per side. Move some files outside the exchange folder.",
+          "conflict_requires_review": "Cannot safely preserve both versions. Review the original and conflict copies.",
+          "folder_unavailable": "Folder cannot be safely opened. Check workspace and access; files are retained."
+        }
+      },
       "notMounted": "The folder is not connected to the server. Run deploy/scripts/init.sh again — it creates a ClawDesk folder in your home folder."
     },
     "google": {
@@ -571,7 +590,13 @@
       "mailPrompt": "Look at new mail and briefly sum up what matters: what needs a reply or action.",
       "evening": "Evening wrap-up",
       "eveningPrompt": "Sum up the day: what is done, what is left, what moves to tomorrow."
-    }
+    },
+    "repeat": "Repeat",
+    "repeatWeekdays": "Weekdays",
+    "repeatWeekends": "Weekends",
+    "repeatCustom": "Selected days",
+    "selectDays": "Select at least one day.",
+    "incomplete": "Set a time, days and task, or turn this schedule off."
   },
   "assistant": {
     "title": "Your assistant",
@@ -771,6 +796,18 @@
     "more": "Show more",
     "run": "agent turn",
     "tool": "tool {tool}",
+    "details": "Details and next step",
+    "requestId": "Request",
+    "eventId": "Event",
+    "explanation": {
+      "gateway": "The Gateway operation did not complete successfully. Check its status and logs at this time. After a timeout, check the operation result before retrying.",
+      "oauth": "Service sign-in did not complete. Check the connection in Sources and sign in again if needed.",
+      "create": "Agent creation did not complete. Check the agent list and rollback log before creating it again.",
+      "validation": "Operation parameters did not pass validation. Check the fields and selected template.",
+      "unknown": "No cause was recorded in the safe details. Match the time and request ID with server logs; an HTTP status alone does not identify the cause.",
+      "run": "The agent run failed. This general status does not identify the cause. Find the event in Gateway logs by time and ID; a later successful run confirms recovery.",
+      "tool": "The tool call failed. Check tool availability, permissions and arguments in the corresponding session. This general status does not prove the tool is entirely unavailable."
+    },
     "action": {
       "auth": {
         "setup": "Owner password set",
@@ -851,6 +888,22 @@
       }
     }
   },
+  "usageMetrics": {
+    "processed": "Tokens processed",
+    "input": "Fresh input",
+    "cache": "Cached context",
+    "cacheWrite": "Cache writes",
+    "output": "Model output",
+    "unavailable": "Breakdown unavailable",
+    "cacheHint": "Reused context. A model request still occurs; cache pricing depends on the provider's plan.",
+    "estimatedCost": "Estimated cost",
+    "estimateHint": "OpenClaw estimate, not a confirmed charge.",
+    "modelCalls": "Model requests",
+    "callsHint": "Includes background agent tasks",
+    "records": "Session records: {n}",
+    "recordsHint": "Includes internal incoming events and intermediate assistant responses. This is not the number of visible chat messages.",
+    "toolSteps": "tool steps: {n} · errors: {e}"
+  },
   "usage": {
     "title": "Usage",
     "subtitle": "Tokens and money by agent and day",
@@ -860,5 +913,46 @@
     "agent": "Agent",
     "noAgents": "Agents have spent nothing yet",
     "costLowerBound": "at least: some models have no price"
+  },
+  "telegramTopics": {
+    "title": "Group topics",
+    "lead": "The bot replies as the agent assigned to each topic.",
+    "step1": "Create a Telegram group with topics enabled.",
+    "step2": "Add the selected bot as a group administrator.",
+    "step3": "Copy each topic link and paste it next to its agent.",
+    "privacy": "Only your messages in linked topics get replies. A topic can belong to only one bot.",
+    "noAgents": "No available agents",
+    "invalid": "Check links: {names}",
+    "save": "Save topics",
+    "saved": "Topics saved",
+    "removed": "Topics unlinked",
+    "remove": "Unlink topics",
+    "removeConfirm": "Unlink all topics for this bot?",
+    "restartHint": "Saving restarts the agent server."
+  },
+  "telegramVoice": {
+    "title": "Voice messages",
+    "enabled": "Enabled",
+    "disabled": "Disabled",
+    "needsKey": "API key required",
+    "limit": "up to {n} MB",
+    "billing": "Audio is sent to {provider}. Pricing and limits depend on your provider account, not your ChatGPT subscription. This setting applies to all Telegram bots.",
+    "keyLabel": "{provider} API key for audio",
+    "save": "Save and enable",
+    "saved": "Cloud transcription enabled",
+    "getKey": "Get a {provider} API key",
+    "provider": "Transcription provider",
+    "model": "Transcription model",
+    "keySaved": "Key saved",
+    "errors": {
+      "audio_key_provider_mismatch": "Check the provider and key format: Groq uses gsk_, OpenAI uses sk-.",
+      "audio_key_rejected": "The provider rejected this key. Check its validity and API permissions.",
+      "audio_model_unavailable": "This model is unavailable for the selected provider or key. Select another model.",
+      "audio_rate_limit": "The request or account limit has been reached. Check provider limits and try later.",
+      "audio_unreachable": "The transcription service could not be reached. Check the connection and try again.",
+      "audio_setup_failed": "Could not save transcription settings. Try again; your chat model was not changed.",
+      "audio_setup_busy": "Transcription setup is already running. Wait for it to finish.",
+      "no_audio_key": "Save an API key for the selected transcription provider first."
+    }
   }
 }

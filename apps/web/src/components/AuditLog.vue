@@ -39,6 +39,11 @@ async function load(more: "panel" | "agents" | null = null): Promise<void> {
 const actionText = (action: string) => (te(`audit.action.${action}`) ? t(`audit.action.${action}`) : action);
 const agentText = (e: AgentAuditEventDto) => (e.action.startsWith("tool.") ? t("audit.tool", { tool: e.toolName ?? "?" }) : t("audit.run"));
 const statusType = (s: string) => (s === "succeeded" ? "success" : s === "failed" ? "error" : "default");
+const panelExplanation = (e: AuditEventDto) => {
+  const code = e.diagnostics?.code;
+  const key = code?.startsWith("gateway_") ? "gateway" : code?.startsWith("oauth_") ? "oauth" : code === "create_failed" ? "create" : code === "invalid_request" || code === "invalid_values" || code === "invalid_template" ? "validation" : "unknown";
+  return t(`audit.explanation.${key}`);
+};
 
 onMounted(() => load());
 </script>
@@ -56,6 +61,11 @@ onMounted(() => load());
             <n-tag size="small" :bordered="false" :type="e.result === 'ok' ? 'success' : 'error'">{{ e.result === "ok" ? t("audit.ok") : t("audit.failed", { code: e.detail ?? "" }) }}</n-tag>
             <span>{{ actionText(e.action) }}</span>
             <code v-if="e.target">{{ e.target }}</code>
+            <details v-if="e.result === 'error'">
+              <summary>{{ t("audit.details") }}</summary>
+              <p>{{ panelExplanation(e) }}</p>
+              <p v-if="e.diagnostics"><code>{{ e.diagnostics.code }}</code> · {{ t("audit.requestId") }}: <code>{{ e.diagnostics.requestId }}</code></p>
+            </details>
           </li>
         </ul>
         <n-button v-if="nextPanel" size="small" quaternary :loading="loading" @click="load('panel')">{{ t("audit.more") }}</n-button>
@@ -69,6 +79,11 @@ onMounted(() => load());
             <code>{{ e.agentId ?? "—" }}</code>
             <span>{{ agentText(e) }}</span>
             <span v-if="e.errorCode" class="muted">· {{ e.errorCode }}</span>
+            <details v-if="e.status === 'failed'">
+              <summary>{{ t("audit.details") }}</summary>
+              <p>{{ t(e.action.startsWith("tool.") ? "audit.explanation.tool" : "audit.explanation.run") }}</p>
+              <p>{{ t("audit.eventId") }}: <code>{{ e.id }}</code></p>
+            </details>
           </li>
         </ul>
         <n-button v-if="nextAgents" size="small" quaternary :loading="loading" @click="load('agents')">{{ t("audit.more") }}</n-button>
@@ -104,5 +119,16 @@ onMounted(() => load());
 }
 code {
   font-size: 12px;
+}
+.log details {
+  flex-basis: 100%;
+  overflow-wrap: anywhere;
+}
+.log summary {
+  cursor: pointer;
+  color: var(--text-2);
+}
+.log details p {
+  margin: 8px 0;
 }
 </style>

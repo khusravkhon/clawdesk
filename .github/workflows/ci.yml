@@ -26,6 +26,8 @@ jobs:
       - run: pnpm -r build
       - run: pnpm typecheck
       - run: pnpm test
+      - name: Bridge modules (Linux)
+        run: node --test deploy/*.test.mjs
       - name: Install scripts
         run: shellcheck -S warning deploy/install.sh deploy/scripts/*.sh
 

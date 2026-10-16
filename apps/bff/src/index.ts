@@ -18,6 +18,8 @@ import { BridgeClient } from "./gateway/bridge-client.js";
 import { SourcesService } from "./sources/sources-service.js";
 import { TelegramService } from "./telegram/telegram-service.js";
 import { FreeModelsService } from "./free-models/free-models-service.js";
+import { repairAgentFolders } from "./provision/agent-folders.js";
+import { repairAgentCommunication } from "./provision/agent-communication.js";
 
 // Host development reads apps/bff/.env (written by init.sh --dev); containers get real env vars.
 if (process.env.NODE_ENV !== "production" && fs.existsSync(".env")) process.loadEnvFile(".env");
@@ -28,8 +30,12 @@ const { db, close: closeDb } = openDb(config.dbPath);
 const gateway = createGatewayService(config, logger, { retryPairing: true });
 const aiSetup = new AiSetupService(gateway, logger.child({ component: "ai-setup" }), db);
 const signIn = new SignInSessionManager(gateway, logger.child({ component: "signin" }), () => aiSetup.syncFollowers());
-const telegram = new TelegramService(gateway, db, logger.child({ component: "telegram" }));
 const bridge = new BridgeClient(config.bridgeUrl, config.gateway.sharedToken);
+const telegram = new TelegramService(gateway, db, logger.child({ component: "telegram" }), undefined, bridge, async (provider) => {
+  if (provider !== "groq") return;
+  const result = await gateway.request<{ plugins: { id: string; installed?: boolean }[] }>("plugins.list", {});
+  if (!result.plugins.some((plugin) => plugin.id === "groq" && plugin.installed)) await aiSetup.installProvider("groq");
+});
 const freeModels = new FreeModelsService(gateway, logger.child({ component: "free-models" }), {
   ...config.freeModels,
   dataDir: config.dataDir,
@@ -56,26 +62,46 @@ if (ownerCode) logger.warn(`No panel owner yet. Open the panel at /setup?code=${
 
 // Main agent: commands on the server need the owner's approval (applied once, then the owner decides).
 const EXEC_DEFAULT_SETTING = "approvals.mainDefaultApplied";
-void gateway
-  .waitUntilConnected(120_000)
-  .then(() => approvals.ensureDefault(getSetting<boolean>(db, EXEC_DEFAULT_SETTING) === true))
-  .then((applied) => applied && putSetting(db, EXEC_DEFAULT_SETTING, true))
-  .catch((error: Error) => logger.warn({ err: error }, "could not apply the default exec approval mode"));
+async function repairDefaultApprovals(): Promise<void> {
+  const applied = await approvals.ensureDefault(getSetting<boolean>(db, EXEC_DEFAULT_SETTING) === true);
+  if (applied) putSetting(db, EXEC_DEFAULT_SETTING, true);
+}
 
 // Juniors with the main agent's AI: bring them onto its current models and backups
 // (also covers juniors created before backups existed, which copied only the main model).
-void gateway
-  .waitUntilConnected(120_000)
-  .then(() => aiSetup.syncFollowers())
-  .catch((error: Error) => logger.warn({ err: error }, "could not sync juniors' models"));
+const repairFollowerModels = () => aiSetup.syncFollowers();
 
 // Memory search: OpenClaw defaults to OpenAI embeddings even without an OpenAI key; use what works.
-void gateway
-  .waitUntilConnected(120_000)
-  .then(() => assistant.ensureMemoryWorks())
-  .catch((error: Error) => logger.warn({ err: error }, "could not check the memory provider"));
+const repairMemory = () => assistant.ensureMemoryWorks();
 
 let shuttingDown = false;
+async function repairStartup(): Promise<void> {
+  const repairs: [string, () => Promise<unknown>][] = [
+    ["personal agent session policy and restricted ask-main configuration (tool availability unverified)", () => repairAgentCommunication({ gateway, db })],
+    ["managed agent folders", () => repairAgentFolders({ gateway, db, bridge, logger })],
+    ["default exec approval mode", repairDefaultApprovals],
+    ["junior models", repairFollowerModels],
+    ["memory provider", repairMemory],
+    ["Telegram files and voice messages", () => telegram.ensureMedia()],
+  ];
+  for (const [name, repair] of repairs) {
+    if (shuttingDown) return;
+    const generation = gateway.generation;
+    try {
+      await gateway.waitUntilConnected(120_000);
+      if (shuttingDown) return;
+      await repair();
+    } catch (error) {
+      logger.warn({ err: error, repair: name }, "startup repair failed; continuing with remaining repairs");
+    }
+    if (!shuttingDown && gateway.status.state !== "connected") {
+      try { await gateway.waitForReconnect(generation); }
+      catch (error) { logger.warn({ err: error, repair: name }, "Gateway has not reconnected after startup repair"); }
+    }
+  }
+}
+void repairStartup();
+
 async function shutdown(signal: string): Promise<void> {
   if (shuttingDown) return;
   shuttingDown = true;

@@ -28,8 +28,12 @@ import { timingSafeEqual } from "node:crypto";
 import http from "node:http";
 import fs from "node:fs/promises";
 import path from "node:path";
+import { DatabaseSync } from "node:sqlite";
 import { BackupError, createBackup, listBackups, startReset } from "./clawdesk-backup.mjs";
 import { cloneTeamRepo, fetchTeamRepo, pushTeamBranch, removeTeamRepo, TeamError, teamRepoStatus } from "./clawdesk-teams.mjs";
+import { isAuthorizationCode, mcpLoginArgs } from "./clawdesk-oauth.mjs";
+import { AudioSetupError, audioSettings, audioStatus, saveAudioKey, verifyAudioKey } from "./clawdesk-audio.mjs";
+import { AgentFolders } from "./clawdesk-agent-folders.mjs";
 
 const HOST = process.env.CLAWDESK_BRIDGE_HOST || "127.0.0.1";
 const PORT = Number(process.env.CLAWDESK_BRIDGE_PORT || 18790);
@@ -38,8 +42,7 @@ const CLI = ["dist/index.js"];
 const CLI_CWD = "/app";
 
 const SERVER_NAME = /^[a-z0-9][a-z0-9-]{0,39}$/;
-// OAuth authorization codes are URL-safe tokens.
-const AUTH_CODE = /^[A-Za-z0-9._~\-]{1,2048}$/;
+// OAuth authorization codes are opaque provider values, validated by clawdesk-oauth.mjs.
 
 function log(msg, extra = {}) {
   console.log(JSON.stringify({ time: new Date().toISOString(), component: "clawdesk-bridge", msg, ...extra }));
@@ -53,9 +56,13 @@ function authorized(req) {
 }
 
 /** Runs the OpenClaw CLI; `until` may end it early once the output has what we need. */
-function runCli(args, { timeoutMs = 60_000, until } = {}) {
+function runCli(args, { timeoutMs = 60_000, until, input } = {}) {
   return new Promise((resolve) => {
-    const child = spawn(process.execPath, [...CLI, ...args], { cwd: CLI_CWD, env: process.env, stdio: ["ignore", "pipe", "pipe"] });
+    const child = spawn(process.execPath, [...CLI, ...args], { cwd: CLI_CWD, env: process.env, stdio: [input === undefined ? "ignore" : "pipe", "pipe", "pipe"] });
+    if (input !== undefined) {
+      child.stdin.on("error", () => {});
+      child.stdin.end(input);
+    }
     let out = "";
     let err = "";
     let done = false;
@@ -99,7 +106,7 @@ async function loginStart(server) {
 }
 
 async function loginComplete(server, code) {
-  const res = await runCli(["mcp", "login", server, "--code", code], { timeoutMs: 90_000 });
+  const res = await runCli(mcpLoginArgs(server, code), { timeoutMs: 90_000 });
   if (res.code === 0 && /credentials saved/i.test(res.out)) return { status: 200, body: { ok: true } };
   return { status: 400, body: { error: "login_failed", message: tail(res.err || res.out) } };
 }
@@ -220,6 +227,12 @@ async function googleRemove(body) {
 // source of that mount (on Docker Desktop not the path the person typed).
 
 const FILES_IN_GATEWAY = path.join(process.env.OPENCLAW_STATE_DIR || "/var/lib/clawdesk/openclaw", "workspace", "files");
+const agentFolders = new AgentFolders({
+  stateDir: process.env.OPENCLAW_STATE_DIR || "/var/lib/clawdesk/openclaw",
+  filesDir: FILES_IN_GATEWAY,
+  configPath: process.env.OPENCLAW_CONFIG_PATH || "/var/lib/clawdesk/openclaw/openclaw.json",
+  onError: () => log("agent folder sync failed; files retained"),
+});
 // Same rule as FolderName in packages/shared: ends up in "src:dst:rw" and in paths.
 const FOLDER = /^[\p{L}\p{N}][\p{L}\p{N} ._-]{0,59}$/u;
 let filesSource;
@@ -337,10 +350,52 @@ function readJson(req) {
   });
 }
 
+let audioSetupBusy = false;
+
 async function handle(req) {
   const url = new URL(req.url, "http://bridge");
   if (req.method === "GET" && url.pathname === "/health") return { status: 200, body: { ok: true } };
   if (!authorized(req)) return { status: 401, body: { error: "unauthorized", message: "missing or wrong token" } };
+
+  if (req.method === "GET" && url.pathname === "/files/sync-status") {
+    try { return { status: 200, body: await agentFolders.statuses() }; }
+    catch { return { status: 503, body: { error: "folder_sync_unavailable", message: "folder sync status is unavailable" } }; }
+  }
+
+  if (url.pathname === "/telegram/audio") {
+    try {
+      if (req.method === "GET") return { status: 200, body: await audioStatus(runCli) };
+      if (req.method === "POST") {
+        if (audioSetupBusy) return { status: 409, body: { error: "audio_setup_busy", message: "speech recognition setup is already in progress" } };
+        const body = await readJson(req);
+        const selected = audioSettings(body.apiKey, body.provider, body.model);
+        audioSetupBusy = true;
+        try {
+          await verifyAudioKey(body.apiKey, selected.provider, selected.model);
+          const cfg = JSON.parse(await fs.readFile(process.env.OPENCLAW_CONFIG_PATH, "utf8"));
+          return { status: 200, body: await saveAudioKey(runCli, body.apiKey, Object.keys(cfg.agents?.entries ?? {}), selected.provider, selected.model) };
+        } finally {
+          audioSetupBusy = false;
+        }
+      }
+    } catch (error) {
+      if (error instanceof AudioSetupError) return { status: error.status, body: { error: error.code, message: error.message } };
+      return { status: 502, body: { error: "audio_setup_failed", message: "could not configure speech recognition; the key was not activated" } };
+    }
+  }
+
+  if (req.method === "GET" && url.pathname === "/telegram/approved") {
+    const accountId = url.searchParams.get("accountId") || "default";
+    if (!/^[a-z0-9][a-z0-9_-]{0,63}$/.test(accountId)) return { status: 400, body: { error: "invalid_account" } };
+    const file = path.join(process.env.OPENCLAW_STATE_DIR, "state", "openclaw.sqlite");
+    const db = new DatabaseSync(file, { readOnly: true });
+    try {
+      const rows = db.prepare("SELECT entry FROM channel_pairing_allow_entries WHERE channel_key = ? AND account_id = ?").all("telegram", accountId);
+      return { status: 200, body: { senderIds: rows.map((row) => row.entry).filter((id) => /^\d+$/.test(id)) } };
+    } finally {
+      db.close();
+    }
+  }
 
   if (req.method === "GET" && url.pathname === "/google/status") return googleStatus();
   if (req.method === "GET" && url.pathname === "/backup/list") return { status: 200, body: { backups: await listBackups() } };
@@ -356,6 +411,13 @@ async function handle(req) {
   if (!(await gogInstalled()) && url.pathname.startsWith("/google/")) return { status: 501, body: { error: "gog_missing", message: "gog is not in this Gateway image" } };
   if (url.pathname === "/freellmapi/reset") return freellmapiReset(body);
   if (url.pathname === "/files/folder") return ensureFolder(body);
+  if (url.pathname === "/files/agent-folder") {
+    agentFolders.validate(body);
+    const folder = await ensureFolder(body);
+    if (folder.status !== 200) return folder;
+    const managed = await agentFolders.register(body.agentId, body.name);
+    return { status: 200, body: { hostPath: folder.body.hostPath, ...managed } };
+  }
   const teamOps = { "/teams/clone": cloneTeamRepo, "/teams/fetch": fetchTeamRepo, "/teams/push": pushTeamBranch, "/teams/remove": removeTeamRepo };
   if (teamOps[url.pathname]) return teamCall(() => teamOps[url.pathname](body));
   if (url.pathname === "/backup/create" || url.pathname === "/reset") {
@@ -384,7 +446,7 @@ async function handle(req) {
     case "/mcp/login/start":
       return loginStart(server);
     case "/mcp/login/complete":
-      if (typeof body.code !== "string" || !AUTH_CODE.test(body.code)) return { status: 400, body: { error: "invalid_code" } };
+      if (!isAuthorizationCode(body.code)) return { status: 400, body: { error: "invalid_code" } };
       return loginComplete(server, body.code);
     case "/mcp/logout":
       return logout(server);
@@ -396,6 +458,10 @@ async function handle(req) {
 if (!TOKEN) {
   log("OPENCLAW_GATEWAY_TOKEN is not set; bridge disabled");
 } else {
+  const sync = () => agentFolders.syncAll().catch(() => log("agent folder sync failed; files retained"));
+  const timer = setInterval(sync, 15000);
+  timer.unref();
+  void sync();
   http
     .createServer(async (req, res) => {
       let result;

@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "vite",
     "build": "vue-tsc --noEmit && vite build",
+    "build:app": "tauri build --no-bundle",
     "typecheck": "vue-tsc --noEmit",
     "bundle-source": "node scripts/bundle-source.mjs",
     "tauri": "tauri"

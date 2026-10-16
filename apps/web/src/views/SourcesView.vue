@@ -304,6 +304,19 @@ onMounted(async () => {
           <p v-else class="hint">{{ t("sources.folder.empty") }}</p>
         </template>
         <n-alert v-else type="warning" :bordered="false">{{ t("sources.folder.notMounted") }}</n-alert>
+        <div class="folder-sync">
+          <div class="files-head">{{ t("sources.folder.sync.title") }}</div>
+          <p v-if="!folder?.sync" class="hint">{{ t("sources.folder.sync.unavailable") }}</p>
+          <p v-else-if="!folder.sync.folders.length" class="hint">{{ t("sources.folder.sync.empty") }}</p>
+          <article v-for="item in folder?.sync?.folders ?? []" :key="`${item.agentId}/${item.folder}`" class="sync-item">
+            <strong>{{ item.folder }}</strong> · {{ item.agentId }} · {{ t(`sources.folder.sync.states.${item.state}`) }}
+            <p class="hint">{{ t("sources.folder.sync.lastAttempt") }}: {{ item.lastAttempt ? formatRelative(item.lastAttempt, locale) : t("sources.folder.sync.unknown") }} · {{ t("sources.folder.sync.lastSuccess") }}: {{ item.lastSuccess ? formatRelative(item.lastSuccess, locale) : t("sources.folder.sync.unknown") }}</p>
+            <p v-if="item.conflicts || item.skipped" class="hint">{{ t("sources.folder.sync.counts", { conflicts: item.conflicts, skipped: item.skipped }) }}</p>
+            <ul v-if="item.issues.length" class="sync-issues">
+              <li v-for="(issue, index) in item.issues" :key="index"><code v-if="issue.path">{{ issue.path }} — </code>{{ t(`sources.folder.sync.issues.${issue.code}`) }}</li>
+            </ul>
+          </article>
+        </div>
       </section>
 
       <!-- Google -->
@@ -596,6 +609,9 @@ dd {
   padding: 4px 8px;
   overflow-wrap: anywhere;
 }
+.folder-sync { margin-top: 20px; }
+.sync-item { border-top: 1px solid var(--border); padding-top: 12px; margin-top: 12px; overflow-wrap: anywhere; }
+.sync-issues { font-size: 12px; line-height: 1.6; padding-left: 18px; }
 .files-head {
   margin: 16px 0 6px;
   font-size: 12px;

@@ -9,7 +9,7 @@ import { api, ApiError } from "../api/client";
 import TrendChart from "../components/charts/TrendChart.vue";
 import BarList, { type BarItem } from "../components/ui/BarList.vue";
 import PageHeader from "../components/ui/PageHeader.vue";
-import StatTile from "../components/ui/StatTile.vue";
+import UsageMetrics from "../components/UsageMetrics.vue";
 import { formatCompact, formatCost, formatDay, formatInt } from "../format";
 
 const { t, locale } = useI18n();
@@ -74,9 +74,7 @@ const activeAgents = computed(() => (data.value?.agents ?? []).filter((a) => a.t
 
     <template v-if="data && usage">
       <div class="tiles">
-        <stat-tile :label="t('dash.kpi.tokens')" :value="tokens(usage.totals.tokens)" :note="t('dash.kpi.sessions', { n: usage.totals.sessions })" />
-        <stat-tile :label="t('dash.kpi.cost')" :value="formatCost(usage.totals.cost, loc)" :note="usage.costIncomplete ? t('usage.costLowerBound') : t('dash.kpi.costNote')" />
-        <stat-tile :label="t('dash.kpi.messages')" :value="formatInt(usage.totals.messages, loc)" :note="t('dash.kpi.tools', { n: usage.totals.toolCalls, e: usage.totals.errors })" />
+        <usage-metrics :usage="usage" />
       </div>
 
       <n-card :title="t('usage.byDay')" class="gap">
