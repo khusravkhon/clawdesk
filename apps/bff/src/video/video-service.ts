@@ -31,6 +31,7 @@ type Deps = {
   library?: { add(item: { agentId: string; kind: "document" | "video"; title: string; source: string; locator?: string | null; text: string }): string | null };
   /** Where kept originals live, read-only for the panel; absent when this install keeps none. */
   videoDir?: string | undefined;
+  waitUntilReady?: () => Promise<void>;
 };
 type Row = typeof videoJobs.$inferSelect;
 
@@ -56,6 +57,7 @@ const toDto = (row: Row, progress: number | null = null): VideoJobDto => ({
 
 export class VideoService {
   #running: Promise<void> | null = null;
+  #stopped = false;
   /** The job the worker is on right now, so a cancel knows what to stop. */
   #current: string | null = null;
 
@@ -68,6 +70,7 @@ export class VideoService {
   recover(): number {
     const stale = this.deps.db.update(videoJobs).set({ state: "failed", error: "panel_restarted", finishedAt: new Date() }).where(eq(videoJobs.state, "running")).run();
     if (stale.changes) this.deps.logger.warn({ jobs: stale.changes }, "video jobs were running when the panel stopped");
+    if (this.deps.db.select({ id: videoJobs.id }).from(videoJobs).where(eq(videoJobs.state, "queued")).get()) this.#pump();
     return stale.changes;
   }
 
@@ -122,15 +125,19 @@ export class VideoService {
   }
 
   #pump(): void {
-    if (this.#running) return;
+    if (this.#running || this.#stopped) return;
     this.#running = this.#work().finally(() => {
       this.#running = null;
+      if (this.#stopped) return;
       const next = this.deps.db.select({ id: videoJobs.id }).from(videoJobs).where(eq(videoJobs.state, "queued")).get();
       if (next) this.#pump();
     });
   }
 
   async #work(): Promise<void> {
+    try { if (this.deps.waitUntilReady) await this.deps.waitUntilReady(); }
+    catch { return; }
+    if (this.#stopped) return;
     const job = this.deps.db.select().from(videoJobs).where(eq(videoJobs.state, "queued")).orderBy(videoJobs.createdAt).get();
     if (!job) return;
     this.deps.db.update(videoJobs).set({ state: "running" }).where(eq(videoJobs.id, job.id)).run();
@@ -161,6 +168,7 @@ export class VideoService {
 
   /** Writes the outcome and tells the agent — unless the owner canceled the job meanwhile. */
   async #finish(job: Row, result: BridgeVideoResult): Promise<void> {
+    if (this.#stopped) return;
     const state = this.deps.db.select({ state: videoJobs.state }).from(videoJobs).where(eq(videoJobs.id, job.id)).get();
     if (state?.state !== "running") return; // canceled while the worker was busy
     if (result.error) {
@@ -229,10 +237,12 @@ export class VideoService {
   }
 
   #done(id: string, fields: { source: "subtitles" | "speech" | "frames" | "file"; chars: number; title: string | null; language: string | null; durationSec: number | null; frames?: number; fileName?: string; fileBytes?: number }): void {
+    if (this.#stopped) return;
     this.deps.db.update(videoJobs).set({ ...fields, state: "ready", error: null, finishedAt: new Date() }).where(eq(videoJobs.id, id)).run();
   }
 
   #fail(id: string, error: VideoJobError, fields: { title?: string | null; durationSec?: number | null } = {}): void {
+    if (this.#stopped) return;
     this.deps.db.update(videoJobs).set({ ...fields, state: "failed", error, finishedAt: new Date() }).where(eq(videoJobs.id, id)).run();
   }
 
@@ -267,6 +277,8 @@ export class VideoService {
   get current(): string | null {
     return this.#current;
   }
+
+  stopQueue(): void { this.#stopped = true; }
 
   /** Jobs of one agent, newest first. */
   forAgent(agentId: string): VideoJobDto[] {
@@ -305,6 +317,6 @@ function speechMessage(video: { title: string | null; url: string; durationSec: 
   ].join("\n");
 }
 
-const CODES = new Set<VideoJobError>(["invalid_url", "unsupported_host", "playlist_not_allowed", "too_long", "speech_not_configured", "site_refused", "not_found", "download_failed", "timeout", "audio_too_large", "file_too_large", "no_frames", "downloads_unavailable", "worker_unavailable", "panel_restarted"]);
+const CODES = new Set<VideoJobError>(["invalid_url", "unsupported_host", "playlist_not_allowed", "too_long", "speech_not_configured", "site_refused", "not_found", "download_failed", "timeout", "audio_too_large", "file_too_large", "no_frames", "downloads_unavailable", "worker_unavailable", "panel_restarted", "storage_quota_exceeded", "storage_unavailable", "storage_busy"]);
 /** A code the worker or the bridge reported, or a neutral one: no invented reason. */
 const knownError = (code: string | undefined): VideoJobError => (code && CODES.has(code as VideoJobError) ? (code as VideoJobError) : "download_failed");

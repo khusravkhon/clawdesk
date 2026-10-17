@@ -22,6 +22,8 @@ COPY --chmod=0755 docker-mountpoints.sh /usr/local/bin/docker
 COPY --from=gog /usr/local/bin/gog /usr/local/bin/gog
 # ClawDesk bridge: OpenClaw CLI steps without an RPC (MCP sign-in), for the panel, on loopback.
 COPY --chmod=0644 clawdesk-bridge.mjs clawdesk-backup.mjs clawdesk-teams.mjs clawdesk-oauth.mjs clawdesk-audio.mjs clawdesk-agent-folders.mjs clawdesk-file-sync.mjs clawdesk-video.mjs clawdesk-claude.mjs clawdesk-skills.mjs /usr/local/lib/
+COPY --chmod=0644 clawdesk-memory.mjs /usr/local/lib/
+COPY --chmod=0644 clawdesk-storage.mjs /usr/local/lib/
 COPY --chmod=0755 gateway-start.sh /usr/local/bin/clawdesk-gateway-start
 # ClawDesk's own skills (Figma), loaded through skills.load.extraDirs when the owner connects them.
 COPY skills /usr/local/share/clawdesk/skills
@@ -35,6 +37,8 @@ USER root
 # by hand. Updates come with a new ClawDesk image, never by itself (DISABLE_AUTOUPDATER).
 ARG CLAUDE_CODE_VERSION=2.1.301
 RUN npm install -g --no-fund --no-audit @anthropic-ai/claude-code@${CLAUDE_CODE_VERSION}   && node /usr/local/lib/node_modules/@anthropic-ai/claude-code/install.cjs   && claude --version   && npm cache clean --force
+# OpenMP is required by the managed llama.cpp CPU server used for local memory embeddings.
+RUN apt-get update && apt-get install -y --no-install-recommends libgomp1 && rm -rf /var/lib/apt/lists/*
 RUN mkdir -p /var/lib/clawdesk-sources/panel /var/lib/clawdesk-sources/freellmapi && chown -R node:node /var/lib/clawdesk-sources
 USER node
 ENTRYPOINT ["tini", "-s", "--", "/usr/local/bin/clawdesk-gateway-start"]

@@ -1,9 +1,9 @@
 import type { BudgetDto, SaveBudgetRequest } from "@clawdesk/shared";
 import { eq } from "drizzle-orm";
 import type { Logger } from "pino";
-import { buildUsage, rangeDays, type RawSessionsUsage } from "../dashboard/dashboard-service.js";
+import { buildUsage, dayKey, type RawSessionsUsage } from "../dashboard/dashboard-service.js";
 import type { Db } from "../db/client.js";
-import { schedules } from "../db/schema.js";
+import { schedules, spaces } from "../db/schema.js";
 import { getSetting, putSetting } from "../db/settings.js";
 import type { GatewayService } from "../gateway/gateway-service.js";
 
@@ -17,9 +17,18 @@ import type { GatewayService } from "../gateway/gateway-service.js";
 
 const LIMITS_SETTING = "budget.limits";
 const PAUSED_SETTING = "budget.pausedJobs";
+const USAGE_SETTING = "budget.lastUsage";
 
 type Deps = { gateway: GatewayService; db: Db; logger: Logger };
 type Limits = { dailyUsd: number; monthlyUsd: number };
+type UsageSnapshot = { today: number; month: number; incomplete: boolean; day: string; timeZone: string; updatedAt: number };
+
+export class BudgetUsageUnavailableError extends Error {
+  constructor() {
+    super("budget_usage_unavailable");
+    this.name = "BudgetUsageUnavailableError";
+  }
+}
 
 export class BudgetExceededError extends Error {
   constructor(readonly reason: "daily" | "monthly") {
@@ -49,6 +58,8 @@ export class BudgetService {
       reason,
       pausedSchedules: this.#paused().length,
       costIncomplete: spent.incomplete,
+      usageAvailable: spent.available,
+      lastUsageAt: spent.updatedAt,
     };
   }
 
@@ -63,7 +74,9 @@ export class BudgetService {
   async guard(timeZone: string, now = Date.now()): Promise<void> {
     const limits = this.limits();
     if (!limits.dailyUsd && !limits.monthlyUsd) return;
-    const reason = this.#reason(limits, await this.#spent(timeZone, now));
+    const spent = await this.#spent(timeZone, now);
+    if (!spent.available || spent.incomplete) throw new BudgetUsageUnavailableError();
+    const reason = this.#reason(limits, spent);
     if (reason !== "none") throw new BudgetExceededError(reason);
   }
 
@@ -75,7 +88,8 @@ export class BudgetService {
   async enforce(timeZone: string, now = Date.now()): Promise<BudgetDto> {
     const status = await this.status(timeZone, now);
     const paused = this.#paused();
-    if (status.exceeded) {
+    const limited = status.dailyUsd > 0 || status.monthlyUsd > 0;
+    if (status.exceeded || (limited && (!status.usageAvailable || status.costIncomplete))) {
       // Only jobs the panel created have an id here; a row without one has nothing to pause.
       const ours = this.deps.db.select({ id: schedules.openclawCronId, enabled: schedules.enabled }).from(schedules).all();
       const toPause = ours.filter((row) => row.id !== null && row.enabled && !paused.includes(row.id)).map((row) => row.id!);
@@ -124,23 +138,37 @@ export class BudgetService {
   }
 
   /** Today's and this month's cost, in the owner's own time zone. */
-  async #spent(timeZone: string, now: number): Promise<{ today: number; month: number; incomplete: boolean }> {
-    const days = rangeDays("30d", now, timeZone);
-    const today = days[days.length - 1]!;
+  async #spent(timeZone: string, now: number): Promise<{ today: number; month: number; incomplete: boolean; available: boolean; updatedAt: number | null }> {
+    timeZone = this.deps.db.select({ timezone: spaces.timezone }).from(spaces).where(eq(spaces.id, "default")).get()?.timezone ?? timeZone;
+    const today = dayKey(now, timeZone);
     const month = today.slice(0, 7);
-    const raw = await this.deps.gateway
-      .request<RawSessionsUsage>("sessions.usage", { agentScope: "all", startDate: days[0], endDate: today, mode: "specific", timeZone, limit: 500 })
-      .catch((error: Error) => {
-        // Without a usage report there is no basis to stop anything; the panel says so instead.
-        this.deps.logger.warn({ err: error }, "could not read usage for the spending limit");
-        return {} as RawSessionsUsage;
-      });
-    const usage = buildUsage(raw, days);
-    const daily = usage.daily;
-    return {
-      today: daily.find((day) => day.date === today)?.cost ?? 0,
-      month: daily.filter((day) => day.date.startsWith(month)).reduce((sum, day) => sum + day.cost, 0),
-      incomplete: usage.costIncomplete,
-    };
+    const days = Array.from({ length: Number(today.slice(8)) }, (_, index) => `${month}-${String(index + 1).padStart(2, "0")}`);
+    try {
+      const raw = await this.deps.gateway.request<RawSessionsUsage>("sessions.usage", { agentScope: "all", startDate: days[0], endDate: today, mode: "specific", timeZone, limit: 500 });
+      if (!Array.isArray(raw.aggregates?.daily)) throw new Error("usage report has no daily totals");
+      const usage = buildUsage(raw, days);
+      const snapshot: UsageSnapshot = {
+        today: usage.daily.find((day) => day.date === today)?.cost ?? 0,
+        month: usage.daily.reduce((sum, day) => sum + day.cost, 0),
+        incomplete: usage.costIncomplete,
+        day: today,
+        timeZone,
+        updatedAt: now,
+      };
+      putSetting(this.deps.db, USAGE_SETTING, snapshot);
+      return { ...snapshot, available: true };
+    } catch (error) {
+      // Without a usage report there is no basis to resume budget-paused work; the panel says so.
+      this.deps.logger.warn({ err: error }, "could not read usage for the spending limit");
+      const cached = getSetting<UsageSnapshot>(this.deps.db, USAGE_SETTING);
+      const sameMonth = cached?.timeZone === timeZone && cached.day.slice(0, 7) === month;
+      return {
+        today: sameMonth && cached.day === today ? cached.today : 0,
+        month: sameMonth ? cached.month : 0,
+        incomplete: true,
+        available: false,
+        updatedAt: cached?.updatedAt ?? null,
+      };
+    }
   }
 }

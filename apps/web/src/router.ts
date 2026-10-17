@@ -6,7 +6,8 @@ import { useSpaceStore } from "./stores/space";
 export const router = createRouter({
   history: createWebHistory(),
   routes: [
-    { path: "/", name: "dashboard", component: () => import("./views/DashboardView.vue") },
+    { path: "/", name: "dashboard", component: () => import("./views/LandingView.vue") },
+    { path: "/today", name: "today", component: () => import("./views/TodayView.vue"), meta: { aiOptional: true } },
     { path: "/assistant", name: "assistant", component: () => import("./views/AssistantView.vue") },
     { path: "/agents", name: "agents", component: () => import("./views/AgentsView.vue") },
     { path: "/agents/new", name: "agent-new", component: () => import("./views/AgentBuilderView.vue") },
@@ -90,6 +91,8 @@ router.beforeEach(async (to) => {
     }
   }
   if (!space.space && to.name !== "setup-mode" && !to.meta.aiOptional) return { name: "setup-mode" };
+  if (to.name === "today" && space.mode === "company") return { name: "dashboard" };
+  if (to.name === "dashboard" && space.mode === "personal") return true;
   if (to.name === "setup-mode" || to.name === "setup-ai" || to.meta.aiOptional || aiConnected === true || devSkipsAiGuard()) return true;
   if (aiConnected === null) {
     try {

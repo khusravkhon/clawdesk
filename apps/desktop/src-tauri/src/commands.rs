@@ -15,6 +15,7 @@ use tokio::sync::Mutex;
 pub struct AppState {
     pub store: Store,
     pub tunnels: Mutex<HashMap<String, Tunnel>>,
+    pub recovery: Mutex<Option<crate::recovery::Receipt>>,
 }
 
 type Res<T> = Result<T, String>;
@@ -105,7 +106,29 @@ pub async fn install_server(app: AppHandle, state: State<'_, AppState>, input: I
 /// "This computer": sets up (or updates) ClawDesk in Docker Desktop here.
 #[tauri::command]
 pub async fn install_local(app: AppHandle, state: State<'_, AppState>, name: String) -> Res<InstallResult> {
+    let _guard = state.recovery.lock().await;
     local::install(&app, &state.store, name).await.map_err(err)
+}
+
+#[tauri::command]
+pub async fn local_status(app: AppHandle) -> Res<crate::recovery::LocalStatus> {
+    crate::recovery::status(&app).await.map_err(err)
+}
+
+#[tauri::command]
+pub async fn inspect_local_backup(app: AppHandle, state: State<'_, AppState>, archive: String, password: String) -> Res<crate::recovery::Inspection> {
+    let mut pending = state.recovery.lock().await;
+    if let Some(old) = pending.take() { let _ = std::fs::remove_file(old.archive); }
+    let (inspection, receipt) = crate::recovery::inspect(&app, archive, password).await.map_err(err)?;
+    *pending = Some(receipt);
+    Ok(inspection)
+}
+
+#[tauri::command]
+pub async fn restore_local(app: AppHandle, state: State<'_, AppState>, receipt: String, confirmation: String, password: String) -> Res<()> {
+    let mut pending = state.recovery.lock().await;
+    if pending.as_ref().map(|p| p.id.as_str()) != Some(receipt.as_str()) { return Err("Inspect this backup again before restoring".into()); }
+    crate::recovery::restore(&app, pending.take().unwrap(), confirmation, password).await.map_err(err)
 }
 
 fn panel_label(id: &str) -> String {
@@ -134,7 +157,7 @@ pub async fn open_panel(app: AppHandle, state: State<'_, AppState>, id: String, 
     let mut server = state.store.get(&id).map_err(err)?;
     if server.local {
         // After a reboot Docker Desktop may not be running yet; the containers come back with it.
-        local::ensure_running().await.map_err(err)?;
+        local::ensure_running(&app).await.map_err(err)?;
     }
     let base = match &server.panel_url {
         Some(url) => url.clone(),

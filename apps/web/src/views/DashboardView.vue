@@ -32,26 +32,39 @@ const range = ref<DashboardRange>("7d");
 const data = ref<DashboardDto | null>(null);
 const loading = ref(false);
 const error = ref<string | null>(null);
+let active = false;
+let stopped = false;
+let queued = false;
+let rangeRevision = 0;
 
 async function load(): Promise<void> {
+  if (stopped || document.hidden) return;
+  if (active) { queued = true; return; }
+  active = true;
+  const selected = range.value;
+  const revision = rangeRevision;
   loading.value = true;
   try {
-    data.value = await api.dashboard(range.value);
-    error.value = null;
+    const result = await api.dashboard(selected);
+    if (!stopped && revision === rangeRevision) { data.value = result; error.value = null; }
   } catch (e) {
-    error.value = e instanceof ApiError ? e.body.message : String(e);
+    if (!stopped && revision === rangeRevision) error.value = e instanceof ApiError ? e.body.message : String(e);
   } finally {
+    active = false;
     loading.value = false;
+    if (queued && !stopped) { queued = false; void load(); }
   }
 }
 
 let timer: ReturnType<typeof setInterval> | undefined;
+const visibilityChanged = () => { if (!document.hidden) void load(); };
 onMounted(() => {
   void load();
   timer = setInterval(() => void load(), 30_000);
+  document.addEventListener("visibilitychange", visibilityChanged);
 });
-onUnmounted(() => clearInterval(timer));
-watch(range, () => void load());
+onUnmounted(() => { stopped = true; clearInterval(timer); document.removeEventListener("visibilitychange", visibilityChanged); });
+watch(range, () => { rangeRevision++; data.value = null; error.value = null; void load(); });
 
 const loc = computed(() => locale.value);
 const usage = computed(() => data.value?.usage ?? null);
@@ -63,6 +76,7 @@ const agentCounts = computed(() => {
 });
 const runs = computed(() => data.value?.schedules?.runs ?? { ok: 0, error: 0, skipped: 0 });
 const successRate = computed(() => {
+  if (!data.value?.schedules?.historyComplete) return null;
   const done = runs.value.ok + runs.value.error;
   return done ? Math.round((runs.value.ok / done) * 100) : null;
 });
@@ -162,7 +176,7 @@ const subtitle = computed(() => t("dash.subtitle", { days: range.value.replace("
           :icon="CalendarClock"
           :label="t('dash.kpi.schedules')"
           :value="successRate === null ? '—' : `${successRate}%`"
-          :note="successRate === null ? t('dash.kpi.noRuns') : t('dash.kpi.runs', { ok: runs.ok, e: runs.error })"
+          :note="data.schedules && !data.schedules.historyComplete ? t('dash.schedules.partial') : successRate === null ? (data.errors.schedules ? t('dash.schedules.unavailable') : t('dash.kpi.noRuns')) : t('dash.kpi.runs', { ok: runs.ok, e: runs.error })"
         />
       </template>
       <template v-else>
@@ -239,6 +253,7 @@ const subtitle = computed(() => t("dash.subtitle", { days: range.value.replace("
         </template>
         <n-alert v-if="data?.errors.schedules" type="warning" :bordered="false">{{ data.errors.schedules }}</n-alert>
         <template v-else-if="data?.schedules">
+          <n-alert v-if="!data.schedules.historyComplete" type="warning" class="block">{{ t(data.schedules.historyReason === 'unknown_jobs' ? "dash.schedules.unknownJobs" : "dash.schedules.partial") }}</n-alert>
           <n-empty v-if="!data.schedules.upcoming.length" :description="t('dash.schedules.empty')" size="small" class="empty">
             <template #extra>
               <n-button size="small" @click="$router.push('/schedules')">{{ t("schedules.new") }}</n-button>

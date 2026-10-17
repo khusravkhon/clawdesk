@@ -9,6 +9,7 @@ import { darkTheme, NAlert, NButton, NCard, NConfigProvider, NEmpty, NGlobalStyl
 import { computed, onMounted, onUnmounted, reactive, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import { api, errorText, type InstallInput, type Server } from "./api";
+import LocalRecovery from './LocalRecovery.vue';
 
 const { t } = useI18n();
 
@@ -207,6 +208,7 @@ watch(view, () => {
               </template>
               <n-button v-else @click="view = 'local'">{{ t("localSetup") }}</n-button>
             </div>
+            <LocalRecovery v-if="localServer" />
           </n-card>
 
           <div class="row">

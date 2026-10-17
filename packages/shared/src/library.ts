@@ -50,7 +50,7 @@ export type MemoryNoteDto = z.infer<typeof MemoryNoteDto>;
 export const MemoryNotesDto = z.object({
   agentId: z.string(),
   notes: z.array(MemoryNoteDto),
-  /** The panel wrote these notes into the agent's USER.md at least once. */
+  /** The panel successfully wrote the current notes into the agent's USER.md. */
   applied: z.boolean(),
 });
 export type MemoryNotesDto = z.infer<typeof MemoryNotesDto>;
@@ -81,6 +81,9 @@ export const BudgetDto = z.object({
   pausedSchedules: z.number().int().nonnegative(),
   /** The Gateway reported usage without cost for some entries, so the spend is a lower bound. */
   costIncomplete: z.boolean(),
+  /** False when the latest usage request failed; cached values are not a current report. */
+  usageAvailable: z.boolean(),
+  lastUsageAt: z.number().nullable(),
 });
 export type BudgetDto = z.infer<typeof BudgetDto>;
 

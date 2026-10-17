@@ -186,6 +186,21 @@ export class TelegramService {
     return Promise.all([...ids].sort().map(async (accountId) => ({ ...(await this.status(accountId)), bot: this.#bot(accountId), accountId, agentId: this.#agent(config, accountId) })));
   }
 
+  /** Read-only daily health: no owner recovery, and no failed status request disguised as a stopped bot. */
+  async connectionStatus(): Promise<{ accountId: string; running: boolean }[]> {
+    const { config } = await getConfig<TelegramRoot>(this.gateway);
+    const tg = config.channels?.telegram;
+    const ids = new Set(Object.keys(tg?.accounts ?? {}));
+    if (tg?.botToken) ids.add("default");
+    if (!ids.size) return [];
+    const res = await this.gateway.request<{ channelAccounts?: { telegram?: { accountId?: string; running?: boolean; connected?: boolean }[] } }>("channels.status", { channel: "telegram" });
+    return [...ids].sort().map((accountId) => {
+      const account = res.channelAccounts?.telegram?.find((a) => a.accountId === accountId);
+      if (!account || (typeof account.running !== "boolean" && typeof account.connected !== "boolean")) throw new Error("telegram_status_unknown");
+      return { accountId, running: account.running === true || account.connected === true };
+    });
+  }
+
   async addBot(token: string, agentId: string): Promise<TelegramBotDto> {
     const accountId = (await this.accounts()).length ? `bot-${crypto.randomUUID().slice(0, 12)}` : "default";
     await this.connect(token, agentId, accountId);

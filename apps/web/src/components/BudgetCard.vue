@@ -7,7 +7,7 @@ import { NAlert, NButton, NInputNumber, useMessage } from "naive-ui";
 import { computed, onMounted, ref } from "vue";
 import { useI18n } from "vue-i18n";
 import { api, ApiError } from "../api/client";
-import { formatCost } from "../format";
+import { formatCost, formatDateTime } from "../format";
 
 const { t, locale } = useI18n();
 const message = useMessage();
@@ -53,20 +53,29 @@ async function save(): Promise<void> {
     <h2 class="card-title">{{ t("budget.title") }}</h2>
     <p class="hint">{{ t("budget.lead") }}</p>
 
+    <n-alert v-if="!data.usageAvailable" type="warning" :bordered="false" class="block">
+      {{ t("budget.unavailable") }}
+      <span v-if="data.lastUsageAt">{{ t("budget.lastUsage", { at: formatDateTime(new Date(data.lastUsageAt).toISOString(), locale) }) }}</span>
+      <template v-if="data.pausedSchedules">&nbsp;{{ t("budget.paused", { count: data.pausedSchedules }) }}</template>
+    </n-alert>
+
     <n-alert v-if="data.exceeded" type="warning" :bordered="false" class="block">
       {{ t("budget.exceeded." + data.reason) }}
       <template v-if="data.pausedSchedules">&nbsp;{{ t("budget.paused", { count: data.pausedSchedules }) }}</template>
     </n-alert>
-    <n-alert v-if="data.costIncomplete" type="info" :bordered="false" class="block">{{ t("budget.incomplete") }}</n-alert>
+    <n-alert v-if="data.usageAvailable && data.costIncomplete" type="warning" :bordered="false" class="block">
+      {{ t("budget.incomplete") }}
+      <template v-if="data.pausedSchedules">&nbsp;{{ t("budget.paused", { count: data.pausedSchedules }) }}</template>
+    </n-alert>
 
     <dl class="spent">
       <div>
         <dt>{{ t("budget.today") }}</dt>
-        <dd>{{ money(data.spentTodayUsd) }}<span v-if="data.dailyUsd"> / {{ money(data.dailyUsd) }}</span></dd>
+        <dd>{{ data.usageAvailable ? money(data.spentTodayUsd) : "—" }}<span v-if="data.dailyUsd"> / {{ money(data.dailyUsd) }}</span></dd>
       </div>
       <div>
         <dt>{{ t("budget.month") }}</dt>
-        <dd>{{ money(data.spentMonthUsd) }}<span v-if="data.monthlyUsd"> / {{ money(data.monthlyUsd) }}</span></dd>
+        <dd>{{ data.usageAvailable ? money(data.spentMonthUsd) : "—" }}<span v-if="data.monthlyUsd"> / {{ money(data.monthlyUsd) }}</span></dd>
       </div>
     </dl>
 

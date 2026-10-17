@@ -7,6 +7,11 @@ import type {
   ApprovalDecision,
   ApprovalsDto,
   AssistantDto,
+  TodayDto,
+  ReminderListDto,
+  ReminderActionRequest,
+  ReminderPreferences,
+  CreateReminderRequest,
   AssistantProfile,
   AuthStateDto,
   AuditPageDto,
@@ -23,6 +28,8 @@ import type {
   BackupsDto,
   FactoryResetResultDto,
   MemoryProvider,
+  LocalMemoryStatusDto,
+  LocalMemorySearchDto,
   ExecMode,
   ChatAttachmentInput,
   ChatAttachmentLimitsDto,
@@ -121,6 +128,13 @@ export function browserTimeZone(): string {
 const q = (agentId: string) => `agentId=${encodeURIComponent(agentId)}`;
 
 export const api = {
+  today: () => request<TodayDto>("/api/today"),
+  reminders: {
+    list: () => request<ReminderListDto>("/api/reminders"),
+    create: (body: CreateReminderRequest) => post<ReminderListDto>("/api/reminders", body),
+    action: (id: string, body: ReminderActionRequest) => post<ReminderListDto>(`/api/reminders/${encodeURIComponent(id)}/action`, body),
+    preferences: (body: ReminderPreferences) => put<ReminderListDto>("/api/reminders/preferences", body),
+  },
   auth: {
     state: () => request<AuthStateDto>("/api/auth/state"),
     setup: (code: string, password: string) => post<AuthStateDto>("/api/auth/setup", { code, password }),
@@ -161,6 +175,10 @@ export const api = {
     create: (body: CreateSpaceRequest) => post<SpaceDto>("/api/space", body),
   },
   system: {
+    storage: () => request<import("@clawdesk/shared").StorageStatusDto>("/api/system/storage"),
+    storageQuota: (videoQuotaBytes: number | null) => post<import("@clawdesk/shared").StorageStatusDto>("/api/system/storage/quota", { videoQuotaBytes }),
+    storagePreview: (category: import("@clawdesk/shared").StorageCategory) => post<import("@clawdesk/shared").StoragePreviewDto>("/api/system/storage/preview", { category }),
+    storageCleanup: (token: string) => post<import("@clawdesk/shared").StorageCleanupDto>("/api/system/storage/cleanup", { token, confirm: true }),
     backups: () => request<BackupsDto>("/api/system/backups"),
     createBackup: () => post<BackupDto>("/api/system/backups"),
     /** The encrypted copy as a file; the password never goes into a URL. */
@@ -217,6 +235,9 @@ export const api = {
     save: (profile: AssistantProfile) =>
       request<AssistantDto>("/api/assistant", { method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify(profile) }),
     setMemory: (provider: MemoryProvider) => post<AssistantDto>("/api/assistant/memory", { provider }),
+    localMemory: () => request<LocalMemoryStatusDto>("/api/assistant/local-memory"),
+    localMemorySearch: (agentId: string, query: string) => post<LocalMemorySearchDto>("/api/assistant/local-memory/search", { agentId, query }),
+    localMemoryAction: (action: "setup" | "reindex" | "check", consent = false) => post<LocalMemoryStatusDto>("/api/assistant/local-memory", { action, consent }),
   },
   schedules: {
     list: () => request<ScheduleListDto>("/api/schedules"),
@@ -249,6 +270,7 @@ export const api = {
   },
   memory: {
     notes: (agentId: string) => request<MemoryNotesDto>("/api/memory/" + encodeURIComponent(agentId) + "/notes"),
+    sync: (agentId: string) => post<MemoryNotesDto>("/api/memory/" + encodeURIComponent(agentId) + "/notes/sync", {}),
     add: (agentId: string, body: SaveMemoryNoteRequest) => post<MemoryNotesDto>("/api/memory/" + encodeURIComponent(agentId) + "/notes", body),
     update: (agentId: string, id: string, body: SaveMemoryNoteRequest) =>
       request<MemoryNotesDto>("/api/memory/" + encodeURIComponent(agentId) + "/notes/" + encodeURIComponent(id), {

@@ -147,7 +147,13 @@ async function studyVideo(mode: VideoJobMode = "study"): Promise<void> {
     videoJobs.value = [job, ...videoJobs.value];
     draft.value = "";
   } catch (e) {
-    message.error(e instanceof ApiError ? e.body.message : String(e));
+    if (e instanceof ApiError && e.body.error === "budget_usage_unavailable") {
+      message.error(t("budget.unavailable"));
+    } else if (e instanceof ApiError && e.body.error === "budget_exceeded") {
+      message.error(t("budget.exceeded." + e.body.message));
+    } else {
+      message.error(e instanceof ApiError ? e.body.message : String(e));
+    }
   } finally {
     studying.value = false;
   }
@@ -471,7 +477,7 @@ watch(agentId, () => void open());
     </div>
 
     <footer class="composer">
-      <LibrarySearch :key="agentId" :agent-id="agentId" />
+      <div id="library"><LibrarySearch :key="agentId" :agent-id="agentId" /></div>
       <div v-if="agentVideoJobs.length" class="videos">
         <span v-for="job in agentVideoJobs" :key="job.id" class="file staged-file">
           <film :size="12" /> {{ job.title ?? job.url }} — {{ videoLine(job) }}

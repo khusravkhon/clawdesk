@@ -1,4 +1,35 @@
 {
+  "storage": {
+    "title": "Storage",
+    "about": "Cleanup removes only listed videos or previous versions in registered agent folders. Working files, transcripts and notes stay.",
+    "refresh": "Refresh",
+    "free": "Available filesystem space",
+    "videos": "Video originals",
+    "history": "Previous file versions",
+    "files": "files",
+    "reserved": "Download reservations: {bytes} · running: {jobs}",
+    "quota": "Limit for new video originals (MiB)",
+    "unlimited": "No limit",
+    "save": "Save limit",
+    "saved": "Storage limit saved",
+    "quotaHint": "Empty means no limit. Originals are never removed automatically. Sizes are logical: other hard links may retain data after cleanup.",
+    "preview": "Review cleanup",
+    "confirmTitle": "Confirm cleanup",
+    "confirmAbout": "Delete these {files} files ({bytes} logical size)? This cannot be undone here.",
+    "expires": "This exact selection expires in 5 minutes",
+    "more": "At most 500 files per selection. Active downloads and unmanaged files are excluded.",
+    "confirmCheck": "I reviewed these files and want to delete them",
+    "cancel": "Cancel",
+    "delete": "Delete listed files",
+    "cleaned": "Deleted {files} files ({bytes} logical size); changed or unavailable: {skipped}",
+    "retained": "Retained after a change during cleanup: {count}. Review the listed .clawdesk-cleanup-* entries beside the original; the panel does not remove them.",
+    "errors": {
+      "storage_busy": "A video worker is still running. Wait and retry.",
+      "preview_expired": "The selection expired or was used. Review a new selection.",
+      "storage_quota_exceeded": "Storage limit reached. Review cleanup or increase the limit in System.",
+      "storage_unavailable": "Usage could not be verified. Check Docker and folder access. Configured quotas block new downloads until verification."
+    }
+  },
   "app": {
     "title": "ClawDesk"
   },
@@ -348,6 +379,9 @@
     },
     "schedules": {
       "title": "Schedules",
+      "partial": "Run history is incomplete. Counts cover received records only; success rate is unavailable.",
+      "unavailable": "Run history unavailable",
+      "unknownJobs": "Totals cover current schedules. Some history cannot be classified as user or system tasks, for example after a schedule is deleted.",
       "upcoming": "Upcoming",
       "recent": "Recent runs",
       "empty": "No schedules yet. Create an agent with a schedule.",
@@ -570,6 +604,9 @@
         "panel_restarted": "the panel restarted while it was running — start it again",
         "file_too_large": "the file is over the size limit — the panel does not keep it",
         "no_frames": "no frame could be taken: the video has no readable picture",
+        "storage_quota_exceeded": "Video storage limit reached. Review cleanup or increase the limit in System.",
+        "storage_unavailable": "Storage usage could not be verified. Check Docker and folder access, then refresh. Configured quotas block new downloads until verification.",
+        "storage_busy": "A video worker is still running. Wait and retry.",
         "downloads_unavailable": "this install does not keep video originals"
       },
       "frames": "Look at the frames",
@@ -706,8 +743,8 @@
     "saved": "“{name}” updated",
     "memory": {
       "title": "Memory",
-      "lead": "The assistant remembers what matters from conversations and finds it later. Search by meaning works through the connected AI.",
-      "broken": "Memory is set to OpenAI without a key and does not work. Pick an option below.",
+      "lead": "Memory readiness is separate from chat sign-in. The local model searches notes by meaning. Checks and reindexing below only use local embeddings. Cloud search needs separate API credits.",
+      "broken": "The selected search provider has no connection. Chat sign-in does not confirm memory readiness.",
       "opt": {
         "gemini": "Google Gemini",
         "openai": "OpenAI",
@@ -967,7 +1004,9 @@
         "save": "Agent template saved",
         "delete": "Agent template deleted"
       }
-    }
+    },
+    "laterSuccess": "A later run succeeded at {at}. This does not confirm resolution of the specific cause.",
+    "recoveryUnknown": "This log page contains no later successful run. Check current readiness separately."
   },
   "usageMetrics": {
     "processed": "Tokens processed",
@@ -1051,6 +1090,8 @@
   "memory": {
     "notes": {
       "title": "What the agent knows about you",
+      "pending": "Notes are saved in the panel but have not reached the agent yet. The panel will retry when the connection is restored.",
+      "retry": "Retry synchronization",
       "lead": "The owner's notes: a fact, its source and its date. The panel writes them into the agent's file, where it reads them as its own knowledge. Any note can be corrected or deleted.",
       "empty": "No notes yet.",
       "noSource": "no source",
@@ -1069,6 +1110,8 @@
   },
   "budget": {
     "title": "Spending limits",
+    "unavailable": "Spending data is unavailable or incomplete. With limits enabled, automatic tasks are paused until spending can be checked. Your messages remain available.",
+    "lastUsage": "Last report: {at}.",
     "lead": "What a day and a month may cost. At the limit the panel stops starting work by itself: schedules pause and no new video is taken. Your own messages are never blocked.",
     "today": "Today",
     "month": "This month",
@@ -1149,5 +1192,147 @@
     "noneYet": "The shared list is empty so far.",
     "skillsShort": "Skills",
     "mcpShort": "MCP servers"
+  },
+  "localMemory": {
+    "title": "Local memory search",
+    "about": "Memory readiness is separate from chat sign-in. The local model searches notes by meaning. Checks and reindexing below only use local embeddings. Cloud search needs separate API credits.",
+    "consent": "Allow the official llama.cpp 2026.8.1 plugin to download a verified engine and memory model (about 330 MB) and run locally.",
+    "install": "Install and enable",
+    "check": "Check memory",
+    "reindex": "Reindex",
+    "reconnect": "Refresh connection",
+    "checked": "Checked:",
+    "canLeave": "You can leave this page while the operation runs. Retry interrupted operations after a service restart.",
+    "files": "files",
+    "chunks": "chunks",
+    "searchAgent": "Agent",
+    "searchHint": "Enter a fact from a saved note",
+    "search": "Test search",
+    "stale": "Results may be incomplete. Reindex memory.",
+    "noResults": "No matches. Check that the note was applied to this agent, then reindex.",
+    "state": {
+      "idle": "Memory not checked",
+      "installing": "Installing plugin",
+      "downloading": "Downloading and verifying SHA-256",
+      "configuring": "Applying settings",
+      "indexing": "Indexing local notes",
+      "checking": "Checking memory model",
+      "ready": "Last operation completed",
+      "error": "Operation did not complete"
+    },
+    "index": {
+      "ready": "Index up to date",
+      "pending": "Index needs checking"
+    },
+    "embeddings": {
+      "ready": "Memory model ready",
+      "error": "Memory model unavailable",
+      "unchecked": "Memory model not checked"
+    },
+    "errors": {
+      "bridge_unavailable": "Setup service unavailable. Start Docker and ClawDesk, then refresh the connection.",
+      "download_limited": "Download host returned 429. Wait and retry. This is separate from ChatGPT limits.",
+      "download_failed": "Download failed. Check the network and retry.",
+      "verification_failed": "File verification failed. Retry installation; unverified files are not used.",
+      "disk_full": "Disk is full. Free space and retry.",
+      "setup_conflict": "Custom llama.cpp or memory settings exist. Setup preserves them. Check the existing search.",
+      "setup_incompatible": "Unsupported plugin version or setup flow. Update ClawDesk.",
+      "interrupted": "Service restarted during this operation. Check memory first, then retry setup or reindexing.",
+      "state_unavailable": "Cannot read setup state. Check data folder permissions.",
+      "status_unavailable": "Cannot check memory. Restore the Gateway connection and retry.",
+      "memory_not_ready": "Local memory is not ready. Check the model and try reindexing.",
+      "memory_failed": "Memory operation failed. Check the connection and retry.",
+      "local_required": "This agent uses another provider. This page only tests local search.",
+      "memory_busy": "Wait for the current operation.",
+      "consent_required": "Confirm the model download before installing."
+    }
+  },
+  "today": {
+    "title": "Today",
+    "subtitle": "Your reminders, decisions and next step.",
+    "refresh": "Refresh",
+    "offline": "The browser reports no internet",
+    "loadFailed": "The panel did not respond",
+    "kept": "Saved data is kept. The local panel can work without internet; try refreshing.",
+    "updated": "Snapshot: {time}",
+    "nextTitle": "Next step",
+    "open": "Open",
+    "reminders": "Reminders",
+    "unknown": "Status unknown",
+    "neverChecked": "not checked yet",
+    "fixedNote": "Fixed text without a model request. Telegram delivery and your completion are separate states.",
+    "noReminders": "No open reminders",
+    "sentAt": "Delivered: {time}",
+    "done": "Done",
+    "later": "In 30 minutes",
+    "skip": "Skip",
+    "history": "Recently completed",
+    "newReminder": "New reminder",
+    "reminderPlaceholder": "What should we remind you of?",
+    "when": "When ({zone} time)",
+    "add": "Add",
+    "quietHours": "Quiet hours",
+    "quietNote": "Applies only to these reminders. Agent tasks and bots keep their own schedules.",
+    "enabled": "Enabled",
+    "from": "From",
+    "until": "Until",
+    "save": "Save",
+    "saved": "Saved",
+    "actionFailed": "Operation not confirmed. Refresh the list and retry if needed.",
+    "futureRequired": "Choose a future time",
+    "approvals": "Needs your decision",
+    "approvalCount": "Awaiting a decision: {count}",
+    "reviewApprovals": "Review, then allow or deny",
+    "connection": "Connection",
+    "gateway": "Gateway",
+    "connected": "connected",
+    "running": "running",
+    "stopped": "stopped",
+    "diagnostics": "Diagnostics",
+    "memory": "Compact memory",
+    "facts": "Owner facts: {count}",
+    "compactNote": "Keep short facts in the profile. Long materials stay in the library and are retrieved on demand. Edit sources and dates in notes.",
+    "pending": "Notes for {agent} await synchronization",
+    "sync": "Retry synchronization",
+    "syncPending": "Notes are saved; applying them is not yet confirmed",
+    "search": "Memory search",
+    "checked": "Last check: {time}",
+    "ownerFacts": "Owner facts",
+    "materials": "Library materials",
+    "searchSetup": "Check search",
+    "agentSchedules": "Upcoming agent tasks",
+    "agentSchedulesNote": "These are separate model tasks. Marking a reminder done does not disable or delete these schedules.",
+    "manageSchedules": "Manage schedules",
+    "noSnapshot": "No snapshot yet. Status and task counts are unknown.",
+    "partial": "Only part of the reminder list is shown. Open reminders are shown first.",
+    "next": {
+      "connection": "Check the system connection. Some information is currently unavailable.",
+      "checkApprovals": "Check approvals: the current queue status is unknown.",
+      "approval": "An agent needs your permission. Review the request first.",
+      "sync": "Apply your saved notes to agent memory.",
+      "reminder": "A reminder is due.",
+      "chat": "Ask the assistant or add your next reminder.",
+      "telegram": "Check the Telegram connection and the owner selected for reminder delivery."
+    },
+    "delivery": {
+      "pending": "Awaiting delivery",
+      "deferred": "Delivery deferred",
+      "sending": "Sending",
+      "sent": "Delivered to Telegram",
+      "unknown": "Delivery unknown — no automatic resend",
+      "expired": "Delivery expired"
+    },
+    "action": {
+      "done": "Done",
+      "skipped": "Skipped",
+      "snoozed": "Snoozed"
+    },
+    "searchHealth": {
+      "unknown": "unknown",
+      "unchecked": "not checked yet",
+      "error": "needs attention",
+      "ready": "last check succeeded",
+      "pending": "index not ready"
+    }
   }
 }

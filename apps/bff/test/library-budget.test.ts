@@ -30,15 +30,15 @@ describe("the owner's library (screen 9)", () => {
       expect(found.hits).toHaveLength(1);
       expect(found.hits[0]).toMatchObject({ agentId: "accountant", kind: "document", source: "budget.xlsx", locator: "лист" });
       expect(found.hits[0]!.snippets[0]!.text).toContain("Аренда офиса");
-      expect(found.searched).toBe(2);
+      expect(found.searched).toBe(1);
       expect(found.partial).toBe(false);
 
       // A search for one agent never reaches another agent's materials.
       expect(library.search("аренда", "trainer").hits).toEqual([]);
       expect(library.search("спину", "trainer").hits).toHaveLength(1);
-      // An empty query finds nothing but still says how much there was to search.
+      // An empty query finds nothing and does not read material texts.
       expect(library.search("  ").hits).toEqual([]);
-      expect(library.search("  ").searched).toBe(2);
+      expect(library.search("  ").searched).toBe(0);
     } finally {
       cleanup();
     }

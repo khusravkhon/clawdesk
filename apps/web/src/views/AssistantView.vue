@@ -8,11 +8,14 @@ import { useI18n } from "vue-i18n";
 import { api, ApiError } from "../api/client";
 import AgentExtensions from "../components/AgentExtensions.vue";
 import MemoryNotes from "../components/MemoryNotes.vue";
+import LocalMemorySetup from "../components/LocalMemorySetup.vue";
+import { useSpaceStore } from "../stores/space";
 import ModelChain from "../components/ModelChain.vue";
 import PageHeader from "../components/ui/PageHeader.vue";
 
 const { t } = useI18n();
 const message = useMessage();
+const space = useSpaceStore();
 const data = ref<AssistantDto | null>(null);
 const form = reactive<AssistantProfile>({ name: "", emoji: "🧭", character: "", aboutUser: "", summaryMaxLines: 10 });
 const saving = ref(false);
@@ -136,9 +139,9 @@ onMounted(load);
       <ModelChain agent-id="main" />
       <AgentExtensions agent-id="main" />
 
-      <MemoryNotes agent-id="main" />
+      <div id="memory-notes"><MemoryNotes agent-id="main" /></div>
 
-      <section class="card memory">
+      <section id="memory-search" class="card memory">
         <h2 class="card-title"><brain :size="16" /> {{ t("assistant.memory.title") }}</h2>
         <p class="hint">{{ t("assistant.memory.lead") }}</p>
         <n-alert v-if="data.memory.broken" type="warning" :bordered="false" class="block">{{ t("assistant.memory.broken") }}</n-alert>
@@ -160,6 +163,7 @@ onMounted(load);
             <span v-if="memorySaving === o" class="opt-desc">{{ t("assistant.memory.restarting") }}</span>
           </button>
         </div>
+        <LocalMemorySetup v-if="space.mode === 'personal'" />
       </section>
     </template>
   </div>

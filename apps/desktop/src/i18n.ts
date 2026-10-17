@@ -50,6 +50,19 @@ const ru = {
   localNeedTime: "Первый запуск собирает программы — это 5–15 минут.",
   localUpdated: "ClawDesk на этом компьютере обновлён и запущен.",
   localRemoveConfirm: "Убрать из приложения? ClawDesk и его данные останутся в Docker Desktop.",
+  localIdentity: 'Личная установка: {project} · {address} · OpenClaw {version} · Данные: {folder}',
+  unknownVersion: 'не определена',
+  localRunning: 'Gateway запущен. Проверочные установки здесь не отображаются.',
+  localStopped: 'Gateway остановлен или Docker недоступен.',
+  recoveryOpen: 'Восстановить из архива',
+  recoveryLead: 'Укажите локальный архив, сохранённый через Система → Резервные копии. Проверка совместимости выполняется до остановки установки. Проверка архива не гарантирует работу внешних подключений после восстановления.',
+  recoveryFile: 'Полный путь к архиву .tar или .tar.enc',
+  recoveryPassword: 'Пароль скачанной копии (для обычного .tar оставьте пустым)',
+  recoveryWarning: 'Будет заменена только установка {project}: {address}, данные {folder}. Архив от {date}, OpenClaw {version}. Текущие заметки, чаты, SQLite, ключи, Telegram, расписания, пароль панели и общие файлы заменятся содержимым архива. Подключённые боты и расписания могут возобновить работу после запуска. Резервные копии сохранятся. Сохраните свежую копию перед продолжением.',
+  recoveryConfirm: 'Для подтверждения введите RESTORE {project}',
+  recoveryInspect: 'Проверить архив и цель',
+  recoveryStart: 'Заменить данные выбранной установки',
+  recoveryDone: 'Архив восстановлен, запуск выполнен. Откройте панель с паролем из архива и проверьте память, расписания и подключения.',
 };
 
 const en: typeof ru = {
@@ -100,6 +113,19 @@ const en: typeof ru = {
   localNeedTime: "The first start builds the programs — 5 to 15 minutes.",
   localUpdated: "ClawDesk on this computer is updated and running.",
   localRemoveConfirm: "Remove it from the app? ClawDesk and its data stay in Docker Desktop.",
+  localIdentity: 'Personal installation: {project} · {address} · OpenClaw {version} · Data: {folder}',
+  unknownVersion: 'unknown',
+  localRunning: 'Gateway is running. Verification stacks are not displayed here.',
+  localStopped: 'Gateway is stopped or Docker is unavailable.',
+  recoveryOpen: 'Restore from an archive',
+  recoveryLead: 'Enter the local archive saved through System → Backups. Compatibility is checked before stopping this installation. Archive validation does not prove external connections will work after recovery.',
+  recoveryFile: 'Full path to a .tar or .tar.enc backup',
+  recoveryPassword: 'Downloaded backup password (leave empty for a plain .tar)',
+  recoveryWarning: 'Only {project} will be replaced: {address}, data {folder}. Backup: {date}, OpenClaw {version}. Current notes, chats, SQLite, keys, Telegram, schedules, panel password and shared files will be replaced. Connected bots and schedules may resume after startup. Backups remain. Save a fresh backup before continuing.',
+  recoveryConfirm: 'Type RESTORE {project} to confirm',
+  recoveryInspect: 'Check archive and target',
+  recoveryStart: 'Replace this installation’s data',
+  recoveryDone: 'Archive restored and startup requested. Open the panel with the archived password and check memory, schedules and connections.',
 };
 
 const tg: typeof ru = {
@@ -127,6 +153,19 @@ const tg: typeof ru = {
   localNeedTime: "Оғози аввал барномаҳоро месозад — 5–15 дақиқа.",
   localUpdated: "ClawDesk дар ҳамин компютер нав карда шуд ва кор мекунад.",
   localRemoveConfirm: "Аз барнома хориҷ кунем? ClawDesk ва маълумоти он дар Docker Desktop мемонанд.",
+  localIdentity: 'Насби шахсӣ: {project} · {address} · OpenClaw {version} · Маълумот: {folder}',
+  unknownVersion: 'номаълум',
+  localRunning: 'Gateway кор мекунад. Насбҳои санҷишӣ дар ин ҷо нишон дода намешаванд.',
+  localStopped: 'Gateway қатъ шудааст ё Docker дастрас нест.',
+  recoveryOpen: 'Барқарор кардан аз бойгонӣ',
+  recoveryLead: 'Роҳи бойгонии маҳаллиро аз Система → Нусхаҳои эҳтиётӣ ворид кунед. Мутобиқат пеш аз қатъи насб санҷида мешавад. Санҷиши бойгонӣ кори пайвастҳои берунаро кафолат намедиҳад.',
+  recoveryFile: 'Роҳи пурра ба бойгонии .tar ё .tar.enc',
+  recoveryPassword: 'Рамзи нусхаи боршуда (барои .tar холӣ монед)',
+  recoveryWarning: 'Танҳо насби {project} иваз мешавад: {address}, маълумот {folder}. Бойгонӣ аз {date}, OpenClaw {version}. Қайдҳо, чатҳо, SQLite, калидҳо, Telegram, ҷадвалҳо, рамзи панел ва файлҳо иваз мешаванд. Ботҳо ва ҷадвалҳо метавонанд баъди оғоз кор кунанд. Нусхаҳои эҳтиётӣ мемонанд. Пеш аз идома нусхаи нав созед.',
+  recoveryConfirm: 'Барои тасдиқ RESTORE {project} нависед',
+  recoveryInspect: 'Санҷидани бойгонӣ ва насб',
+  recoveryStart: 'Иваз кардани маълумоти ин насб',
+  recoveryDone: 'Бойгонӣ барқарор шуд ва оғоз дархост шуд. Бо рамзи бойгонӣ панелро кушоед ва хотира, ҷадвалҳо ва пайвастҳоро санҷед.',
 };
 
 const saved = (() => {

@@ -44,8 +44,13 @@ export type InstallInput = {
 export type InstallResult = { server: Server; setupUrl: string | null };
 export type InstallLog = { line: string };
 export type InstallStep = { step: string; index: number };
+export type LocalStatus = { project: string; dataDir: string; address: string; version: string | null; running: boolean };
+export type RecoveryInspection = { receipt: string; target: LocalStatus; manifest: { createdAt: string; openclawVersion: string; kind: string } };
 
 export const api = {
+  localStatus: () => invoke<LocalStatus>('local_status'),
+  inspectLocalBackup: (archive: string, password: string) => invoke<RecoveryInspection>('inspect_local_backup', { archive, password }),
+  restoreLocal: (receipt: string, confirmation: string, password: string) => invoke<void>('restore_local', { receipt, confirmation, password }),
   listServers: () => invoke<Server[]>("list_servers"),
   addServer: (input: AddServerInput) => invoke<Server>("add_server", { input }),
   removeServer: (id: string) => invoke<void>("remove_server", { id }),

@@ -80,6 +80,8 @@ type RawAuditEvent = {
   status: string;
   toolName?: string;
   errorCode?: string;
+  runId?: string;
+  sessionKey?: string;
 };
 
 export class AuditService {
@@ -166,7 +168,16 @@ export class AuditService {
       const res = await this.deps.gateway.request<{ events: RawAuditEvent[]; nextCursor?: string }>("audit.list", { limit: PAGE, ...(opts.cursor ? { cursor: opts.cursor } : {}) });
       agents = res.events
         .filter((e) => e.action.endsWith(".finished"))
-        .map((e) => ({ id: e.eventId, at: e.occurredAt, agentId: e.agentId ?? null, action: e.action, status: e.status, toolName: e.toolName ?? null, errorCode: e.errorCode ?? null }));
+        .map((e) => {
+          const later = e.status === "failed" && e.agentId ? res.events.filter((candidate) =>
+            candidate.agentId === e.agentId && candidate.action === e.action && candidate.toolName === e.toolName && candidate.status === "succeeded" && candidate.occurredAt > e.occurredAt,
+          ).sort((a, b) => a.occurredAt - b.occurredAt)[0] : undefined;
+          return { id: e.eventId, at: e.occurredAt, agentId: e.agentId ?? null, action: e.action, status: e.status, toolName: e.toolName ?? null, errorCode: e.errorCode ?? null,
+            ...(e.runId && /^[a-zA-Z0-9_-]{1,128}$/.test(e.runId) ? { runId: e.runId } : {}),
+            ...(e.sessionKey && /^agent:[a-zA-Z0-9_:.\-]{1,180}$/.test(e.sessionKey) ? { sessionKey: e.sessionKey } : {}),
+            ...(later ? { laterSuccessAt: later.occurredAt } : {}),
+          };
+        });
       nextAgents = res.nextCursor ?? null;
     } catch (error) {
       this.deps.logger.debug({ err: error }, "agents' audit log unavailable");

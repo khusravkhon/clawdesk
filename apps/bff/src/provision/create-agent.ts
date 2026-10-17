@@ -258,7 +258,7 @@ export async function deleteJuniorAgent(deps: Pick<CreateAgentDeps, "gateway" | 
   }
   const deleted = await deps.gateway.request<{ failed?: { path: string; reason: string }[]; purgeFailed?: boolean }>("agents.delete", { agentId, deleteFiles: true });
   if (deleted.failed?.length || deleted.purgeFailed) {
-    // Leftover files keep the id fenced and can stop the next Gateway start (docs/stage-0.md, "удаление агента + рестарт").
+    // Leftover files keep the id fenced and can stop the next Gateway start.
     deps.logger.warn({ agentId, failed: deleted.failed, purgeFailed: deleted.purgeFailed }, "OpenClaw could not remove all files of the deleted agent");
   }
   const remaining = await liveAgentIds(deps.gateway);

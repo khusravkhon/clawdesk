@@ -27,7 +27,7 @@ const link = (to: string, label: string, badge?: () => number) => () =>
   });
 
 const menu = computed<MenuOption[]>(() => [
-  { key: "/", label: link("/", t("nav.overview")), icon: icon(LayoutDashboard) },
+  { key: "/", label: link("/", t(space.mode === "personal" ? "today.title" : "nav.overview")), icon: icon(LayoutDashboard) },
   { key: "/chat", label: link("/chat", t("nav.chat")), icon: icon(MessagesSquare) },
   { key: "/assistant", label: link("/assistant", t("nav.assistant")), icon: icon(UserRound) },
   { key: "/agents", label: link("/agents", t("nav.agents")), icon: icon(Bot) },
@@ -47,7 +47,7 @@ const menu = computed<MenuOption[]>(() => [
 
 // Nested pages (e.g. /agents/new) light up their section.
 const activeKey = computed(() => {
-  if (route.path === "/") return "/";
+  if (route.path === "/" || route.path === "/today") return "/";
   return menu.value.map((m) => m.key as string).find((k) => k !== "/" && route.path.startsWith(k)) ?? null;
 });
 

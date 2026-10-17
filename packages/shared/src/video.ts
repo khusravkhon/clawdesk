@@ -55,6 +55,9 @@ export const VideoJobError = z.enum([
   "no_frames",
   /** The panel has nowhere to keep originals (no video directory in this install). */
   "downloads_unavailable",
+  "storage_quota_exceeded",
+  "storage_unavailable",
+  "storage_busy",
   /** The worker is missing or the bridge is unreachable. */
   "worker_unavailable",
   /** The panel restarted while this job was running; its outcome is unknown. */

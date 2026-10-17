@@ -159,6 +159,24 @@ async function docker(args, timeoutMs = 60_000) {
 
 const q = (s) => `'${String(s).replace(/'/g, `'\\''`)}'`;
 
+export function ownsSandbox(mounts, roots) {
+  return mounts.some((mount) => typeof mount.Source === "string" && roots.some((raw) => {
+    const root = raw?.replace(/\/+$/, "");
+    return root && root !== "/" && (mount.Source === root || mount.Source.startsWith(`${root}/`));
+  }));
+}
+
+export function stopOwnedSandboxesAtRuntime(roots, modulePath = "/usr/local/lib/clawdesk-backup.mjs") {
+  const source = `import {spawnSync} from "node:child_process"; import {ownsSandbox} from ${JSON.stringify(modulePath)};
+const roots=JSON.parse(process.argv[1]);
+const run=args=>{const r=spawnSync("docker",args,{encoding:"utf8"});if(r.status!==0)throw new Error("sandbox ownership/stop failed");return r.stdout.trim();};
+for(const id of run(["ps","-q","--filter","name=openclaw-sbx-"]).split("\\n").filter(Boolean)) {
+const mounts=JSON.parse(run(["inspect","-f","{{json .Mounts}}",id]));
+if(ownsSandbox(mounts,roots))run(["stop",id]);
+}`;
+  return `node --input-type=module -e ${q(source)} ${q(JSON.stringify(roots))}`;
+}
+
 /**
  * Starts the factory reset in a helper container and returns at once: the panel is stopped by it.
  * `ownerCode` lands in the fresh panel data, so the person who reset can set a new password right away.
@@ -200,7 +218,8 @@ export async function startReset(ownerCode) {
     "log() { echo \"clawdesk-reset: $*\"; }",
     "log stopping",
     `docker stop -t 30 ${[...others, gateway].map(q).join(" ")} >/dev/null`,
-    "docker ps -aq --filter name=openclaw-sbx- | xargs -r docker rm -f >/dev/null",
+    // Sandbox names are global. Only a bind mount under this installation's state proves ownership.
+    stopOwnedSandboxesAtRuntime([state.Source, files?.Source].filter(Boolean)),
     "log wiping",
     `${empty(STATE_DIR)}`,
     `${empty("/reset/files")} || true`,

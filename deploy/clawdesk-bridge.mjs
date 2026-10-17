@@ -44,9 +44,12 @@ import { cloneTeamRepo, fetchTeamRepo, pushTeamBranch, removeTeamRepo, TeamError
 import { isAuthorizationCode, mcpLoginArgs } from "./clawdesk-oauth.mjs";
 import { AudioSetupError, audioSettings, audioStatus, saveAudioKey, verifyAudioKey } from "./clawdesk-audio.mjs";
 import { AgentFolders } from "./clawdesk-agent-folders.mjs";
+import { directoryIdentityWithin } from "./clawdesk-file-sync.mjs";
 import { ClaudeLogin, ClaudeLoginError } from "./clawdesk-claude.mjs";
 import { removeWorkspaceSkill, SkillRemoveError } from "./clawdesk-skills.mjs";
 import { cancelVideo, downloadVideo, framesOfVideo, studyVideo, videoProgress, VideoError } from "./clawdesk-video.mjs";
+import { LocalMemory, MemoryError } from "./clawdesk-memory.mjs";
+import { StorageManager, StorageError } from "./clawdesk-storage.mjs";
 
 const HOST = process.env.CLAWDESK_BRIDGE_HOST || "127.0.0.1";
 const PORT = Number(process.env.CLAWDESK_BRIDGE_PORT || 18790);
@@ -69,9 +72,9 @@ function authorized(req) {
 }
 
 /** Runs the OpenClaw CLI; `until` may end it early once the output has what we need. */
-function runCli(args, { timeoutMs = 60_000, until, input } = {}) {
+function runCli(args, { timeoutMs = 60_000, until, input, env } = {}) {
   return new Promise((resolve) => {
-    const child = spawn(process.execPath, [...CLI, ...args], { cwd: CLI_CWD, env: process.env, stdio: [input === undefined ? "ignore" : "pipe", "pipe", "pipe"] });
+    const child = spawn(process.execPath, [...CLI, ...args], { cwd: CLI_CWD, env: env ? { ...process.env, ...env } : process.env, stdio: [input === undefined ? "ignore" : "pipe", "pipe", "pipe"] });
     if (input !== undefined) {
       child.stdin.on("error", () => {});
       child.stdin.end(input);
@@ -240,11 +243,22 @@ async function googleRemove(body) {
 // source of that mount (on Docker Desktop not the path the person typed).
 
 const FILES_IN_GATEWAY = path.join(process.env.OPENCLAW_STATE_DIR || "/var/lib/clawdesk/openclaw", "workspace", "files");
+function spaceMode() {
+  let db;
+  try {
+    db = new DatabaseSync("/var/lib/clawdesk-sources/panel/panel.sqlite", { readOnly: true });
+    const mode = db.prepare("SELECT mode FROM spaces WHERE id = 'default'").get()?.mode ?? "personal";
+    return ["personal", "company"].includes(mode) ? mode : null;
+  } catch { return null; }
+  finally { db?.close(); }
+}
+const personalMode = () => spaceMode() === "personal";
 const agentFolders = new AgentFolders({
   stateDir: process.env.OPENCLAW_STATE_DIR || "/var/lib/clawdesk/openclaw",
   filesDir: FILES_IN_GATEWAY,
   configPath: process.env.OPENCLAW_CONFIG_PATH || "/var/lib/clawdesk/openclaw/openclaw.json",
   onError: () => log("agent folder sync failed; files retained"),
+  metadataCacheEnabled: personalMode,
 });
 // Same rule as FolderName in packages/shared: ends up in "src:dst:rw" and in paths.
 const FOLDER = /^[\p{L}\p{N}][\p{L}\p{N} ._-]{0,59}$/u;
@@ -365,6 +379,37 @@ function readJson(req) {
 
 let audioSetupBusy = false;
 const claudeLogin = new ClaudeLogin();
+const localMemory = new LocalMemory({ runCli });
+const storage = new StorageManager({
+  stateDir: process.env.OPENCLAW_STATE_DIR || "/var/lib/clawdesk/openclaw",
+  videoDir: process.env.CLAWDESK_VIDEO_DIR || "",
+  activeWorkers: () => new Promise((resolve, reject) => {
+    const child = spawn("/usr/local/libexec/docker", ["ps", "--filter", "name=clawdesk-video-", "--format", "{{.Names}}"], { stdio: ["ignore", "pipe", "ignore"] });
+    let out = "";
+    const timer = setTimeout(() => { child.kill("SIGKILL"); reject(new StorageError("storage_unavailable", 503)); }, 5_000);
+    child.stdout.on("data", (chunk) => { if (out.length < 64 * 1024) out += chunk; else child.kill("SIGKILL"); });
+    child.once("error", () => { clearTimeout(timer); reject(new StorageError("storage_unavailable", 503)); });
+    child.once("close", (code) => {
+      clearTimeout(timer);
+      if (code !== 0) return reject(new StorageError("storage_unavailable", 503));
+      resolve(out.trim().split("\n").filter((name) => /^clawdesk-video-[0-9a-f-]{36}$/.test(name)).map((name) => name.slice("clawdesk-video-".length)));
+    });
+  }),
+  historyRoots: async () => {
+    const registry = await agentFolders.load();
+    const config = JSON.parse(await fs.readFile(agentFolders.configPath, "utf8"));
+    const roots = [];
+    for (const item of registry.folders) {
+      const workspace = config.agents?.entries?.[item.agentId]?.workspace;
+      if (!workspace) continue;
+      const relative = path.relative(agentFolders.stateDir, path.resolve(workspace));
+      if (!relative || relative.startsWith("..") || path.isAbsolute(relative)) throw new StorageError("storage_unavailable", 503);
+      if (!item.workspaceIdentity || await directoryIdentityWithin(agentFolders.stateDir, relative.split(path.sep).join("/")) !== item.workspaceIdentity) throw new StorageError("storage_unavailable", 503);
+      roots.push(path.join(FILES_IN_GATEWAY, item.name), path.join(agentFolders.stateDir, relative, "folders", item.name));
+    }
+    return roots;
+  },
+});
 
 async function claudeCall(fn) {
   try {
@@ -379,6 +424,42 @@ async function handle(req) {
   const url = new URL(req.url, "http://bridge");
   if (req.method === "GET" && url.pathname === "/health") return { status: 200, body: { ok: true } };
   if (!authorized(req)) return { status: 401, body: { error: "unauthorized", message: "missing or wrong token" } };
+
+  if (url.pathname.startsWith("/storage/")) {
+    if (!personalMode()) return { status: 404, body: { error: "not_found", message: "not_found" } };
+    try {
+      if (url.pathname === "/storage/status" && req.method === "GET") return { status: 200, body: await storage.status() };
+      if (req.method !== "POST") return { status: 404, body: { error: "not_found" } };
+      const body = await readJson(req);
+      if (url.pathname === "/storage/quota") return { status: 200, body: await storage.setQuota(body.videoQuotaBytes) };
+      if (url.pathname === "/storage/preview") return { status: 200, body: await storage.preview(body.category) };
+      if (url.pathname === "/storage/cleanup" && body.confirm === true) return { status: 200, body: await storage.cleanup(body.token) };
+      throw new StorageError("invalid_request", 400);
+    } catch (error) {
+      const code = error instanceof StorageError ? error.code : "storage_unavailable";
+      return { status: error instanceof StorageError ? error.status : 503, body: { error: code, message: code } };
+    }
+  }
+
+  if (url.pathname === "/memory/status" && req.method === "GET") return { status: 200, body: await localMemory.status() };
+  if (url.pathname === "/memory/search" && req.method === "POST") {
+    try {
+      const body = await readJson(req);
+      return { status: 200, body: await localMemory.search(body.agentId, body.query) };
+    } catch (error) {
+      const code = error instanceof MemoryError ? error.code : "memory_failed";
+      return { status: error instanceof MemoryError ? error.status : 503, body: { error: code, message: code } };
+    }
+  }
+  if (url.pathname === "/memory/action" && req.method === "POST") {
+    try {
+      const body = await readJson(req);
+      return { status: 200, body: await localMemory.start(body.action, body.consent) };
+    } catch (error) {
+      if (error instanceof MemoryError) return { status: error.status, body: { error: error.code, message: error.code } };
+      return { status: 503, body: { error: "status_unavailable", message: "status_unavailable" } };
+    }
+  }
 
   if (req.method === "GET" && url.pathname === "/files/sync-status") {
     try { return { status: 200, body: await agentFolders.statuses() }; }
@@ -441,11 +522,17 @@ async function handle(req) {
     const handler = modes[url.pathname];
     if (!handler) return { status: 404, body: { error: "unknown_route", message: "unknown route" } };
     try {
-      const result = await handler(body);
+      let result;
+      if (url.pathname === "/video/download") {
+        const mode = spaceMode();
+        if (mode === null && await storage.quota() !== null) throw new StorageError("storage_unavailable", 503);
+        result = mode === "personal" ? await storage.download(body, handler) : await handler(body);
+      } else result = await handler(body);
       // Only the reason code travels back; yt-dlp's own output stays in this container.
       return { status: 200, body: result };
     } catch (error) {
       if (error instanceof VideoError) return { status: 400, body: { error: error.code, message: error.code } };
+      if (error instanceof StorageError) return { status: error.status, body: { error: error.code, message: error.code } };
       log("a video job failed", { path: url.pathname });
       return { status: 500, body: { error: "download_failed", message: "download_failed" } };
     }

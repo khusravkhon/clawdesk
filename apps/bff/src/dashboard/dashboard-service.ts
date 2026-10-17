@@ -16,6 +16,7 @@ import type { GatewayService } from "../gateway/gateway-service.js";
 import { listAgents } from "../routes/agents.js";
 import type { TelegramService } from "../telegram/telegram-service.js";
 import { isSystemJob } from "../schedules/job-policy.js";
+import { loadCronHistory } from "./cron-history.js";
 
 // Raw Gateway shapes (OpenClaw 2026.8.1), only the fields the dashboard reads.
 
@@ -62,6 +63,8 @@ export type RawCronRun = {
   error?: string;
   durationMs?: number;
   jobName?: string;
+  runId?: string;
+  runAtMs?: number;
 };
 
 const RANGE_DAYS: Record<DashboardRange, number> = { "7d": 7, "30d": 30, "90d": 90 };
@@ -75,9 +78,10 @@ export function dayKey(ms: number, timeZone: string): string {
 /** Every day of the range ending today, oldest first. */
 export function rangeDays(range: DashboardRange, now: number, timeZone: string): string[] {
   const days: string[] = [];
-  for (let i = RANGE_DAYS[range] - 1; i >= 0; i--) days.push(dayKey(now - i * 86_400_000, timeZone));
-  // DST shifts can repeat a key; keep each day once.
-  return [...new Set(days)];
+  const today = Date.parse(`${dayKey(now, timeZone)}T12:00:00Z`);
+  // Calendar dates avoid DST shifts repeating or skipping a day.
+  for (let i = RANGE_DAYS[range] - 1; i >= 0; i--) days.push(new Date(today - i * 86_400_000).toISOString().slice(0, 10));
+  return days;
 }
 
 const num = (v: number | undefined) => (Number.isFinite(v) ? (v as number) : 0);
@@ -165,11 +169,12 @@ const runStatus = (s: string | undefined): CronRunStatus | null => (s === "ok" |
 
 /** OpenClaw declares its own housekeeping jobs (heartbeat, memory, skill review); user jobs may also have declaration keys. */
 
-export function buildSchedules(jobs: RawCronJob[], runs: RawCronRun[], days: string[], timeZone: string): DashboardSchedulesDto {
+export function buildSchedules(jobs: RawCronJob[], runs: RawCronRun[], days: string[], timeZone: string, now = Date.now()): DashboardSchedulesDto {
   const userJobs = jobs.filter((j) => !isSystemJob(j));
   const userIds = new Map(userJobs.map((j) => [j.id, j]));
   const firstDay = days[0] ?? "";
-  const inRange = runs.filter((r) => userIds.has(r.jobId) && dayKey(r.ts, timeZone) >= firstDay);
+  const selectedDays = new Set(days);
+  const inRange = runs.filter((r) => userIds.has(r.jobId) && Number.isFinite(r.ts) && r.ts <= now && dayKey(r.ts, timeZone) >= firstDay && selectedDays.has(dayKey(r.ts, timeZone)));
 
   const daily = new Map(days.map((date) => [date, { date, ok: 0, error: 0, skipped: 0 }]));
   const totals = { ok: 0, error: 0, skipped: 0 };
@@ -214,6 +219,8 @@ export function buildSchedules(jobs: RawCronJob[], runs: RawCronRun[], days: str
         ];
       }),
     systemJobs: jobs.length - userJobs.length,
+    historyComplete: true,
+    historyReason: null,
   };
 }
 
@@ -238,7 +245,7 @@ export class DashboardService {
     const days = rangeDays(range, now, timeZone);
     const { gateway } = this.deps;
 
-    const [usageRes, agentsRes, sessionsRes, jobsRes, runsRes, health] = await Promise.allSettled([
+    const [usageRes, agentsRes, sessionsRes, historyRes, health] = await Promise.allSettled([
       gateway.request<RawSessionsUsage>("sessions.usage", {
         agentScope: "all",
         startDate: days[0],
@@ -249,8 +256,7 @@ export class DashboardService {
       }),
       listAgents(this.deps),
       gateway.request<{ sessions?: RawSession[] }>("sessions.list", { limit: 500 }),
-      gateway.request<{ jobs?: RawCronJob[] }>("cron.list", {}),
-      gateway.request<{ entries?: RawCronRun[] }>("cron.runs", { scope: "all", limit: 500, sortDir: "desc" }),
+      loadCronHistory(gateway, days[0]!, now, (ts) => dayKey(ts, timeZone)),
       this.#health(),
     ]);
 
@@ -264,9 +270,11 @@ export class DashboardService {
     } else errors.agents = errorText(agentsRes.reason);
 
     let schedules: DashboardSchedulesDto | null = null;
-    if (jobsRes.status === "fulfilled") {
-      schedules = buildSchedules(jobsRes.value.jobs ?? [], runsRes.status === "fulfilled" ? (runsRes.value.entries ?? []) : [], days, timeZone);
-    } else errors.schedules = errorText(jobsRes.reason);
+    if (historyRes.status === "fulfilled") {
+      schedules = buildSchedules(historyRes.value.jobs, historyRes.value.entries, days, timeZone, now);
+      schedules.historyComplete = historyRes.value.complete;
+      schedules.historyReason = historyRes.value.reason;
+    } else errors.schedules = errorText(historyRes.reason);
 
     return {
       range,

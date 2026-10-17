@@ -16,6 +16,33 @@ const issueCode = (error) => error instanceof FolderSyncError ? error.code : "fi
 const blockedBy = (blocked, file) => [...blocked].some((entry) => file === entry || file.startsWith(`${entry}/`) || entry.startsWith(`${file}/`));
 const digest = (data) => createHash("sha256").update(data).digest("hex");
 const fdPath = (handle, name = "") => `/proc/self/fd/${handle.fd}${name ? `/${name}` : ""}`;
+const signature = (stat) => [stat.dev, stat.ino, stat.size, stat.mtimeNs, stat.ctimeNs, stat.mode, stat.nlink].join(":");
+
+/** Only verified reads populate this process-local cache; persisted sync hashes are never evidence. */
+export class SyncMetadataCache {
+  constructor({ maxEntries = 20000, fullCheckMs = 300000, now = Date.now } = {}) {
+    if (!Number.isInteger(maxEntries) || maxEntries < 1 || maxEntries > 20000 || !Number.isFinite(fullCheckMs) || fullCheckMs < 0 || fullCheckMs > 300000) throw new Error("invalid sync cache limits");
+    Object.assign(this, { maxEntries, fullCheckMs, now });
+    this.entries = new Map();
+  }
+  get(key, identity) {
+    const entry = this.entries.get(key);
+    const age = entry ? this.now() - entry.checkedAt : -1;
+    if (!entry || entry.identity !== identity || age < 0 || age >= this.fullCheckMs) { this.entries.delete(key); return null; }
+    return entry.hash;
+  }
+  set(key, identity, hash) {
+    this.entries.delete(key);
+    this.entries.set(key, { identity, hash, checkedAt: this.now() });
+    while (this.entries.size > this.maxEntries) this.entries.delete(this.entries.keys().next().value);
+  }
+  invalidate(root, seen = new Set()) {
+    const prefix = `${JSON.stringify(path.resolve(root))}:`;
+    for (const key of this.entries.keys()) if (key.startsWith(prefix) && !seen.has(key)) this.entries.delete(key);
+  }
+}
+const cacheKey = (root, relative) => `${JSON.stringify(path.resolve(root))}:${relative}`;
+const hashed = (data, metrics) => { metrics.bytesHashed += data.length; return digest(data); };
 
 // Directory handles keep an agent's symlink/rename from redirecting a copy outside the selected tree.
 async function directory(root, parts, create = false) {
@@ -51,13 +78,19 @@ export async function directoryIdentityWithin(root, relative) {
   } finally { await handle.close(); }
 }
 
-async function readAt(parent, name) {
+async function readAt(parent, name, metrics, cache, key) {
   let handle;
   try {
     handle = await fs.open(fdPath(parent, name), constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK);
-    const stat = await handle.stat();
+    const stat = await handle.stat({ bigint: true });
     if (!stat.isFile()) throw new FolderSyncError("unsupported_file");
-    if (stat.size > MAX_FILE) throw new FolderSyncError("file_too_large");
+    if (stat.size > BigInt(MAX_FILE)) throw new FolderSyncError("file_too_large");
+    const identity = signature(stat);
+    const cached = cache?.get(key, identity);
+    if (cached && signature(await handle.stat({ bigint: true })) === identity) {
+      metrics.cacheHits++;
+      return { hash: cached, size: Number(stat.size) };
+    }
     const chunks = [];
     let length = 0;
     while (length <= MAX_FILE) {
@@ -66,9 +99,17 @@ async function readAt(parent, name) {
       if (!bytesRead) break;
       chunks.push(chunk.subarray(0, bytesRead));
       length += bytesRead;
+      metrics.bytesRead += bytesRead;
     }
     if (length > MAX_FILE) throw new FolderSyncError("file_too_large");
-    return Buffer.concat(chunks, length);
+    if (signature(await handle.stat({ bigint: true })) !== identity || BigInt(length) !== stat.size) throw new FolderSyncError("file_changed");
+    const data = Buffer.concat(chunks, length);
+    if (cache) {
+      const hash = hashed(data, metrics);
+      cache.set(key, identity, hash);
+      return { hash, size: length };
+    }
+    return data;
   } catch (error) {
     if (error.code === "ENOENT") return null;
     throw error;
@@ -77,12 +118,13 @@ async function readAt(parent, name) {
   }
 }
 
-async function scan(root) {
+async function scan(root, cache, metrics) {
   const files = new Map();
   const blocked = new Set();
   const issues = [];
   let total = 0;
   let entries = 0;
+  const seen = new Set();
   const skip = (relative, code) => {
     blocked.add(relative);
     if (issues.length < MAX_ISSUES) issues.push({ code, path: safePath(relative) });
@@ -105,35 +147,38 @@ async function scan(root) {
         } finally { await child?.close(); }
       } else if (entry.isFile()) {
         try {
-          const data = await readAt(parent, entry.name);
+          const key = cacheKey(root, relative);
+          seen.add(key);
+          const data = await readAt(parent, entry.name, metrics, cache, key);
           if (!data) { skip(relative, "file_changed"); continue; }
-          total += data.length;
+          total += cache ? data.size : data.length;
           if (total > MAX_TOTAL) throw new FolderSyncError("folder_size_limit");
-          files.set(relative, digest(data));
+          files.set(relative, cache ? data.hash : hashed(data, metrics));
         } catch (error) {
           if (error.code === "folder_size_limit") throw error;
+          cache?.entries.delete(cacheKey(root, relative));
           skip(relative, issueCode(error));
         }
       } else skip(relative, "unsupported_file");
     }
   }
   const parent = await directory(root, []);
-  try { await walk(parent); } finally { await parent.close(); }
+  try { await walk(parent); } finally { await parent.close(); cache?.invalidate(root, seen); }
   return { files, blocked, issues };
 }
 
-async function transfer(from, to, relative, expectedSource, expectedTarget, targetRelative = relative) {
+async function transfer(from, to, relative, expectedSource, expectedTarget, metrics, targetRelative = relative) {
   const parts = relative.split("/");
   const source = await directory(from, parts.slice(0, -1));
   let target;
   try {
-    const data = await readAt(source, parts.at(-1));
-    if (!data || digest(data) !== expectedSource) return false;
+    const data = await readAt(source, parts.at(-1), metrics);
+    if (!data || hashed(data, metrics) !== expectedSource) return false;
     const targetParts = targetRelative.split("/");
     target = await directory(to, targetParts.slice(0, -1), true);
     const name = targetParts.at(-1);
-    const old = await readAt(target, name);
-    if ((old ? digest(old) : undefined) !== expectedTarget) return false;
+    const old = await readAt(target, name, metrics);
+    if ((old ? hashed(old, metrics) : undefined) !== expectedTarget) return false;
     const temporary = `.clawdesk-copy-${randomUUID()}`;
     const output = await fs.open(fdPath(target, temporary), constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL | constants.O_NOFOLLOW, 0o600);
     try { await output.writeFile(data); } finally { await output.close(); }
@@ -158,9 +203,11 @@ async function transfer(from, to, relative, expectedSource, expectedTarget, targ
 }
 
 /** No delete propagation; simultaneous edits keep both versions instead of losing either one. */
-export async function syncFolders(hostRoot, agentRoot, previous = {}) {
-  const hostScan = await scan(hostRoot);
-  const agentScan = await scan(agentRoot);
+export async function syncFolders(hostRoot, agentRoot, previous = {}, { cache } = {}) {
+  const started = performance.now();
+  const metrics = { bytesRead: 0, bytesHashed: 0, cacheHits: 0, durationMs: 0 };
+  const hostScan = await scan(hostRoot, cache, metrics);
+  const agentScan = await scan(agentRoot, cache, metrics);
   const host = hostScan.files, agent = agentScan.files;
   const blocked = new Set([...hostScan.blocked, ...agentScan.blocked]);
   const issues = [...hostScan.issues, ...agentScan.issues].slice(0, MAX_ISSUES);
@@ -175,17 +222,17 @@ export async function syncFolders(hostRoot, agentRoot, previous = {}) {
     const baseline = Object.hasOwn(previous, file) ? previous[file] : undefined;
     try {
       if (!right || (left && baseline === right)) {
-        if (await transfer(hostRoot, agentRoot, file, left, right)) next[file] = left;
+        if (await transfer(hostRoot, agentRoot, file, left, right, metrics)) next[file] = left;
       } else if (!left || baseline === left) {
-        if (await transfer(agentRoot, hostRoot, file, right, left)) next[file] = right;
+        if (await transfer(agentRoot, hostRoot, file, right, left, metrics)) next[file] = right;
       } else {
         const extension = path.posix.extname(file);
         const conflict = `${file.slice(0, file.length - extension.length)}.conflict-${right.slice(0, 12)}${extension}`;
         const existing = host.get(conflict);
         if (existing && existing !== right) throw new FolderSyncError("conflict_requires_review");
         if (blockedBy(blocked, conflict)) throw new FolderSyncError("conflict_requires_review");
-        const saved = existing === right || await transfer(agentRoot, hostRoot, file, right, undefined, conflict);
-        if (saved && await transfer(hostRoot, agentRoot, file, left, right)) { next[file] = left; conflicts++; }
+        const saved = existing === right || await transfer(agentRoot, hostRoot, file, right, undefined, metrics, conflict);
+        if (saved && await transfer(hostRoot, agentRoot, file, left, right, metrics)) { next[file] = left; conflicts++; }
       }
       if (!Object.hasOwn(next, file)) throw new FolderSyncError("file_changed");
     } catch (error) {
@@ -195,5 +242,6 @@ export async function syncFolders(hostRoot, agentRoot, previous = {}) {
     }
   }
   for (const file of Object.keys(previous)) if (blockedBy(blocked, file)) next[file] = previous[file];
-  return { hashes: next, conflicts, skipped: blocked.size, issues };
+  metrics.durationMs = Math.round((performance.now() - started) * 100) / 100;
+  return { hashes: next, conflicts, skipped: blocked.size, issues, metrics };
 }
