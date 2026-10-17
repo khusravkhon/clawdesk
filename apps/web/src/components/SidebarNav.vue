@@ -1,7 +1,7 @@
 <script setup lang="ts">
 // Sidebar body: brand, sections, theme and language. Shared by the desktop sidebar and the phone drawer.
 import type { Locale } from "@clawdesk/shared";
-import { Activity, Blocks, Bot, ChartColumn, FolderGit2, CalendarClock, Database, HardDrive, LayoutDashboard, LogOut, MessagesSquare, ShieldCheck, UserRound, Moon, PanelLeftClose, PanelLeftOpen, Send, Sparkles, Sun } from "@lucide/vue";
+import { Activity, Blocks, Bot, ChartColumn, FolderGit2, CalendarClock, CalendarDays, Database, HardDrive, LayoutDashboard, LogOut, MessagesSquare, ShieldCheck, UserRound, Moon, PanelLeftClose, PanelLeftOpen, Send, Sparkles, Sun } from "@lucide/vue";
 import { NButton, NMenu, NSelect, NTooltip, type MenuOption } from "naive-ui";
 import { computed, h, type Component } from "vue";
 import { useI18n } from "vue-i18n";
@@ -27,7 +27,8 @@ const link = (to: string, label: string, badge?: () => number) => () =>
   });
 
 const menu = computed<MenuOption[]>(() => [
-  { key: "/", label: link("/", t(space.mode === "personal" ? "today.title" : "nav.overview")), icon: icon(LayoutDashboard) },
+  { key: "/", label: link("/", t("nav.overview")), icon: icon(LayoutDashboard) },
+  ...(space.mode === "personal" ? [{ key: "/today", label: link("/today", t("today.title")), icon: icon(CalendarDays) }] : []),
   { key: "/chat", label: link("/chat", t("nav.chat")), icon: icon(MessagesSquare) },
   { key: "/assistant", label: link("/assistant", t("nav.assistant")), icon: icon(UserRound) },
   { key: "/agents", label: link("/agents", t("nav.agents")), icon: icon(Bot) },
@@ -47,7 +48,7 @@ const menu = computed<MenuOption[]>(() => [
 
 // Nested pages (e.g. /agents/new) light up their section.
 const activeKey = computed(() => {
-  if (route.path === "/" || route.path === "/today") return "/";
+  if (route.path === "/") return "/";
   return menu.value.map((m) => m.key as string).find((k) => k !== "/" && route.path.startsWith(k)) ?? null;
 });
 
