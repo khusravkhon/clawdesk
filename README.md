@@ -18,7 +18,7 @@ Open-source self-hosted панель для [OpenClaw](https://github.com/opencl
 - Модель — любая: Claude, OpenAI, DeepSeek, Qwen, Kimi, GLM, MiniMax, локальные или подписка. Каждый пользователь
   подключает свой ключ; модель младших агентов выбирается в интерфейсе.
 
-Подробно: [docs/architecture.md](docs/architecture.md). Ход этапа 0: [docs/stage-0.md](docs/stage-0.md).
+Подробно: [docs/architecture.md](docs/architecture.md).
 
 ## Структура
 
