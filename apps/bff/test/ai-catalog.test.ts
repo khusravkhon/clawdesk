@@ -30,12 +30,16 @@ describe("buildCatalog", () => {
   const catalog = buildCatalog("main", detect, plugins);
   const byId = Object.fromEntries(catalog.providers.map((p) => [p.id, p]));
 
-  it("groups key methods by brand and marks subscription tokens", () => {
-    expect(byId.anthropic?.methods.map((m) => [m.authChoice, m.input])).toEqual([
-      ["apiKey", "api_key"],
-      ["setup-token", "token"],
-    ]);
+  it("groups key methods by brand; Anthropic's setup-token is never offered", () => {
+    expect(byId.anthropic?.methods.map((m) => [m.authChoice, m.input])).toEqual([["apiKey", "api_key"]]);
     expect(byId.openai?.installPluginId).toBeNull();
+  });
+
+  it("offers a Claude plan sign-in first only when the Gateway carries Claude Code", () => {
+    expect(catalog.signIn.map((s) => s.id)).not.toContain("claude-plan");
+    const withClaude = buildCatalog("main", { ...detect, authOptions: [...detect.authOptions!, { id: "anthropic-cli", brandId: "anthropic", label: "Claude CLI", kind: "oauth", featured: true }] }, plugins, { claudePlan: true });
+    expect(withClaude.signIn.map((s) => s.id)).toEqual(["claude-plan", "openai", "github-copilot"]);
+    expect(withClaude.signIn[0]).toMatchObject({ providerId: "anthropic", kind: "oauth" });
   });
 
   it("offers official, not-yet-installed provider plugins as installable", () => {

@@ -16,6 +16,7 @@ export const router = createRouter({
     { path: "/schedules", name: "schedules", component: () => import("./views/SchedulesView.vue") },
     { path: "/approvals", name: "approvals", component: () => import("./views/ApprovalsView.vue") },
     { path: "/sources", name: "sources", component: () => import("./views/SourcesView.vue") },
+    { path: "/skills", name: "skills", component: () => import("./views/SkillsView.vue") },
     { path: "/telegram", name: "telegram", component: () => import("./views/TelegramView.vue") },
     { path: "/login", name: "login", component: () => import("./views/LoginView.vue"), meta: { bare: true, public: true } },
     { path: "/setup", name: "setup", component: () => import("./views/OwnerSetupView.vue"), meta: { bare: true, public: true } },

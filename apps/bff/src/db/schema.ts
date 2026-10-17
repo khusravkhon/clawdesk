@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { index, integer, primaryKey, sqliteTable, text, uniqueIndex } from "drizzle-orm/sqlite-core";
+import { blob, index, integer, primaryKey, sqliteTable, text, uniqueIndex } from "drizzle-orm/sqlite-core";
 
 // Panel metadata only. OpenClaw config is the source of truth for how agents
 // run; rows here are joined to it by agentId. Secrets (model keys, OAuth
@@ -271,4 +271,48 @@ export const memoryNotes = sqliteTable(
     updatedAt: integer("updated_at", { mode: "timestamp_ms" }),
   },
   (t) => [index("memory_notes_agent_idx").on(t.agentId)],
+);
+
+/**
+ * Skills the owner added on the "Skills & MCP" screen. Which agents have one is not stored here:
+ * it is whatever each agent's workspace holds (skills/<slug>), read back from the Gateway.
+ */
+export const skills = sqliteTable("skills", {
+  id: text("id").primaryKey(),
+  kind: text("kind", { enum: ["clawhub", "own"] }).notNull(),
+  /** Folder name in an agent's workspace: skills/<slug>. */
+  slug: text("slug").notNull().unique(),
+  name: text("name").notNull(),
+  description: text("description"),
+  /** ClawHub reference (`@owner/slug`) for kind "clawhub". */
+  installRef: text("install_ref"),
+  /** Own skills: the zip OpenClaw installs from (a written skill is a zip with one SKILL.md). */
+  archive: blob("archive", { mode: "buffer" }),
+  /** Own skills written in the panel, so the owner can edit them; null for uploaded archives. */
+  instructions: text("instructions"),
+  createdAt: createdAt(),
+});
+
+/**
+ * MCP servers in OpenClaw's config the panel knows about, and which agents may use each one.
+ * Agents without a grant get `<name>__*` in their tool deny list.
+ */
+export const mcpServers = sqliteTable("mcp_servers", {
+  name: text("name").primaryKey(),
+  url: text("url"),
+  auth: text("auth", { enum: ["oauth", "token", "none"] }).notNull(),
+  /** Added on the Skills & MCP screen (removable there); false for Notion from data sources. */
+  managed: integer("managed", { mode: "boolean" }).notNull(),
+  createdAt: createdAt(),
+});
+
+export const mcpGrants = sqliteTable(
+  "mcp_grants",
+  {
+    server: text("server")
+      .notNull()
+      .references(() => mcpServers.name, { onDelete: "cascade" }),
+    agentId: text("agent_id").notNull(),
+  },
+  (t) => [primaryKey({ columns: [t.server, t.agentId] })],
 );

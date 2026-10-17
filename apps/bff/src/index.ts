@@ -15,6 +15,8 @@ import { TeamService } from "./teams/team-service.js";
 import { AuditService } from "./audit/audit-service.js";
 import { getSetting, putSetting } from "./db/settings.js";
 import { BridgeClient } from "./gateway/bridge-client.js";
+import { McpService } from "./skills/mcp-service.js";
+import { SkillsService } from "./skills/skills-service.js";
 import { SourcesService } from "./sources/sources-service.js";
 import { TelegramService } from "./telegram/telegram-service.js";
 import { FreeModelsService } from "./free-models/free-models-service.js";
@@ -32,9 +34,9 @@ const logger = createLogger(config.logLevel);
 
 const { db, close: closeDb } = openDb(config.dbPath);
 const gateway = createGatewayService(config, logger, { retryPairing: true });
-const aiSetup = new AiSetupService(gateway, logger.child({ component: "ai-setup" }), db);
-const signIn = new SignInSessionManager(gateway, logger.child({ component: "signin" }), () => aiSetup.syncFollowers());
 const bridge = new BridgeClient(config.bridgeUrl, config.gateway.sharedToken);
+const signIn: SignInSessionManager = new SignInSessionManager(gateway, logger.child({ component: "signin" }), (): Promise<void> => aiSetup.syncFollowers(), bridge);
+const aiSetup: AiSetupService = new AiSetupService(gateway, logger.child({ component: "ai-setup" }), db, (): Promise<boolean> => signIn.claudePlanAvailable());
 const telegram = new TelegramService(gateway, db, logger.child({ component: "telegram" }), undefined, bridge, async (provider) => {
   if (provider !== "groq") return;
   const result = await gateway.request<{ plugins: { id: string; installed?: boolean }[] }>("plugins.list", {});
@@ -47,6 +49,8 @@ const freeModels = new FreeModelsService(gateway, logger.child({ component: "fre
   bridge,
 });
 const sources = new SourcesService({ gateway, db, logger: logger.child({ component: "sources" }), files: config.files, bridge });
+const skills = new SkillsService({ gateway, db, bridge, logger: logger.child({ component: "skills" }) });
+const mcp = new McpService({ gateway, db, bridge, logger: logger.child({ component: "mcp" }) });
 const space = new SpaceService({ db, logger: logger.child({ component: "space" }) });
 const approvals = new ApprovalsService(gateway, logger.child({ component: "approvals" }));
 const assistant = new AssistantService({ gateway, db, logger: logger.child({ component: "assistant" }), mode: () => space.mode() });
@@ -60,7 +64,7 @@ const budget = new BudgetService({ gateway, db, logger: logger.child({ component
 const video = new VideoService({ db, bridge, chat: new ChatService(gateway, library), logger: logger.child({ component: "video" }), videoDir: config.videoDir, library });
 video.recover();
 
-const app = await buildApp({ logger, gateway, db, aiSetup, signIn, telegram, freeModels, sources, approvals, assistant, auth, backups, bridge, space, teams, audit, video, videoDir: config.videoDir, library, budget, sandboxEnabled: config.sandboxEnabled, webDist: config.webDist, trustProxy: config.trustProxy });
+const app = await buildApp({ logger, gateway, db, aiSetup, signIn, telegram, freeModels, sources, skills, mcp, approvals, assistant, auth, backups, bridge, space, teams, audit, video, videoDir: config.videoDir, library, budget, sandboxEnabled: config.sandboxEnabled, webDist: config.webDist, trustProxy: config.trustProxy });
 
 gateway.start();
 await app.listen({ host: config.host, port: config.port });
@@ -92,6 +96,8 @@ async function repairStartup(): Promise<void> {
     ["default exec approval mode", repairDefaultApprovals],
     ["junior models", repairFollowerModels],
     ["memory provider", repairMemory],
+    // MCP servers added elsewhere (Notion on the data sources screen) stay with the main agent.
+    ["MCP access per agent", () => mcp.syncAccess()],
     ["Telegram files and voice messages", () => telegram.ensureMedia()],
     // Last: the limit may pause scheduled jobs, and that should happen after they are in place.
     ["spending limits", () => budget.enforce(Intl.DateTimeFormat().resolvedOptions().timeZone)],

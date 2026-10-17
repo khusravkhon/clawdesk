@@ -39,6 +39,9 @@ import type { FreeModelsService } from "./free-models/free-models-service.js";
 import { registerFreeModelRoutes } from "./routes/free-models.js";
 import { registerScheduleRoutes } from "./routes/schedules.js";
 import { registerSourceRoutes } from "./routes/sources.js";
+import { registerExtensionRoutes } from "./routes/extensions.js";
+import type { McpService } from "./skills/mcp-service.js";
+import type { SkillsService } from "./skills/skills-service.js";
 import { registerSystemRoutes } from "./routes/system.js";
 import { registerSpaceRoutes } from "./routes/space.js";
 import { registerTeamRoutes } from "./routes/teams.js";
@@ -60,6 +63,8 @@ export type AppDeps = {
   telegram: TelegramService;
   freeModels: FreeModelsService;
   sources: SourcesService;
+  skills: SkillsService;
+  mcp: McpService;
   approvals: ApprovalsService;
   assistant: AssistantService;
   auth: AuthService;
@@ -110,6 +115,7 @@ export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
   registerTelegramRoutes(app, deps);
   registerFreeModelRoutes(app, deps);
   registerSourceRoutes(app, deps);
+  registerExtensionRoutes(app, deps);
   registerApprovalRoutes(app, deps);
   registerAssistantRoutes(app, deps);
   registerScheduleRoutes(app, { schedules: new ScheduleService(deps) });

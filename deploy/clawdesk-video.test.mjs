@@ -2,8 +2,12 @@
 // takes, and what a failure is called. The worker container itself is not started here: these are
 // the decisions made before and after it runs.
 import assert from "node:assert/strict";
+import { spawnSync } from "node:child_process";
+import fs from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
 import test from "node:test";
-import { downloadVideo, errorCode, frameFiles, framesOfVideo, parseInfo, parseProgress, pickSubtitle, studyVideo, subtitleLanguage, videoProgress, VideoError } from "./clawdesk-video.mjs";
+import { dockerArgs, downloadVideo, errorCode, frameFiles, framesOfVideo, jobWorkDir, parseInfo, parseProgress, pickSubtitle, studyVideo, subtitleLanguage, videoProgress, VideoError } from "./clawdesk-video.mjs";
 
 const JOB = "11111111-1111-4111-8111-111111111111";
 const URL_OK = "https://www.youtube.com/watch?v=dQw4w9WgXcQ";
@@ -70,4 +74,37 @@ test("reads the download percentage out of the tool's progress lines", () => {
 test("takes the frame files in order and ignores everything else in the directory", () => {
   assert.deepEqual(frameFiles(["frame-002.jpg", "source.mp4", "frame-001.jpg", "frame-010.jpg", "notes.txt"]), ["frame-001.jpg", "frame-002.jpg", "frame-010.jpg"]);
   assert.deepEqual(frameFiles(["source.webm"]), []);
+});
+
+test("the worker runs as this process's user, so what it writes can be read back here", () => {
+  const args = dockerArgs(JOB, "/var/lib/clawdesk/video-work/clawdesk-video-" + JOB, ["--version"]);
+  if (typeof process.getuid === "function") {
+    const at = args.indexOf("--user");
+    assert.ok(at > 0, `no --user in: ${args.join(" ")}`);
+    assert.equal(args[at + 1], `${process.getuid()}:${process.getgid()}`);
+  }
+  // The hardening of every worker run stays whatever the user is.
+  assert.ok(args.includes("--read-only") && args.includes("ALL"));
+});
+
+test("a job works in the directory the worker container writes into, not in this container's /tmp", async () => {
+  // The worker is a sibling container: the Docker daemon resolves its output mount on the host,
+  // so the scratch directory has to be the shared one, emptied of whatever an earlier run left.
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "clawdesk-work-root-"));
+  const expected = path.join(root, `clawdesk-video-${JOB}`);
+  await fs.mkdir(expected, { recursive: true });
+  await fs.writeFile(path.join(expected, "stale.vtt"), "an earlier run");
+  const script = `const { jobWorkDir } = await import(${JSON.stringify(new URL("./clawdesk-video.mjs", import.meta.url).href)});
+    const fs = await import("node:fs/promises");
+    const dir = await jobWorkDir("clawdesk-video-", ${JSON.stringify(JOB)});
+    console.log(JSON.stringify({ dir, left: await fs.readdir(dir) }));`;
+  const child = spawnSync(process.execPath, ["--input-type=module", "-e", script], {
+    encoding: "utf8",
+    env: { ...process.env, CLAWDESK_VIDEO_WORK_DIR: root },
+  });
+  assert.equal(child.status, 0, child.stderr);
+  const result = JSON.parse(child.stdout.trim().split("\n").at(-1));
+  assert.equal(result.dir, expected);
+  assert.deepEqual(result.left, []);
+  await fs.rm(root, { recursive: true, force: true });
 });

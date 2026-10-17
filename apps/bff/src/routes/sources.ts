@@ -19,7 +19,7 @@ const RemoveGoogle = z.object({ email: z.string().email() });
 const NotionCallback = z.object({ code: z.string().optional(), state: z.string().optional(), error: z.string().optional() });
 
 /** Origin the person opened the panel on (Vite in dev, the panel itself or a proxy in production). */
-function panelOrigin(request: FastifyRequest): string {
+export function panelOrigin(request: FastifyRequest): string {
   const host = (request.headers["x-forwarded-host"] as string | undefined) ?? request.headers.host ?? "127.0.0.1";
   const proto = (request.headers["x-forwarded-proto"] as string | undefined) ?? request.protocol;
   return `${proto}://${host}`;

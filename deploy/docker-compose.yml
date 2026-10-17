@@ -59,16 +59,24 @@ services:
       GOG_HOME: ${CLAWDESK_DATA_DIR:-/var/lib/clawdesk}/openclaw/gog
       GOG_KEYRING_BACKEND: file
       GOG_KEYRING_PASSWORD: ${GOG_KEYRING_PASSWORD:-}
+      # Claude Code's own login (Claude plan sign-in from the panel), kept with OpenClaw's state.
+      CLAUDE_CONFIG_DIR: ${CLAWDESK_DATA_DIR:-/var/lib/clawdesk}/openclaw/claude-code
+      DISABLE_AUTOUPDATER: "1"
       TZ: ${CLAWDESK_TZ:-UTC}
       # The worker image the bridge starts per video job (see clawdesk-video.mjs).
       CLAWDESK_VIDEO_IMAGE: ghcr.io/khusravkhon/clawdesk-video:${CLAWDESK_VERSION:-dev}
       # Kept video originals. Deliberately outside the agents' exchanged folders: a 2 GiB file
       # there would hold up every other file of that folder (32 MiB per file).
       CLAWDESK_VIDEO_DIR: ${CLAWDESK_DATA_DIR:-/var/lib/clawdesk}/videos
+      # Scratch of a running job (subtitles, audio, frames). A worker container is a sibling on the
+      # host, so its output mount must be the SAME absolute path here and there — the Gateway's own
+      # /tmp is not a path the worker can write into. Emptied per job, nothing is kept here.
+      CLAWDESK_VIDEO_WORK_DIR: ${CLAWDESK_DATA_DIR:-/var/lib/clawdesk}/video-work
     volumes:
       - ${CLAWDESK_DATA_DIR:-/var/lib/clawdesk}/openclaw:${CLAWDESK_DATA_DIR:-/var/lib/clawdesk}/openclaw
       # Same absolute path inside and outside, so a worker container can bind the same directory.
       - ${CLAWDESK_DATA_DIR:-/var/lib/clawdesk}/videos:${CLAWDESK_DATA_DIR:-/var/lib/clawdesk}/videos
+      - ${CLAWDESK_DATA_DIR:-/var/lib/clawdesk}/video-work:${CLAWDESK_DATA_DIR:-/var/lib/clawdesk}/video-work
       - openclaw-auth-secrets:/home/node/.config/openclaw
       - /var/run/docker.sock:/var/run/docker.sock
       # Shared folder from the person's computer: files/ in the main agent's workspace.
