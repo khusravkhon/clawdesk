@@ -8,11 +8,14 @@ import { useI18n } from "vue-i18n";
 import { api, ApiError } from "../api/client";
 import { authErrorText, usePasswordPair } from "../auth";
 import AuditLog from "../components/AuditLog.vue";
+import StorageUsage from "../components/StorageUsage.vue";
+import { useSpaceStore } from "../stores/space";
 import PageHeader from "../components/ui/PageHeader.vue";
 import { formatBytes, formatDateTime } from "../format";
 
 const { t, locale } = useI18n();
 const message = useMessage();
+const space = useSpaceStore();
 
 const data = ref<BackupsDto | null>(null);
 const loadError = ref<string | null>(null);
@@ -133,6 +136,7 @@ onUnmounted(() => window.clearInterval(poll));
     </n-card>
 
     <n-space v-else vertical size="large">
+      <storage-usage v-if="space.mode === 'personal'" />
       <n-card :title="t('system.backups')">
         <template #header-extra>
           <n-button v-if="data?.available" type="primary" :loading="creating || data?.running" @click="createNow">

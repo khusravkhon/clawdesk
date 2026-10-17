@@ -1,7 +1,7 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
-import { directoryIdentityWithin, ensureDirectoryWithin, FolderSyncError, syncFolders } from "./clawdesk-file-sync.mjs";
+import { directoryIdentityWithin, ensureDirectoryWithin, FolderSyncError, SyncMetadataCache, syncFolders } from "./clawdesk-file-sync.mjs";
 
 const NAME = /^[\p{L}\p{N}][\p{L}\p{N} ._-]{0,59}$/u;
 const AGENT = /^[a-z0-9][a-z0-9_-]{0,79}$/;
@@ -25,9 +25,17 @@ function publicStatus(item) {
 }
 
 export class AgentFolders {
-  constructor({ stateDir, filesDir, configPath, onError = () => {} }) {
+  constructor({ stateDir, filesDir, configPath, onError = () => {}, metadataCacheEnabled = false }) {
     Object.assign(this, { stateDir: path.resolve(stateDir), filesDir, configPath, onError });
     this.queue = Promise.resolve();
+    this.metadataCacheEnabled = typeof metadataCacheEnabled === "function" ? metadataCacheEnabled : () => metadataCacheEnabled === true;
+    this.metadataCache = undefined;
+  }
+
+  syncOptions() {
+    if (!this.metadataCacheEnabled()) { this.metadataCache = undefined; return {}; }
+    this.metadataCache ??= new SyncMetadataCache();
+    return { cache: this.metadataCache };
   }
 
   serial(action) {
@@ -70,6 +78,7 @@ export class AgentFolders {
       state: result.skipped ? "partial" : "ready", lastAttempt,
       lastSuccess: result.skipped ? timestamp(item.status?.lastSuccess) : Date.now(),
       conflicts: result.conflicts, skipped: result.skipped, issues: result.issues.slice(0, 20).map(safeIssue),
+      metrics: result.metrics,
     };
   }
 
@@ -103,7 +112,7 @@ export class AgentFolders {
       }
       const { shared, managed } = await this.paths(item, config, true);
       const lastAttempt = Date.now();
-      const result = await syncFolders(shared, managed, item.hashes);
+      const result = await syncFolders(shared, managed, item.hashes, this.syncOptions());
       item.hashes = result.hashes;
       this.record(item, result, lastAttempt);
       await this.save(registry);
@@ -122,7 +131,7 @@ export class AgentFolders {
         const lastAttempt = Date.now();
         try {
           const { shared, managed } = await this.paths(item, config);
-          const result = await syncFolders(shared, managed, item.hashes);
+          const result = await syncFolders(shared, managed, item.hashes, this.syncOptions());
           item.hashes = result.hashes;
           this.record(item, result, lastAttempt);
         } catch (error) {

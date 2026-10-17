@@ -62,6 +62,19 @@ export class BridgeClient {
     }
   }
 
+  storageStatus(): Promise<import("@clawdesk/shared").StorageStatusDto> {
+    return this.#call("GET", "/storage/status", undefined, 30_000);
+  }
+  storageQuota(videoQuotaBytes: number | null): Promise<import("@clawdesk/shared").StorageStatusDto> {
+    return this.#call("POST", "/storage/quota", { videoQuotaBytes }, 30_000);
+  }
+  storagePreview(category: import("@clawdesk/shared").StorageCategory): Promise<import("@clawdesk/shared").StoragePreviewDto> {
+    return this.#call("POST", "/storage/preview", { category }, 30_000);
+  }
+  storageCleanup(token: string): Promise<import("@clawdesk/shared").StorageCleanupDto> {
+    return this.#call("POST", "/storage/cleanup", { token, confirm: true }, 30_000);
+  }
+
   /** Starts the pinned worker for one video; the call ends when the worker does. */
   studyVideo(request: { jobId: string; url: string; maxDurationSec: number; maxAudioBytes: number; maxSeconds: number }): Promise<BridgeVideoResult> {
     return this.#call("POST", "/video/study", request, (request.maxSeconds + 30) * 1000);
@@ -134,6 +147,18 @@ export class BridgeClient {
 
   claudeLogout(): Promise<{ ok: true }> {
     return this.#call("POST", "/claude/logout", {}, 40_000);
+  }
+
+  localMemoryStatus(): Promise<import("@clawdesk/shared").LocalMemoryStatusDto> {
+    return this.#call("GET", "/memory/status", undefined, 5_000);
+  }
+
+  localMemorySearch(agentId: string, query: string): Promise<import("@clawdesk/shared").LocalMemorySearchDto> {
+    return this.#call("POST", "/memory/search", { agentId, query }, 130_000);
+  }
+
+  localMemoryAction(action: "setup" | "reindex" | "check", consent: boolean): Promise<import("@clawdesk/shared").LocalMemoryStatusDto> {
+    return this.#call("POST", "/memory/action", { action, consent }, 5_000);
   }
 
   googleStatus(): Promise<GoogleBridgeStatus> {

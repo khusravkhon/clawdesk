@@ -5,6 +5,7 @@
 mod commands;
 mod install;
 mod local;
+mod recovery;
 mod servers;
 mod ssh;
 mod tunnel;
@@ -31,7 +32,7 @@ pub fn run() {
         .plugin(tauri_plugin_process::init())
         .setup(|app| {
             let config_dir = app.path().app_config_dir()?;
-            app.manage(AppState { store: servers::Store::new(config_dir), tunnels: tokio::sync::Mutex::new(HashMap::new()) });
+            app.manage(AppState { store: servers::Store::new(config_dir), tunnels: tokio::sync::Mutex::new(HashMap::new()), recovery: tokio::sync::Mutex::new(None) });
 
             // Tray: tunnels and panel windows keep working while the launcher is hidden.
             let open = MenuItem::with_id(app, "open", "ClawDesk", true, None::<&str>)?;
@@ -70,7 +71,10 @@ pub fn run() {
             commands::remove_server,
             commands::open_panel,
             commands::install_server,
-            commands::install_local
+            commands::install_local,
+            commands::local_status,
+            commands::inspect_local_backup,
+            commands::restore_local
         ])
         .run(tauri::generate_context!())
         .expect("error while running ClawDesk");

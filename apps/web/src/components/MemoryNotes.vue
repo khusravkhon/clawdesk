@@ -2,9 +2,9 @@
 // Notes the owner keeps for one agent (screen 4). Each note carries where it came from and the day
 // it is about, and the panel writes them all into that agent's USER.md, so the agent reads them as
 // its own knowledge. Everything here is correctable: a fact without a source gets repeated forever.
-import type { MemoryNoteDto } from "@clawdesk/shared";
+import type { MemoryNoteDto, MemoryNotesDto } from "@clawdesk/shared";
 import { Check, NotebookPen, Pencil, Trash2, X } from "@lucide/vue";
-import { NButton, NInput, useMessage } from "naive-ui";
+import { NAlert, NButton, NInput, useMessage } from "naive-ui";
 import { onMounted, ref } from "vue";
 import { useI18n } from "vue-i18n";
 import { api, ApiError } from "../api/client";
@@ -17,6 +17,7 @@ const message = useMessage();
 const notes = ref<MemoryNoteDto[]>([]);
 const loading = ref(true);
 const saving = ref(false);
+const pending = ref(false);
 const editing = ref<string | null>(null);
 const draft = ref({ text: "", source: "", happenedOn: "" });
 
@@ -27,9 +28,14 @@ const body = () => ({
 });
 const reset = () => (draft.value = { text: "", source: "", happenedOn: "" });
 
+function apply(dto: MemoryNotesDto): void {
+  notes.value = dto.notes;
+  pending.value = !dto.applied;
+}
+
 async function load(): Promise<void> {
   try {
-    notes.value = (await api.memory.notes(props.agentId)).notes;
+    apply(await api.memory.notes(props.agentId));
   } catch (e) {
     message.error(e instanceof ApiError ? e.body.message : String(e));
   } finally {
@@ -43,7 +49,7 @@ async function save(): Promise<void> {
   saving.value = true;
   try {
     const result = editing.value ? await api.memory.update(props.agentId, editing.value, body()) : await api.memory.add(props.agentId, body());
-    notes.value = result.notes;
+    apply(result);
     editing.value = null;
     reset();
   } catch (e) {
@@ -65,7 +71,7 @@ function cancel(): void {
 
 async function remove(note: MemoryNoteDto): Promise<void> {
   try {
-    notes.value = (await api.memory.remove(props.agentId, note.id)).notes;
+    apply(await api.memory.remove(props.agentId, note.id));
     if (editing.value === note.id) cancel();
   } catch (e) {
     message.error(e instanceof ApiError ? e.body.message : String(e));
@@ -73,12 +79,24 @@ async function remove(note: MemoryNoteDto): Promise<void> {
 }
 
 const when = (note: MemoryNoteDto) => (note.happenedOn ? formatDay(note.happenedOn, locale.value) : null);
+
+async function sync(): Promise<void> {
+  if (saving.value) return;
+  saving.value = true;
+  try { apply(await api.memory.sync(props.agentId)); }
+  catch (e) { message.error(e instanceof ApiError ? e.body.message : String(e)); }
+  finally { saving.value = false; }
+}
 </script>
 
 <template>
   <section class="card">
     <h2 class="card-title"><notebook-pen :size="16" /> {{ t("memory.notes.title") }}</h2>
     <p class="hint">{{ t("memory.notes.lead") }}</p>
+    <n-alert v-if="pending" type="warning" :bordered="false">
+      {{ t("memory.notes.pending") }}
+      <n-button size="small" :loading="saving" @click="sync">{{ t("memory.notes.retry") }}</n-button>
+    </n-alert>
 
     <ul v-if="notes.length" class="notes">
       <li v-for="note in notes" :key="note.id">

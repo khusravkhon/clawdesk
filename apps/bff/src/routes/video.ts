@@ -1,7 +1,7 @@
 import { CreateVideoJobRequest, type VideoJobDto, type VideoJobsDto } from "@clawdesk/shared";
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
-import { BudgetExceededError, type BudgetService } from "../budget/budget-service.js";
+import { BudgetExceededError, BudgetUsageUnavailableError, type BudgetService } from "../budget/budget-service.js";
 import { VideoJobRejected, type VideoService } from "../video/video-service.js";
 
 // Studying a video by link: queue it, watch it, stop it. The worker runs in the Gateway container,
@@ -24,6 +24,10 @@ export function registerVideoRoutes(app: FastifyInstance, deps: { video: VideoSe
       reply.status(202);
       return job;
     } catch (error) {
+      if (error instanceof BudgetUsageUnavailableError) {
+        reply.status(503).send({ error: "budget_usage_unavailable", message: "budget_usage_unavailable" });
+        return undefined;
+      }
       if (error instanceof BudgetExceededError) {
         reply.status(409).send({ error: "budget_exceeded", message: error.reason, details: { reason: error.reason } });
         return undefined;

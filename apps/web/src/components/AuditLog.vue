@@ -83,6 +83,9 @@ onMounted(() => load());
               <summary>{{ t("audit.details") }}</summary>
               <p>{{ t(e.action.startsWith("tool.") ? "audit.explanation.tool" : "audit.explanation.run") }}</p>
               <p>{{ t("audit.eventId") }}: <code>{{ e.id }}</code></p>
+              <p v-if="e.runId">runId: <code>{{ e.runId }}</code></p>
+              <p v-if="e.sessionKey">sessionKey: <code>{{ e.sessionKey }}</code></p>
+              <p>{{ e.laterSuccessAt ? t("audit.laterSuccess", { at: formatDateTime(new Date(e.laterSuccessAt).toISOString(), locale) }) : t("audit.recoveryUnknown") }}</p>
             </details>
           </li>
         </ul>

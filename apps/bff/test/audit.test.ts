@@ -66,6 +66,20 @@ describe("action log", () => {
     await app.close();
   });
 
+  it("correlates failures with safe identifiers and a later success of the same operation", async () => {
+    const gateway = { request: async () => ({ events: [
+      { eventId: "new", occurredAt: 30, agentId: "trainer", action: "agent.run.finished", status: "succeeded" },
+      { eventId: "good", occurredAt: 20, agentId: "main", action: "agent.run.finished", status: "succeeded" },
+      { eventId: "old", occurredAt: 10, agentId: "main", action: "agent.run.finished", status: "failed", runId: "run-1", sessionKey: "agent:main:main" },
+      { eventId: "unsafe", occurredAt: 5, agentId: "main", action: "tool.action.finished", status: "failed", runId: "PRIVATE token", sessionKey: "https://PRIVATE" },
+    ] }) } as unknown as GatewayService;
+    const audit = new AuditService({ db, gateway, logger: pino({ level: "silent" }) });
+    const page = await audit.page({});
+    expect(page.agents.find((event) => event.id === "old")).toMatchObject({ runId: "run-1", sessionKey: "agent:main:main", laterSuccessAt: 20 });
+    expect(page.agents.find((event) => event.id === "unsafe")?.laterSuccessAt).toBeUndefined();
+    expect(JSON.stringify(page)).not.toContain("PRIVATE");
+  });
+
   it("stores only allowlisted failure codes and generated request IDs, never response bodies", async () => {
     const gateway = { request: async () => ({ events: [] }) } as unknown as GatewayService;
     const audit = new AuditService({ db, gateway, logger: pino({ level: "silent" }) });

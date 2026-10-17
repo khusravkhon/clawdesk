@@ -27,7 +27,7 @@ pub fn panel_url() -> String {
 }
 
 /// A command without a console window flashing up on Windows.
-fn command(program: impl AsRef<std::ffi::OsStr>) -> Command {
+pub(crate) fn command(program: impl AsRef<std::ffi::OsStr>) -> Command {
     #[allow(unused_mut)]
     let mut cmd = Command::new(program);
     #[cfg(windows)]
@@ -88,14 +88,17 @@ async fn panel_answers() -> bool {
 }
 
 /// Before opening the panel window: Docker Desktop up and the panel listening (it restarts with Docker).
-pub async fn ensure_running() -> Result<()> {
+pub async fn ensure_running(app: &AppHandle) -> Result<()> {
+    let owns_address = || crate::recovery::status(app);
     if panel_answers().await {
+        if !owns_address().await?.running { bail!("Another application owns the local panel address. Check the selected personal installation in Docker Desktop."); }
         return Ok(());
     }
     ensure_docker(|_| {}).await?;
     let start = Instant::now();
     while start.elapsed() < PANEL_WAIT {
         if panel_answers().await {
+            if !owns_address().await?.running { bail!("Another application owns the local panel address."); }
             return Ok(());
         }
         tokio::time::sleep(Duration::from_secs(2)).await;
@@ -104,7 +107,7 @@ pub async fn ensure_running() -> Result<()> {
 }
 
 /// bash runs the installer: Git Bash on Windows (never the WSL bash.exe in System32).
-fn find_bash() -> Result<PathBuf> {
+pub(crate) fn find_bash() -> Result<PathBuf> {
     #[cfg(windows)]
     {
         let roots = ["ProgramFiles", "ProgramW6432", "ProgramFiles(x86)"].iter().filter_map(|v| std::env::var_os(v)).map(PathBuf::from);

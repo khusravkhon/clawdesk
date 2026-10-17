@@ -80,6 +80,16 @@ export class ApprovalsService {
     private readonly logger: Logger,
   ) {}
 
+  /** Daily view must distinguish an unavailable queue from an empty one. */
+  async pendingCount(): Promise<number> {
+    const queues = await Promise.all([
+      this.gateway.request<RawPending[]>("exec.approval.list", {}),
+      this.gateway.request<RawPending[]>("plugin.approval.list", {}),
+    ]);
+    if (queues.some((queue) => !Array.isArray(queue))) throw new Error("invalid_approvals");
+    return queues.reduce((count, queue) => count + queue.length, 0);
+  }
+
   async list(): Promise<ApprovalsDto> {
     const [exec, plugin, history, policy] = await Promise.all([
       this.gateway.request<RawPending[]>("exec.approval.list", {}),

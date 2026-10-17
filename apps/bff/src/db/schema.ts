@@ -227,6 +227,14 @@ export const videoJobs = sqliteTable(
   (t) => [index("video_jobs_state_idx").on(t.state), index("video_jobs_created_idx").on(t.createdAt)],
 );
 
+/** Identical bounded texts share storage; ownership and source metadata stay on library_items. */
+export const libraryContents = sqliteTable("library_contents", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  text: text("text").notNull(),
+  hash: text("hash"),
+  folded: text("folded"),
+}, (t) => [index("library_contents_hash_idx").on(t.hash), index("library_contents_pending_idx").on(t.id).where(sql`${t.folded} IS NULL`)]);
+
 /**
  * The owner's library: what the panel has already read for an agent — a document from the chat or
  * a video transcript. The row belongs to the agent the material was sent to, so a search only ever
@@ -244,12 +252,13 @@ export const libraryItems = sqliteTable(
     source: text("source").notNull(),
     /** How to point back into it: "страница", "лист", "таймкод" — set by whoever read it. */
     locator: text("locator"),
-    /** The text the panel read, as it was handed to the agent (already bounded). */
+    /** Legacy text column; the text the panel read now lives once in library_contents. */
     text: text("text").notNull(),
+    contentId: integer("content_id").references(() => libraryContents.id),
     chars: integer("chars").notNull(),
     createdAt: createdAt(),
   },
-  (t) => [index("library_items_agent_idx").on(t.agentId), index("library_items_created_idx").on(t.createdAt)],
+  (t) => [index("library_items_agent_idx").on(t.agentId), index("library_items_created_idx").on(t.createdAt), index("library_items_content_idx").on(t.contentId)],
 );
 
 /**
@@ -316,3 +325,21 @@ export const mcpGrants = sqliteTable(
   },
   (t) => [primaryKey({ columns: [t.server, t.agentId] })],
 );
+
+/** Fixed owner reminders. A durable sending claim is never replayed after an uncertain send. */
+export const personalReminders = sqliteTable("personal_reminders", {
+  id: text("id").primaryKey(),
+  requestId: text("request_id").notNull().unique(),
+  text: text("text").notNull(),
+  dueAt: integer("due_at").notNull(),
+  expiresAt: integer("expires_at").notNull(),
+  timeZone: text("time_zone").notNull(),
+  delivery: text("delivery", { enum: ["pending", "deferred", "sending", "sent", "unknown", "expired"] }).notNull().default("pending"),
+  action: text("action", { enum: ["open", "done", "skipped", "snoozed"] }).notNull().default("open"),
+  sentAt: integer("sent_at"),
+  messageId: text("message_id"),
+  parentId: text("parent_id"),
+  reason: text("reason"),
+  actionRequestId: text("action_request_id"),
+  actionPayload: text("action_payload"),
+}, (t) => [index("personal_reminders_due_idx").on(t.action, t.delivery, t.dueAt)]);

@@ -84,6 +84,9 @@ export const DashboardSchedulesDto = z.object({
   ),
   /** OpenClaw's own housekeeping jobs (heartbeat, memory) — counted, not listed. */
   systemJobs: z.number(),
+  /** A partial history is a lower bound, never a complete success rate. */
+  historyComplete: z.boolean().default(true),
+  historyReason: z.enum(["limit", "unavailable", "pagination", "changed", "unknown_jobs"]).nullable().default(null),
 });
 export type DashboardSchedulesDto = z.infer<typeof DashboardSchedulesDto>;
 

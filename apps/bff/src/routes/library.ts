@@ -50,6 +50,11 @@ export function registerLibraryRoutes(app: FastifyInstance, deps: { library: Lib
     return deps.notes.list(agentId);
   });
 
+  app.post("/api/memory/:agentId/notes/sync", async (request): Promise<MemoryNotesDto> => {
+    const { agentId } = z.object({ agentId: AgentId }).parse(request.params);
+    return deps.notes.sync(agentId);
+  });
+
   app.post<{ Params: { agentId: string } }>("/api/memory/:agentId/notes", async (request, reply): Promise<MemoryNotesDto | undefined> => {
     const { agentId } = z.object({ agentId: AgentId }).parse(request.params);
     const body = SaveMemoryNoteRequest.parse(request.body);

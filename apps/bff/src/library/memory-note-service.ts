@@ -1,9 +1,9 @@
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { MAX_MEMORY_NOTES, type MemoryNoteDto, type MemoryNotesDto, type SaveMemoryNoteRequest } from "@clawdesk/shared";
-import { asc, eq } from "drizzle-orm";
+import { and, asc, eq, like } from "drizzle-orm";
 import type { Logger } from "pino";
 import type { Db } from "../db/client.js";
-import { memoryNotes } from "../db/schema.js";
+import { memoryNotes, settings } from "../db/schema.js";
 import { getSetting, putSetting } from "../db/settings.js";
 import type { GatewayService } from "../gateway/gateway-service.js";
 
@@ -14,7 +14,10 @@ import type { GatewayService } from "../gateway/gateway-service.js";
 
 const START = "<!-- clawdesk:notes:start — edited in the ClawDesk panel -->";
 const END = "<!-- clawdesk:notes:end -->";
-const APPLIED = (agentId: string) => `memory.notes.applied.${agentId}`;
+const APPLIED_PREFIX = "memory.notes.applied.";
+const APPLIED = (agentId: string) => `${APPLIED_PREFIX}${agentId}`;
+const REVISION = (agentId: string) => `memory.notes.revision.${agentId}`;
+const revision = (notes: MemoryNoteDto[]) => createHash("sha256").update(notesBlock(notes)).digest("hex");
 
 export class MemoryNoteError extends Error {
   constructor(readonly code: "not_found" | "too_many") {
@@ -70,37 +73,78 @@ const toDto = (row: Row): MemoryNoteDto => ({
 });
 
 export class MemoryNoteService {
+  readonly #queues = new Map<string, Promise<void>>();
+  #retrying: Promise<void> | null = null;
   constructor(private readonly deps: Deps) {}
 
   list(agentId: string): MemoryNotesDto {
     const notes = this.deps.db.select().from(memoryNotes).where(eq(memoryNotes.agentId, agentId)).orderBy(asc(memoryNotes.createdAt)).all().map(toDto);
-    return { agentId, notes, applied: this.#applied(agentId) };
+    return { agentId, notes, applied: this.#applied(agentId, notes) };
   }
 
   async add(agentId: string, request: SaveMemoryNoteRequest): Promise<MemoryNotesDto> {
-    const current = this.deps.db.select({ id: memoryNotes.id }).from(memoryNotes).where(eq(memoryNotes.agentId, agentId)).all();
-    if (current.length >= MAX_MEMORY_NOTES) throw new MemoryNoteError("too_many");
-    this.deps.db
-      .insert(memoryNotes)
-      .values({ id: randomUUID(), agentId, text: request.text, source: request.source ?? null, happenedOn: request.happenedOn ?? null })
-      .run();
-    return this.#apply(agentId);
+    return this.#serial(agentId, async () => {
+      const current = this.deps.db.select({ id: memoryNotes.id }).from(memoryNotes).where(eq(memoryNotes.agentId, agentId)).all();
+      if (current.length >= MAX_MEMORY_NOTES) throw new MemoryNoteError("too_many");
+      this.deps.db
+        .insert(memoryNotes)
+        .values({ id: randomUUID(), agentId, text: request.text, source: request.source ?? null, happenedOn: request.happenedOn ?? null })
+        .run();
+      putSetting(this.deps.db, APPLIED(agentId), false);
+      return this.#apply(agentId);
+    });
   }
 
   async update(agentId: string, id: string, request: SaveMemoryNoteRequest): Promise<MemoryNotesDto> {
-    const changed = this.deps.db
-      .update(memoryNotes)
-      .set({ text: request.text, source: request.source ?? null, happenedOn: request.happenedOn ?? null, updatedAt: new Date() })
-      .where(eq(memoryNotes.id, id))
-      .run();
-    if (!changed.changes) throw new MemoryNoteError("not_found");
-    return this.#apply(agentId);
+    return this.#serial(agentId, async () => {
+      const changed = this.deps.db
+        .update(memoryNotes)
+        .set({ text: request.text, source: request.source ?? null, happenedOn: request.happenedOn ?? null, updatedAt: new Date() })
+        .where(and(eq(memoryNotes.id, id), eq(memoryNotes.agentId, agentId)))
+        .run();
+      if (!changed.changes) throw new MemoryNoteError("not_found");
+      putSetting(this.deps.db, APPLIED(agentId), false);
+      return this.#apply(agentId);
+    });
   }
 
   async remove(agentId: string, id: string): Promise<MemoryNotesDto> {
-    const changed = this.deps.db.delete(memoryNotes).where(eq(memoryNotes.id, id)).run();
-    if (!changed.changes) throw new MemoryNoteError("not_found");
-    return this.#apply(agentId);
+    return this.#serial(agentId, async () => {
+      const changed = this.deps.db.delete(memoryNotes).where(and(eq(memoryNotes.id, id), eq(memoryNotes.agentId, agentId))).run();
+      if (!changed.changes) throw new MemoryNoteError("not_found");
+      putSetting(this.deps.db, APPLIED(agentId), false);
+      return this.#apply(agentId);
+    });
+  }
+
+  sync(agentId: string): Promise<MemoryNotesDto> {
+    return this.#serial(agentId, () => this.#apply(agentId));
+  }
+
+  retryPending(): Promise<void> {
+    return this.#retrying ??= this.#retryAll().finally(() => { this.#retrying = null; });
+  }
+
+  async #retryAll(): Promise<void> {
+    const ids = new Set(this.deps.db.select({ id: memoryNotes.agentId }).from(memoryNotes).all().map((row) => row.id));
+    for (const row of this.deps.db.select({ key: settings.key }).from(settings).where(like(settings.key, `${APPLIED_PREFIX}%`)).all()) ids.add(row.key.slice(APPLIED_PREFIX.length));
+    for (const agentId of ids) {
+      if (!this.list(agentId).applied) await this.sync(agentId);
+    }
+  }
+
+  async drain(): Promise<void> {
+    await this.#retrying?.catch(() => {});
+    await Promise.all([...this.#queues.values()]);
+  }
+
+  async #serial<T>(agentId: string, work: () => Promise<T>): Promise<T> {
+    const action = (this.#queues.get(agentId) ?? Promise.resolve()).then(work);
+    const settled = action.then(() => {}, () => {});
+    this.#queues.set(agentId, settled);
+    try { return await action; } finally {
+      if (this.#queues.get(agentId) === settled) this.#queues.delete(agentId);
+    }
   }
 
   /**
@@ -109,16 +153,25 @@ export class MemoryNoteService {
    */
   async #apply(agentId: string): Promise<MemoryNotesDto> {
     const state = this.list(agentId);
-    const file = await this.deps.gateway.request<{ file?: { content?: string } }>("agents.files.get", { agentId, name: "USER.md" });
-    const content = upsertNotesBlock(file.file?.content ?? "", notesBlock(state.notes));
-    await this.deps.gateway.request("agents.files.set", { agentId, name: "USER.md", content });
-    putSetting(this.deps.db, APPLIED(agentId), true);
-    this.deps.logger.info({ agentId, notes: state.notes.length }, "memory notes written to the agent");
-    return { ...state, applied: true };
+    putSetting(this.deps.db, APPLIED(agentId), false);
+    try {
+      const file = await this.deps.gateway.request<{ file?: { content?: string } }>("agents.files.get", { agentId, name: "USER.md" });
+      const content = upsertNotesBlock(file.file?.content ?? "", notesBlock(state.notes));
+      await this.deps.gateway.request("agents.files.set", { agentId, name: "USER.md", content });
+      this.deps.db.transaction(() => {
+        putSetting(this.deps.db, REVISION(agentId), revision(state.notes));
+        putSetting(this.deps.db, APPLIED(agentId), true);
+      });
+      this.deps.logger.info({ agentId, notes: state.notes.length }, "memory notes written to the agent");
+    } catch (error) {
+      this.deps.logger.warn({ err: error, agentId }, "memory notes saved; synchronization pending");
+    }
+    return this.list(agentId);
   }
 
-  /** Whether the panel has written this agent's notes into its files at least once. */
-  #applied(agentId: string): boolean {
-    return getSetting<boolean>(this.deps.db, APPLIED(agentId)) === true;
+  /** Whether the panel has written this agent's current notes into its files. */
+  #applied(agentId: string, notes: MemoryNoteDto[]): boolean {
+    const applied = getSetting<boolean>(this.deps.db, APPLIED(agentId));
+    return (applied === null && !notes.length) || (applied === true && getSetting<string>(this.deps.db, REVISION(agentId)) === revision(notes));
   }
 }

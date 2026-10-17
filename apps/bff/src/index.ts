@@ -24,6 +24,8 @@ import { ChatService } from "./chat/chat-service.js";
 import { VideoService } from "./video/video-service.js";
 import { BudgetService } from "./budget/budget-service.js";
 import { LibraryService } from "./library/library-service.js";
+import { MemoryNoteService } from "./library/memory-note-service.js";
+import { ReminderService } from "./schedules/reminder-service.js";
 import { repairAgentFolders } from "./provision/agent-folders.js";
 import { repairAgentCommunication } from "./provision/agent-communication.js";
 
@@ -61,10 +63,13 @@ const audit = new AuditService({ db, gateway, logger: logger.child({ component: 
 // Studying videos by link: one queue for the whole panel, so a restart can mark what it left running.
 const library = new LibraryService(db);
 const budget = new BudgetService({ gateway, db, logger: logger.child({ component: "budget" }) });
-const video = new VideoService({ db, bridge, chat: new ChatService(gateway, library), logger: logger.child({ component: "video" }), videoDir: config.videoDir, library });
+const notes = new MemoryNoteService({ gateway, db, logger: logger.child({ component: "memory-notes" }) });
+const video = new VideoService({ db, bridge, chat: new ChatService(gateway, library), logger: logger.child({ component: "video" }), videoDir: config.videoDir, library, waitUntilReady: () => gateway.waitUntilConnected(120_000) });
 video.recover();
+const reminders = new ReminderService({ db, gateway, telegram, mode: () => space.mode(), timeZone: () => space.get()?.timezone ?? "UTC" });
+reminders.recover();
 
-const app = await buildApp({ logger, gateway, db, aiSetup, signIn, telegram, freeModels, sources, skills, mcp, approvals, assistant, auth, backups, bridge, space, teams, audit, video, videoDir: config.videoDir, library, budget, sandboxEnabled: config.sandboxEnabled, webDist: config.webDist, trustProxy: config.trustProxy });
+const app = await buildApp({ logger, gateway, db, aiSetup, signIn, telegram, freeModels, sources, skills, mcp, approvals, assistant, auth, backups, bridge, space, teams, audit, video, videoDir: config.videoDir, library, budget, notes, reminders, sandboxEnabled: config.sandboxEnabled, webDist: config.webDist, trustProxy: config.trustProxy });
 
 gateway.start();
 await app.listen({ host: config.host, port: config.port });
@@ -96,6 +101,7 @@ async function repairStartup(): Promise<void> {
     ["default exec approval mode", repairDefaultApprovals],
     ["junior models", repairFollowerModels],
     ["memory provider", repairMemory],
+    ["pending memory notes", () => notes.retryPending()],
     // MCP servers added elsewhere (Notion on the data sources screen) stay with the main agent.
     ["MCP access per agent", () => mcp.syncAccess()],
     ["Telegram files and voice messages", () => telegram.ensureMedia()],
@@ -130,12 +136,30 @@ const budgetTimer = setInterval(() => {
 }, BUDGET_INTERVAL_MS);
 budgetTimer.unref();
 
+const notesTimer = setInterval(() => {
+  if (!shuttingDown && gateway.status.state === "connected") {
+    void notes.retryPending().catch((error: Error) => logger.warn({ err: error }, "could not retry memory note synchronization"));
+  }
+}, 60_000);
+notesTimer.unref();
+
+const reminderTimer = setInterval(() => {
+  if (!shuttingDown) void reminders.tick().catch((error: Error) => logger.warn({ err: error }, "could not process fixed reminders"));
+}, 15_000);
+reminderTimer.unref();
+
 async function shutdown(signal: string): Promise<void> {
   if (shuttingDown) return;
   shuttingDown = true;
   logger.info({ signal }, "shutting down");
   backups.stopSchedule();
+  video.stopQueue();
+  clearInterval(budgetTimer);
+  clearInterval(notesTimer);
+  clearInterval(reminderTimer);
+  await reminders.stop();
   await app.close();
+  await notes.drain();
   await gateway.stop();
   closeDb();
   process.exit(0);

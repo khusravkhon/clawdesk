@@ -38,3 +38,23 @@ export type AssistantDto = z.infer<typeof AssistantDto>;
 
 export const SetMemoryRequest = z.object({ provider: MemoryProvider });
 export type SetMemoryRequest = z.infer<typeof SetMemoryRequest>;
+
+export const LocalMemoryStatusDto = z.object({
+  job: z.object({
+    state: z.enum(["idle", "installing", "downloading", "configuring", "indexing", "checking", "ready", "error"]),
+    percent: z.number().min(0).max(100).nullable(),
+    error: z.string().nullable(),
+    updatedAt: z.number().nullable(),
+  }),
+  checkedAt: z.number().nullable(),
+  error: z.string().nullable(),
+  agents: z.array(z.object({
+    agentId: z.string(), provider: z.string().nullable(), files: z.number().nullable(), chunks: z.number().nullable(),
+    index: z.enum(["ready", "pending"]), embeddings: z.enum(["ready", "error", "unchecked"]),
+  })),
+});
+export type LocalMemoryStatusDto = z.infer<typeof LocalMemoryStatusDto>;
+export const LocalMemoryActionRequest = z.object({ action: z.enum(["setup", "reindex", "check"]), consent: z.boolean().default(false) });
+export const LocalMemorySearchRequest = z.object({ agentId: z.string().regex(/^[a-z0-9][a-z0-9_-]{0,63}$/), query: z.string().trim().min(1).max(500) });
+export const LocalMemorySearchDto = z.object({ stale: z.boolean(), results: z.array(z.object({ path: z.string().max(500), snippet: z.string().max(2000) })).max(3) });
+export type LocalMemorySearchDto = z.infer<typeof LocalMemorySearchDto>;

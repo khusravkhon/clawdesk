@@ -242,3 +242,18 @@ test("an agent ID reused for a different workspace does not inherit the deleted 
   await manager.syncAll();
   await assert.rejects(fs.stat(path.join(workspace, "folders")), { code: "ENOENT" });
 });
+
+test("metadata cache requires personal-mode opt-in and discards cached data when mode changes", () => {
+  const options = { stateDir: "/unused", filesDir: "/unused", configPath: "/unused" };
+  const disabled = new AgentFolders(options);
+  assert.deepEqual(disabled.syncOptions(), {});
+  let personal = true;
+  const manager = new AgentFolders({ ...options, metadataCacheEnabled: () => personal });
+  const first = manager.syncOptions().cache;
+  assert.ok(first);
+  assert.equal(manager.syncOptions().cache, first);
+  personal = false;
+  assert.deepEqual(manager.syncOptions(), {});
+  personal = true;
+  assert.notEqual(manager.syncOptions().cache, first);
+});

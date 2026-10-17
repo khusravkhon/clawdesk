@@ -38,6 +38,9 @@ export const AgentAuditEventDto = z.object({
   status: z.string(),
   toolName: z.string().nullable(),
   errorCode: z.string().nullable(),
+  runId: z.string().optional(),
+  sessionKey: z.string().optional(),
+  laterSuccessAt: z.number().optional(),
 });
 export type AgentAuditEventDto = z.infer<typeof AgentAuditEventDto>;
 

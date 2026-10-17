@@ -8,6 +8,9 @@ fn main() {
         "open_panel",
         "install_server",
         "install_local",
+        "local_status",
+        "inspect_local_backup",
+        "restore_local",
     ])))
     .expect("failed to run tauri-build");
 }

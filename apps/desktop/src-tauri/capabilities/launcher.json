@@ -13,6 +13,9 @@
     "allow-remove-server",
     "allow-open-panel",
     "allow-install-server",
-    "allow-install-local"
+    "allow-install-local",
+    "allow-local-status",
+    "allow-inspect-local-backup",
+    "allow-restore-local"
   ]
 }

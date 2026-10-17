@@ -25,7 +25,7 @@ const VTT = `WEBVTT
 Держите спину ровно
 `;
 
-function harness(options: { result?: BridgeVideoResult; fail?: BridgeError; speech?: boolean; hold?: Promise<void>; videoDir?: string; progress?: number } = {}) {
+function harness(options: { result?: BridgeVideoResult; fail?: BridgeError; speech?: boolean; hold?: Promise<void>; videoDir?: string; progress?: number; waitUntilReady?: () => Promise<void> } = {}) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "clawdesk-video-"));
   const { db, close } = openDb(path.join(dir, "panel.sqlite"));
   const sent: { agentId: string; text: string; audio?: unknown; images?: unknown[] }[] = [];
@@ -68,7 +68,9 @@ function harness(options: { result?: BridgeVideoResult; fail?: BridgeError; spee
     },
   } as unknown as ChatService;
   const logger = { warn: () => {}, info: () => {}, child: () => logger } as never;
-  return { video: new VideoService({ db, bridge, chat, logger, videoDir: options.videoDir }), db, dir, sent, canceled, cleanup: () => { close(); fs.rmSync(dir, { recursive: true, force: true }); } };
+  let closed = false;
+  const closeDb = () => { if (!closed) { closed = true; close(); } };
+  return { video: new VideoService({ db, bridge, chat, logger, videoDir: options.videoDir, waitUntilReady: options.waitUntilReady }), db, dir, sent, canceled, closeDb, cleanup: () => { closeDb(); fs.rmSync(dir, { recursive: true, force: true }); } };
 }
 
 let open: { cleanup: () => void }[] = [];
@@ -81,6 +83,26 @@ const make = (options?: Parameters<typeof harness>[0]) => {
 };
 
 describe("studying a video by link (screen 9)", () => {
+  it("does not access a closed database when readiness completes after stopping the queue", async () => {
+    let connect = () => {};
+    const ready = new Promise<void>((resolve) => { connect = resolve; });
+    const { video, db, closeDb } = make({ waitUntilReady: () => ready });
+    db.insert(videoJobs).values({ id: "11111111-1111-4111-8111-111111111111", agentId: "trainer", url: "https://www.youtube.com/watch?v=dQw4w9WgXcQ", videoId: "dQw4w9WgXcQ", state: "queued", source: "none", chars: 0 }).run();
+    video.recover(); video.stopQueue(); closeDb(); connect();
+    await video.drain();
+  });
+  it("resumes queued work after restart only after the Gateway is ready", async () => {
+    let connect = () => {};
+    const ready = new Promise<void>((resolve) => { connect = resolve; });
+    const { video, db, sent } = make({ waitUntilReady: () => ready });
+    db.insert(videoJobs).values({ id: "11111111-1111-4111-8111-111111111111", agentId: "trainer", url: "https://www.youtube.com/watch?v=dQw4w9WgXcQ", videoId: "dQw4w9WgXcQ", state: "queued", source: "none", chars: 0 }).run();
+    expect(video.recover()).toBe(0);
+    await Promise.resolve(); expect(sent).toEqual([]);
+    expect((await video.list()).jobs[0]?.state).toBe("queued");
+    connect(); await video.drain();
+    expect(sent).toHaveLength(1);
+    expect((await video.list()).jobs[0]?.state).toBe("ready");
+  });
   it("takes one video over https and refuses anything else", () => {
     expect(parseVideoUrl("https://www.youtube.com/watch?v=dQw4w9WgXcQ&t=42s")).toEqual({ videoId: "dQw4w9WgXcQ", canonical: "https://www.youtube.com/watch?v=dQw4w9WgXcQ" });
     expect(parseVideoUrl("https://youtu.be/dQw4w9WgXcQ").canonical).toBe("https://www.youtube.com/watch?v=dQw4w9WgXcQ");
