@@ -250,7 +250,7 @@ export class DashboardService {
       listAgents(this.deps),
       gateway.request<{ sessions?: RawSession[] }>("sessions.list", { limit: 500 }),
       gateway.request<{ jobs?: RawCronJob[] }>("cron.list", {}),
-      gateway.request<{ entries?: RawCronRun[] }>("cron.runs", { scope: "all", limit: 500, sortDir: "desc" }),
+      gateway.request<{ entries?: RawCronRun[] }>("cron.runs", { scope: "all", limit: 200, sortDir: "desc" }),
       this.#health(),
     ]);
 
@@ -264,9 +264,9 @@ export class DashboardService {
     } else errors.agents = errorText(agentsRes.reason);
 
     let schedules: DashboardSchedulesDto | null = null;
-    if (jobsRes.status === "fulfilled") {
-      schedules = buildSchedules(jobsRes.value.jobs ?? [], runsRes.status === "fulfilled" ? (runsRes.value.entries ?? []) : [], days, timeZone);
-    } else errors.schedules = errorText(jobsRes.reason);
+    if (jobsRes.status === "fulfilled" && runsRes.status === "fulfilled") {
+      schedules = buildSchedules(jobsRes.value.jobs ?? [], runsRes.value.entries ?? [], days, timeZone);
+    } else errors.schedules = errorText(jobsRes.status === "rejected" ? jobsRes.reason : runsRes.status === "rejected" ? runsRes.reason : "Schedule history unavailable");
 
     return {
       range,

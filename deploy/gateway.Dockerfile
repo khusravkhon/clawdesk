@@ -35,6 +35,8 @@ USER root
 # by hand. Updates come with a new ClawDesk image, never by itself (DISABLE_AUTOUPDATER).
 ARG CLAUDE_CODE_VERSION=2.1.301
 RUN npm install -g --no-fund --no-audit @anthropic-ai/claude-code@${CLAUDE_CODE_VERSION}   && node /usr/local/lib/node_modules/@anthropic-ai/claude-code/install.cjs   && claude --version   && npm cache clean --force
+# OpenMP is required by the managed llama.cpp CPU server used for local memory embeddings.
+RUN apt-get update && apt-get install -y --no-install-recommends libgomp1 && rm -rf /var/lib/apt/lists/*
 RUN mkdir -p /var/lib/clawdesk-sources/panel /var/lib/clawdesk-sources/freellmapi && chown -R node:node /var/lib/clawdesk-sources
 USER node
 ENTRYPOINT ["tini", "-s", "--", "/usr/local/bin/clawdesk-gateway-start"]
