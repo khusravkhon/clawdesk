@@ -25,7 +25,7 @@
 //   POST /teams/clone        { teamId, repoUrl, token }   project team repository (see clawdesk-teams.mjs)
 //   POST /teams/fetch | /teams/push { teamId, … }  GET /teams/status?teamId=…  POST /teams/remove { teamId }
 //   GET  /backup/list                       → { backups: [{ name, kind, createdAt, size }] }
-//   POST /backup/create      { kind }        daily | manual | before-reset (see clawdesk-backup.mjs)
+//   POST /backup/create      { kind }        daily | manual | before-reset | before-update (see clawdesk-backup.mjs)
 //   POST /backup/delete      { name, confirm: true }   delete one completed archive
 //   POST /video/study        { jobId, url, maxSeconds, maxDurationSec, maxAudioBytes } → subtitles | audio | { error }
 //   POST /video/frames       { jobId, url, maxFrames, maxFrameBytes, … }  → sampled frames | { error }

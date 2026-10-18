@@ -22,6 +22,9 @@ RUN pnpm -r build \
  && cp -r apps/web/dist /out/web
 
 FROM node:24-bookworm-slim
+# The release version (0.1.N) shown on the System screen; locally built images say "dev" or "local".
+ARG CLAWDESK_VERSION=dev
+ENV CLAWDESK_VERSION=$CLAWDESK_VERSION
 ENV NODE_ENV=production HOST=0.0.0.0 PORT=8080 DATA_DIR=/data WEB_DIST=/app/web
 WORKDIR /app
 COPY --from=build /out /app

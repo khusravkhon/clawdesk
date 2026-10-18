@@ -29,8 +29,8 @@ const SOURCES = "/var/lib/clawdesk-sources";
 const AUTH_SECRETS = "/home/node/.config/openclaw";
 const SECRET_ENV = ["OPENCLAW_GATEWAY_TOKEN", "FREELLMAPI_ENCRYPTION_KEY", "GOG_KEYRING_PASSWORD"];
 /** How many archives of each group stay; older ones are deleted after a new backup. */
-const KEEP = { regular: 7, "before-reset": 3 };
-export const BACKUP_NAME = /^clawdesk-(\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}Z)-(daily|manual|before-reset)\.tar$/;
+const KEEP = { regular: 7, "before-reset": 3, "before-update": 3 };
+export const BACKUP_NAME = /^clawdesk-(\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}Z)-(daily|manual|before-reset|before-update)\.tar$/;
 const OWNER_CODE = /^[A-Z0-9]{4}(-[A-Z0-9]{4}){2}$/;
 
 function run(cmd, args, { cwd = "/app", timeoutMs = 120_000, env = process.env } = {}) {
@@ -86,7 +86,7 @@ let busy = false;
 
 /** Creates a backup; one at a time. */
 export async function createBackup(kind) {
-  if (!["daily", "manual", "before-reset"].includes(kind)) throw new BackupError("invalid_kind", "unknown backup kind", 400);
+  if (!["daily", "manual", "before-reset", "before-update"].includes(kind)) throw new BackupError("invalid_kind", "unknown backup kind", 400);
   if (busy) throw new BackupError("backup_busy", "a backup is already being made", 409);
   busy = true;
   const stamp = new Date().toISOString().replace(/\.\d+Z$/, "Z").replace(/:/g, "-");
@@ -166,7 +166,8 @@ export async function deleteBackup(name) {
 
 async function prune() {
   const all = await listBackups();
-  const groups = { regular: all.filter((b) => b.kind !== "before-reset"), "before-reset": all.filter((b) => b.kind === "before-reset") };
+  const special = ["before-reset", "before-update"];
+  const groups = { regular: all.filter((b) => !special.includes(b.kind)), ...Object.fromEntries(special.map((kind) => [kind, all.filter((b) => b.kind === kind)])) };
   for (const [group, items] of Object.entries(groups)) {
     for (const old of items.slice(KEEP[group])) await fs.rm(path.join(BACKUP_DIR, old.name), { force: true });
   }

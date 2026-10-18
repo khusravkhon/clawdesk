@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { LocalMemory, embeddingPatch, embeddingPrompter, memoryError, memorySummary } from "./clawdesk-memory.mjs";
+import { LocalMemory, MEMORY_VERSION, embeddingPatch, embeddingPrompter, memoryError, memorySummary } from "./clawdesk-memory.mjs";
 
 const row = (agentId = "main", provider = "local", deep = true) => ({ agentId, status: {
   provider, files: 2, chunks: 3, dirty: false, custom: { indexIdentity: { status: "valid" } },
@@ -19,7 +19,7 @@ async function fixture(t, { config = {}, method, loader } = {}) {
   const calls = [];
   const runCli = async (args, opts) => {
     calls.push({ args, opts, snapshot: opts?.env?.OPENCLAW_CONFIG_PATH ? JSON.parse(await fs.readFile(opts.env.OPENCLAW_CONFIG_PATH, "utf8")) : undefined });
-    if (args[0] === "--version") return { code: 0, out: "OpenClaw 2026.8.1" };
+    if (args[0] === "--version") return { code: 0, out: `OpenClaw ${MEMORY_VERSION}` };
     if (args[0] === "config") {
       const current = JSON.parse(await fs.readFile(configPath, "utf8"));
       const patch = JSON.parse(opts.input);

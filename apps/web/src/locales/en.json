@@ -828,7 +828,8 @@
     "kind": {
       "daily": "Nightly",
       "manual": "Manual",
-      "before-reset": "Before reset"
+      "before-reset": "Before reset",
+      "before-update": "Before update"
     },
     "download": "Download",
     "downloadTitle": "Download a copy",
@@ -1218,7 +1219,7 @@
   "localMemory": {
     "title": "Local memory search",
     "about": "Memory readiness is separate from chat sign-in. The local model searches notes by meaning. Checks and reindexing below only use local embeddings. Cloud search needs separate API credits.",
-    "consent": "Allow the official llama.cpp 2026.8.1 plugin to download a verified engine and memory model (about 330 MB) and run locally.",
+    "consent": "Allow the official llama.cpp {version} plugin to download a verified engine and memory model (about 330 MB) and run locally.",
     "install": "Install and enable",
     "check": "Check memory",
     "reindex": "Reindex",

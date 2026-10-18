@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
@@ -5,7 +6,10 @@ import os from "node:os";
 import { randomUUID } from "node:crypto";
 
 export const MEMORY_PACKAGE = "@openclaw/llama-cpp-provider";
-export const MEMORY_VERSION = "2026.8.1";
+// The official plugin ships in lockstep with OpenClaw: the pinned version (deploy/openclaw.version, copied
+// next to this module in the Gateway image).
+// openclaw-bump-review: local memory setup answers the plugin's prompts by their exact text; set it up once on the new version.
+export const MEMORY_VERSION = readFileSync(new URL("./openclaw.version", import.meta.url), "utf8").trim();
 const EMBEDDING_CONFIRM = "OpenClaw can install a verified llama.cpp server and download only the local embedding model (about 0.3 GB). This will not install or change your chat model. Continue?";
 const AGENT = /^[a-z0-9][a-z0-9_-]{0,63}$/;
 const ACTIVE = new Set(["installing", "downloading", "configuring", "indexing", "checking"]);
@@ -219,7 +223,7 @@ export class LocalMemory {
       }
       if (config.memory?.search?.local?.modelPath || Object.values(config.agents?.entries ?? {}).some((agent) => agent.memory?.search?.local?.modelPath)) throw new MemoryError("setup_conflict");
       const version = await this.#cli(["--version"]);
-      if (!/\b2026\.8\.1\b/.test(version)) throw new MemoryError("setup_incompatible");
+      if (!version.split(/\s+/).includes(MEMORY_VERSION)) throw new MemoryError("setup_incompatible");
       let method = await this.providerLoader(this.stateDir);
       if (!method) {
         await this.#cli(["plugins", "install", `${MEMORY_PACKAGE}@${MEMORY_VERSION}`, "--pin", "--accept-capabilities"], { timeoutMs: 300_000 });

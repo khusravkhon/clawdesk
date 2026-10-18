@@ -11,7 +11,7 @@ import { encryptStream } from "./backup-crypto.js";
 // (deploy/clawdesk-backup.mjs); the panel sees the backups folder read-only, lists it, makes one
 // every night and hands a copy out encrypted with the owner's password.
 
-const NAME = /^clawdesk-(\d{4}-\d{2}-\d{2})T(\d{2})-(\d{2})-(\d{2})Z-(daily|manual|before-reset)\.tar$/;
+const NAME = /^clawdesk-(\d{4}-\d{2}-\d{2})T(\d{2})-(\d{2})-(\d{2})Z-(daily|manual|before-reset|before-update)\.tar$/;
 const CHECK_EVERY_MS = 30 * 60_000;
 /** Nightly window (panel time zone); a backup older than this is made outside the window too. */
 const NIGHT = { from: 3, to: 6 };

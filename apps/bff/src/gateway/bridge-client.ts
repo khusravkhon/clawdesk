@@ -36,7 +36,7 @@ export type BridgeVideoResult = {
   error?: string;
 };
 
-export type BridgeBackup = { name: string; kind: "daily" | "manual" | "before-reset"; createdAt: string; size: number };
+export type BridgeBackup = { name: string; kind: "daily" | "manual" | "before-reset" | "before-update"; createdAt: string; size: number };
 
 export type GoogleLogin = { email: string; services: string[]; readonly: boolean; redirectUri?: string };
 export type GoogleBridgeStatus = {
