@@ -57,6 +57,7 @@ const ACTIONS: Record<string, string> = {
   "POST /api/free-models/keys": "freeModels.addKey",
   "DELETE /api/free-models/keys/:platform": "freeModels.removeKey",
   "POST /api/system/backups": "backup.create",
+  "DELETE /api/system/backups/:name": "backup.delete",
   "POST /api/system/backups/:name/download": "backup.download",
   "POST /api/system/reset": "system.reset",
   "POST /api/system/gateway/restart": "system.restartGateway",

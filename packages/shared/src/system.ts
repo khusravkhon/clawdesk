@@ -29,6 +29,9 @@ export type BackupsDto = z.infer<typeof BackupsDto>;
 export const DownloadBackupRequest = z.object({ password: z.string().min(PASSWORD_MIN).max(200) });
 export type DownloadBackupRequest = z.infer<typeof DownloadBackupRequest>;
 
+export const DeleteBackupRequest = z.object({ confirm: z.literal(true) }).strict();
+export type DeleteBackupRequest = z.infer<typeof DeleteBackupRequest>;
+
 export const FactoryResetRequest = z.object({
   /** The panel password, again: a reset cannot be undone except from a backup. */
   password: z.string().min(1).max(200),

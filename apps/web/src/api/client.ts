@@ -182,6 +182,7 @@ export const api = {
     storageCleanup: (token: string) => post<import("@clawdesk/shared").StorageCleanupDto>("/api/system/storage/cleanup", { token, confirm: true }),
     backups: () => request<BackupsDto>("/api/system/backups"),
     createBackup: () => post<BackupDto>("/api/system/backups"),
+    deleteBackup: (name: string) => request<{ deleted: true; name: string }>(`/api/system/backups/${encodeURIComponent(name)}`, { method: "DELETE", headers: { "content-type": "application/json" }, body: JSON.stringify({ confirm: true }) }),
     /** The encrypted copy as a file; the password never goes into a URL. */
     downloadBackup: async (name: string, password: string): Promise<Blob> => {
       const res = await fetch(`/api/system/backups/${encodeURIComponent(name)}/download`, {

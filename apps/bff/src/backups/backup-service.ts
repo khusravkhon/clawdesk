@@ -56,13 +56,18 @@ export class BackupService {
       return [];
     }
     return names
-      .map((name) => {
+      .flatMap((name) => {
         const m = NAME.exec(name);
-        if (!m) return null;
-        const size = fs.statSync(path.join(dir, name)).size;
-        return { name, kind: m[5] as BackupKind, createdAt: `${m[1]}T${m[2]}:${m[3]}:${m[4]}Z`, size };
+        if (!m) return [];
+        try {
+          const stat = fs.lstatSync(path.join(dir, name));
+          if (!stat.isFile()) return [];
+          return [{ name, kind: m[5] as BackupKind, createdAt: `${m[1]}T${m[2]}:${m[3]}:${m[4]}Z`, size: stat.size }];
+        } catch (error) {
+          if ((error as NodeJS.ErrnoException).code === "ENOENT") return [];
+          throw error;
+        }
       })
-      .filter((b) => b !== null)
       .sort((a, b) => b.name.localeCompare(a.name));
   }
 
@@ -89,6 +94,13 @@ export class BackupService {
     const file = path.join(dir, name);
     if (!fs.existsSync(file)) throw new BackupUnavailableError("no such backup");
     return { stream: await encryptStream(fs.createReadStream(file), password), filename: `${name}.enc` };
+  }
+
+  async remove(name: string): Promise<{ deleted: true; name: string }> {
+    if (!this.available || !NAME.test(name)) throw new BackupUnavailableError("no such backup");
+    const result = await this.deps.bridge.backupDelete(name);
+    this.deps.logger.info({ name }, "backup deleted");
+    return result;
   }
 
   /**

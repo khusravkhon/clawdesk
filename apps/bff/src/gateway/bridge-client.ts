@@ -227,6 +227,10 @@ export class BridgeClient {
     return this.#call("POST", "/backup/create", { kind }, 20 * 60_000);
   }
 
+  backupDelete(name: string): Promise<{ deleted: true; name: string }> {
+    return this.#call("POST", "/backup/delete", { name, confirm: true }, 30_000);
+  }
+
   /** Starts the factory reset; the Gateway and the panel stop shortly after this returns. */
   factoryReset(ownerCode: string): Promise<{ started: true }> {
     return this.#call("POST", "/reset", { ownerCode }, 60_000);

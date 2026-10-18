@@ -813,6 +813,13 @@
     "subtitle": "Backups and resetting the panel",
     "backups": "Backups",
     "backupNow": "Back up now",
+    "deleteBackup": "Delete",
+    "cancelDelete": "Cancel",
+    "deleteBackupConfirm": "Delete backup “{name}” from the server? This cannot be undone. Current application data and previously downloaded copies will be kept.",
+    "backupDeleted": "Backup deleted",
+    "backupBusy": "A backup operation is running. Wait for it to finish before deleting.",
+    "backupGone": "The backup is no longer available. The list will be refreshed.",
+    "backupDeleteFailed": "Deletion could not be confirmed. Check the list and server connection before retrying.",
     "backupMade": "Backup made",
     "backupsAbout": "Every night (03:00–06:00) the server makes a backup; the last 7 are kept. A backup has everything: agents, chats, AI keys, Telegram, Google and Notion connections, the panel password and the shared files folder.",
     "unavailable": "Backups work in the panel installed on a server. Development mode has none.",
@@ -1001,6 +1008,7 @@
       },
       "backup": {
         "create": "Backup made",
+        "delete": "Backup deleted",
         "download": "Backup copy downloaded"
       },
       "system": {
