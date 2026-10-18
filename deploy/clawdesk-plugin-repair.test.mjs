@@ -4,7 +4,7 @@ import os from "node:os";
 import { createHash } from "node:crypto";
 import { after, test } from "node:test";
 import assert from "node:assert/strict";
-import { recoveryPlan, verifyArtifact, repair, linkHost, run } from "./clawdesk-plugin-repair.mjs";
+import { recoveryPlan, verifyArtifact, repair, restoreNpm, linkHost, run } from "./clawdesk-plugin-repair.mjs";
 
 const base = path.resolve(os.tmpdir());
 const root = await fs.mkdtemp(path.join(base, "clawdesk-plugin-test-"));
@@ -41,12 +41,15 @@ test("fresh installation performs no downloads and leaves configuration untouche
   assert.equal(await fs.readFile(path.join(state, "openclaw.json"), "utf8"), config);
 });
 
-test("restores missing pinned dependencies without lifecycle scripts or new capability consent", async () => {
-  const state = path.join(root, "restored");
+for (const missingProject of [false, true]) test(`restores approved dependencies with missing project=${missingProject}`, async () => {
+  const state = path.join(root, `restored-${missingProject}`);
   const item = record(state);
   const project = path.join(state, "npm/projects/fixture");
-  await fs.mkdir(project, { recursive: true });
-  await fs.writeFile(path.join(project, "package.json"), JSON.stringify({ private: true, dependencies: { [packageName]: "2026.8.1" } }));
+  await fs.mkdir(state, { recursive: true });
+  if (!missingProject) {
+    await fs.mkdir(project, { recursive: true });
+    await fs.writeFile(path.join(project, "package.json"), JSON.stringify({ private: true, dependencies: { [packageName]: "2026.8.1" } }));
+  }
   const config = JSON.stringify({ plugins: { installs: { "llama-cpp": item }, entries: { "llama-cpp": { enabled: true } } }, agents: { fixture: "preserve" } });
   await fs.writeFile(path.join(state, "openclaw.json"), config);
   const calls = [];
@@ -63,7 +66,7 @@ test("restores missing pinned dependencies without lifecycle scripts or new capa
     await fs.writeFile(path.join(target, "package.json"), JSON.stringify({ name: packageName, version: "2026.8.1", peerDependencies: { openclaw: "*" } }));
     return { code: 0, out: "" };
   };
-  const host = path.join(root, "host"); await fs.mkdir(host);
+  const host = path.join(root, `host-${missingProject}`); await fs.mkdir(host);
   await repair({ stateDir: state, hostRoot: host, command, log: () => {} });
   assert.equal(calls.length, 2);
   assert.equal(await fs.realpath(path.join(item.installPath, "node_modules/openclaw")), await fs.realpath(host));
@@ -80,6 +83,15 @@ test("repairs a missing registered host link without overwriting an ordinary dep
   await fs.unlink(path.join(dir, "node_modules/openclaw"));
   await fs.mkdir(path.join(dir, "node_modules/openclaw"));
   await assert.rejects(linkHost(dir, host), /not a managed host link/);
+});
+
+test("rejects a linked npm parent before creating projects or downloading", async () => {
+  const state = path.join(root, "linked-parent"), outside = path.join(root, "outside-parent");
+  await fs.mkdir(state); await fs.mkdir(outside);
+  await fs.symlink(outside, path.join(state, "npm"), "dir");
+  const [item] = recoveryPlan({ "llama-cpp": record(state) }, state);
+  await assert.rejects(restoreNpm(item, { command: () => { throw new Error("unexpected download"); } }), /symbolic link|escapes/);
+  assert.deepEqual(await fs.readdir(outside), []);
 });
 
 test("CLI runner preserves the environment and supplies configuration patch input", async () => {

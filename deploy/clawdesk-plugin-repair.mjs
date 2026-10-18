@@ -67,8 +67,13 @@ async function manifest(dir) {
 }
 
 export async function restoreNpm(item, { command = run, log = console.log } = {}) {
-  await ordinaryDirectory(item.root, path.resolve(item.root, "../../.."));
-  const project = JSON.parse(await fs.readFile(path.join(item.root, "package.json"), "utf8"));
+  const state = path.resolve(item.root, "../../..");
+  await ordinaryDirectory(state, state);
+  for (const dir of [path.join(state, "npm"), path.join(state, "npm/projects"), item.root]) {
+    try { await fs.mkdir(dir); } catch (error) { if (error.code !== "EEXIST") throw error; }
+    await ordinaryDirectory(dir, state);
+  }
+  const project = await manifest(item.root) ?? { private: true, dependencies: { [item.name]: item.version } };
   if (Object.keys(project.dependencies ?? {}).length !== 1 || project.dependencies[item.name] !== item.version) {
     throw new Error(`Plugin ${item.id} has an unexpected dependency project`);
   }
@@ -103,6 +108,7 @@ export async function restoreNpm(item, { command = run, log = console.log } = {}
       } catch (error) { if (error.code !== "ENOENT") throw error; }
       await fs.rename(path.join(stage, "node_modules"), modules);
     } catch (error) { if (moved) await fs.rename(old, modules); throw error; }
+    await fs.writeFile(path.join(item.root, "package.json"), JSON.stringify(project), { flag: "wx" }).catch((error) => { if (error.code !== "EEXIST") throw error; });
     // Keep any replaced incomplete tree for diagnosis; no user files are recursively removed here.
   } finally {
     const target = path.resolve(stage);
