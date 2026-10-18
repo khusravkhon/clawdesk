@@ -175,6 +175,7 @@ export const api = {
     create: (body: CreateSpaceRequest) => post<SpaceDto>("/api/space", body),
   },
   system: {
+    restartGateway: () => post<{ restarted: true }>("/api/system/gateway/restart", { confirm: true }),
     storage: () => request<import("@clawdesk/shared").StorageStatusDto>("/api/system/storage"),
     storageQuota: (videoQuotaBytes: number | null) => post<import("@clawdesk/shared").StorageStatusDto>("/api/system/storage/quota", { videoQuotaBytes }),
     storagePreview: (category: import("@clawdesk/shared").StorageCategory) => post<import("@clawdesk/shared").StoragePreviewDto>("/api/system/storage/preview", { category }),

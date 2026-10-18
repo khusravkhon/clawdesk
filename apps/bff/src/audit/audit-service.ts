@@ -59,6 +59,7 @@ const ACTIONS: Record<string, string> = {
   "POST /api/system/backups": "backup.create",
   "POST /api/system/backups/:name/download": "backup.download",
   "POST /api/system/reset": "system.reset",
+  "POST /api/system/gateway/restart": "system.restartGateway",
   "POST /api/teams": "team.create",
   "DELETE /api/teams/:teamId": "team.delete",
   "POST /api/teams/:teamId/fetch": "team.fetch",

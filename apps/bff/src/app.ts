@@ -38,6 +38,7 @@ import { registerLibraryRoutes } from "./routes/library.js";
 import { registerDashboardRoutes } from "./routes/dashboard.js";
 import { registerTodayRoutes } from "./routes/today.js";
 import { registerHealthRoutes } from "./routes/health.js";
+import { registerGatewayRestartRoutes } from "./routes/gateway-restart.js";
 import type { FreeModelsService } from "./free-models/free-models-service.js";
 import { registerFreeModelRoutes } from "./routes/free-models.js";
 import { registerScheduleRoutes } from "./routes/schedules.js";
@@ -115,6 +116,7 @@ export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
   // First: its guard stands in front of every other /api route.
   registerAuthRoutes(app, deps);
   registerHealthRoutes(app, deps);
+  registerGatewayRestartRoutes(app, deps);
   registerAgentRoutes(app, deps);
   registerAiRoutes(app, deps);
   registerTemplateRoutes(app, deps);

@@ -136,6 +136,10 @@ onUnmounted(() => window.clearInterval(poll));
     </n-card>
 
     <n-space v-else vertical size="large">
+      <n-card :title="t('status.gateway')">
+        <p>{{ t("status.restart.about") }}</p>
+        <n-button tag="a" href="/status#gateway-restart" secondary>{{ t("status.restart.open") }}</n-button>
+      </n-card>
       <storage-usage v-if="space.mode === 'personal'" />
       <n-card :title="t('system.backups')">
         <template #header-extra>
