@@ -9,7 +9,8 @@
 #      the log names the backup to restore with deploy/scripts/restore.sh.
 # Expects init.sh's COMPOSE array, env_get and step, and to run in deploy/.
 #
-#   CLAWDESK_UPDATE_SKIP_BACKUP=1   update even if the backup cannot be made (not recommended)
+#   CLAWDESK_UPDATE_SKIP_BACKUP=1        update even if the backup cannot be made (not recommended)
+#   CLAWDESK_UPDATE_HEALTH_TIMEOUT=360   seconds the new version gets to become healthy
 
 GUARD=0
 GUARD_DONE=0
@@ -80,11 +81,12 @@ guard_snapshot() {
   echo "previous images kept: $(cut -d' ' -f2 "$GUARD_STATE" | tr '\n' ' ')"
 }
 
-# The Gateway passes its health check and the panel is connected to it. Up to ~6 minutes.
+# The Gateway passes its health check and the panel is connected to it.
 guard_healthy() {
-  local probe gateway state
+  local probe gateway state tries
+  tries=$(( ${CLAWDESK_UPDATE_HEALTH_TIMEOUT:-360} / 5 ))
   probe='fetch("http://127.0.0.1:8080/api/health").then((r) => r.json()).then((h) => process.exit(h.ok && h.gateway.state === "connected" ? 0 : 1), () => process.exit(1))'
-  for _ in $(seq 1 72); do
+  for _ in $(seq 1 "$tries"); do
     gateway="$("${COMPOSE[@]}" ps -q gateway 2>/dev/null || true)"
     state="$(docker inspect -f '{{if .State.Health}}{{.State.Health.Status}}{{end}}' "$gateway" 2>/dev/null || true)"
     [[ "$state" == unhealthy ]] && return 1
@@ -92,6 +94,21 @@ guard_healthy() {
     sleep 5
   done
   return 1
+}
+
+# Compose does not always notice that a tag now names another image (it keeps the running container), so
+# make sure gateway and panel really run the images their tags name now.
+guard_converge() {
+  local service container stale=0
+  for service in gateway panel; do
+    container="$("${COMPOSE[@]}" ps -q "$service" 2>/dev/null || true)"
+    [[ -n "$container" ]] || continue
+    if [[ "$(docker inspect -f '{{.Image}}' "$container")" != "$(docker image inspect -f '{{.Id}}' "$(docker inspect -f '{{.Config.Image}}' "$container")" 2>/dev/null)" ]]; then
+      echo "$service still runs its previous image"
+      stale=1
+    fi
+  done
+  [[ $stale == 0 ]] || "${COMPOSE[@]}" up -d --no-build --pull never --force-recreate
 }
 
 guard_cleanup() {
@@ -106,6 +123,7 @@ guard_cleanup() {
 guard_verify() {
   [[ $GUARD == 1 ]] || return 0
   step "Checking the updated ClawDesk"
+  guard_converge
   if ! guard_healthy; then
     guard_warn "The updated version did not become healthy."
     exit 1
@@ -125,9 +143,9 @@ guard_on_exit() {
   cp "$GUARD_ENV" .env
   while read -r tag ref; do docker tag "$tag" "$ref"; done < "$GUARD_STATE"
   data_dir="$(env_get CLAWDESK_DATA_DIR)"
-  if "${COMPOSE[@]}" up -d --no-build --pull never && guard_healthy; then
+  if "${COMPOSE[@]}" up -d --no-build --pull never --force-recreate && guard_healthy; then
     guard_cleanup
-    echo "ClawDesk is running the previous version again. Nothing was lost${GUARD_BACKUP:+; backup before the update: $GUARD_BACKUP}."
+    echo "ClawDesk is running the previous version again${GUARD_BACKUP:+; backup before the update: $GUARD_BACKUP}."
   else
     guard_warn "The previous version does not start either."
     [[ -n "$GUARD_BACKUP" ]] && echo "Restore the backup made before the update: sudo bash deploy/scripts/restore.sh ${data_dir:-/var/lib/clawdesk}/backups/$GUARD_BACKUP"
