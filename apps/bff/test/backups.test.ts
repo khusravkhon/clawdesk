@@ -11,7 +11,7 @@ import { AuthService } from "../src/auth/auth-service.js";
 import { decryptFile, encryptStream, isEncryptedBackup, WrongBackupPassword } from "../src/backups/backup-crypto.js";
 import { BackupService } from "../src/backups/backup-service.js";
 import { openDb } from "../src/db/client.js";
-import type { BridgeBackup, BridgeClient } from "../src/gateway/bridge-client.js";
+import { BridgeError, type BridgeBackup, type BridgeClient } from "../src/gateway/bridge-client.js";
 import { registerAuthRoutes } from "../src/routes/auth.js";
 import { registerSystemRoutes } from "../src/routes/system.js";
 
@@ -34,6 +34,13 @@ describe("backups", { timeout: 30_000 }, () => {
         const name = `clawdesk-2026-10-13T03-30-00Z-${kind}.tar`;
         fs.writeFileSync(path.join(dir, name), "archive");
         return { name, kind, createdAt: "2026-10-13T03:30:00Z", size: 7 };
+      },
+      backupDelete: async (name: string) => {
+        calls.push(`delete:${name}`);
+        const file = path.join(dir, name);
+        if (!fs.existsSync(file)) throw new BridgeError("backup_not_found", "backup no longer exists");
+        fs.unlinkSync(file);
+        return { deleted: true as const, name };
       },
       factoryReset: async (code: string) => {
         calls.push(`reset:${code}`);
@@ -161,6 +168,37 @@ describe("backups", { timeout: 30_000 }, () => {
       expect(res.headers["content-disposition"]).toBe('attachment; filename="clawdesk-2026-10-13T03-30-00Z-daily.tar.enc"');
       expect(res.rawPayload.includes(Buffer.from("secret tokens"))).toBe(false);
       await app.close();
+    });
+
+    it("deletes only the confirmed archive for the signed-in owner", async () => {
+      const { app, cookie, calls } = await setup();
+      const name = "clawdesk-2026-10-13T03-30-00Z-daily.tar";
+      const other = "clawdesk-2026-10-12T03-30-00Z-daily.tar";
+      fs.writeFileSync(path.join(dir, name), "delete fixture");
+      fs.writeFileSync(path.join(dir, other), "keep fixture");
+      try {
+        const url = `/api/system/backups/${name}`;
+        expect((await app.inject({ method: "DELETE", url, payload: { confirm: true } })).statusCode).toBe(401);
+        expect((await app.inject({ method: "DELETE", url, headers: { cookie, origin: "https://another.example" }, payload: { confirm: true } })).statusCode).toBe(403);
+        expect((await app.inject({ method: "DELETE", url, headers: { cookie }, payload: {} })).statusCode).toBe(400);
+        expect(calls).toEqual([]);
+        const removed = await app.inject({ method: "DELETE", url, headers: { cookie }, payload: { confirm: true } });
+        expect(removed.statusCode).toBe(200);
+        expect(removed.json()).toEqual({ deleted: true, name });
+        expect(fs.existsSync(path.join(dir, name))).toBe(false);
+        expect(fs.readFileSync(path.join(dir, other), "utf8")).toBe("keep fixture");
+        expect((await app.inject({ method: "DELETE", url, headers: { cookie }, payload: { confirm: true } })).statusCode).toBe(404);
+      } finally { await app.close(); }
+    });
+
+    it("rejects paths and unrelated files before contacting the bridge", async () => {
+      const { app, cookie, calls } = await setup();
+      try {
+        for (const name of ["..%2Fpanel.sqlite", "panel.sqlite", "%2Ftmp%2Fbackup.tar"]) {
+          expect((await app.inject({ method: "DELETE", url: `/api/system/backups/${name}`, headers: { cookie }, payload: { confirm: true } })).statusCode).toBe(404);
+        }
+        expect(calls).toEqual([]);
+      } finally { await app.close(); }
     });
   });
 });

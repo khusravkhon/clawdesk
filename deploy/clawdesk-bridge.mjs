@@ -26,6 +26,7 @@
 //   POST /teams/fetch | /teams/push { teamId, … }  GET /teams/status?teamId=…  POST /teams/remove { teamId }
 //   GET  /backup/list                       → { backups: [{ name, kind, createdAt, size }] }
 //   POST /backup/create      { kind }        daily | manual | before-reset (see clawdesk-backup.mjs)
+//   POST /backup/delete      { name, confirm: true }   delete one completed archive
 //   POST /video/study        { jobId, url, maxSeconds, maxDurationSec, maxAudioBytes } → subtitles | audio | { error }
 //   POST /video/frames       { jobId, url, maxFrames, maxFrameBytes, … }  → sampled frames | { error }
 //   POST /video/download     { jobId, url, maxFileBytes, … }  → the kept original | { error }
@@ -39,7 +40,7 @@ import http from "node:http";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { DatabaseSync } from "node:sqlite";
-import { BackupError, createBackup, listBackups, startReset } from "./clawdesk-backup.mjs";
+import { BackupError, createBackup, deleteBackup, listBackups, startReset } from "./clawdesk-backup.mjs";
 import { cloneTeamRepo, fetchTeamRepo, pushTeamBranch, removeTeamRepo, TeamError, teamRepoStatus } from "./clawdesk-teams.mjs";
 import { isAuthorizationCode, mcpLoginArgs } from "./clawdesk-oauth.mjs";
 import { AudioSetupError, audioSettings, audioStatus, saveAudioKey, verifyAudioKey } from "./clawdesk-audio.mjs";
@@ -548,6 +549,17 @@ async function handle(req) {
   }
   const teamOps = { "/teams/clone": cloneTeamRepo, "/teams/fetch": fetchTeamRepo, "/teams/push": pushTeamBranch, "/teams/remove": removeTeamRepo };
   if (teamOps[url.pathname]) return teamCall(() => teamOps[url.pathname](body));
+  if (url.pathname === "/backup/delete") {
+    if (body.confirm !== true) return { status: 400, body: { error: "confirmation_required", message: "confirm backup deletion" } };
+    try {
+      const result = await deleteBackup(body.name);
+      log("backup deleted", { name: result.name });
+      return { status: 200, body: result };
+    } catch (error) {
+      if (error instanceof BackupError) return { status: error.status, body: { error: error.code, message: error.message } };
+      throw error;
+    }
+  }
   if (url.pathname === "/backup/create" || url.pathname === "/reset") {
     try {
       const result = url.pathname === "/reset" ? await startReset(body.ownerCode) : await createBackup(body.kind);

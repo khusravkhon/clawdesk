@@ -1,4 +1,4 @@
-import { DownloadBackupRequest, FactoryResetRequest, type ApiErrorDto, type BackupDto, type BackupsDto, type FactoryResetResultDto } from "@clawdesk/shared";
+import { DeleteBackupRequest, DownloadBackupRequest, FactoryResetRequest, type ApiErrorDto, type BackupDto, type BackupsDto, type FactoryResetResultDto } from "@clawdesk/shared";
 import type { FastifyInstance, FastifyReply } from "fastify";
 import type { AuthService } from "../auth/auth-service.js";
 import { BackupUnavailableError, type BackupService } from "../backups/backup-service.js";
@@ -13,6 +13,11 @@ export function registerSystemRoutes(app: FastifyInstance, deps: { backups: Back
   app.get("/api/system/backups", async (): Promise<BackupsDto> => backups.status());
 
   app.post("/api/system/backups", async (_request, reply): Promise<BackupDto | ApiErrorDto> => withBackupErrors(reply, () => backups.create("manual")));
+
+  app.delete<{ Params: { name: string } }>("/api/system/backups/:name", async (request, reply) => {
+    DeleteBackupRequest.parse(request.body);
+    return withBackupErrors(reply, () => backups.remove(request.params.name));
+  });
 
   // POST, not GET: the password that encrypts the copy must not end up in a URL or a log.
   app.post<{ Params: { name: string } }>("/api/system/backups/:name/download", async (request, reply) => {
@@ -42,7 +47,8 @@ async function withBackupErrors<T>(reply: FastifyReply, run: () => Promise<T>): 
       return { error: "backup_unavailable", message: error.message };
     }
     if (error instanceof BridgeError) {
-      reply.status(error.code === "backup_busy" ? 409 : 502);
+      const status: Record<string, number> = { backup_busy: 409, invalid_backup_file: 409, backup_not_found: 404, invalid_backup_name: 400 };
+      reply.status(status[error.code] ?? 502);
       return { error: error.code, message: error.message };
     }
     throw error;

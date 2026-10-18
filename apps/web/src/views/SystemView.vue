@@ -20,6 +20,8 @@ const space = useSpaceStore();
 const data = ref<BackupsDto | null>(null);
 const loadError = ref<string | null>(null);
 const creating = ref(false);
+const deleting = ref<string | null>(null);
+const deleteOf = ref<BackupDto | null>(null);
 
 const errText = (e: unknown) => (e instanceof ApiError ? e.body.message : String(e));
 
@@ -41,6 +43,23 @@ async function createNow(): Promise<void> {
     message.error(errText(e));
   } finally {
     creating.value = false;
+    await load();
+  }
+}
+
+async function deleteBackup(backup: BackupDto): Promise<void> {
+  if (deleting.value || creating.value || data.value?.running) return;
+  deleting.value = backup.name;
+  try {
+    await api.system.deleteBackup(backup.name);
+    deleteOf.value = null;
+    if (data.value) data.value.backups = data.value.backups.filter((item) => item.name !== backup.name);
+    message.success(t("system.backupDeleted"));
+  } catch (error) {
+    const code = error instanceof ApiError ? error.body.error : "";
+    message.error(t(code === "backup_busy" ? "system.backupBusy" : code === "backup_not_found" || code === "backup_unavailable" ? "system.backupGone" : "system.backupDeleteFailed"));
+  } finally {
+    deleting.value = null;
     await load();
   }
 }
@@ -143,7 +162,7 @@ onUnmounted(() => window.clearInterval(poll));
       <storage-usage v-if="space.mode === 'personal'" />
       <n-card :title="t('system.backups')">
         <template #header-extra>
-          <n-button v-if="data?.available" type="primary" :loading="creating || data?.running" @click="createNow">
+          <n-button v-if="data?.available" type="primary" :loading="creating || data?.running" :disabled="!!deleting" @click="createNow">
             <template #icon><hard-drive-download :size="16" /></template>
             {{ t("system.backupNow") }}
           </n-button>
@@ -164,6 +183,7 @@ onUnmounted(() => window.clearInterval(poll));
                 <template #icon><download :size="14" /></template>
                 {{ t("system.download") }}
               </n-button>
+              <n-button size="small" secondary type="error" :disabled="!!deleting || creating || data?.running" :loading="deleting === b.name" @click="deleteOf = b">{{ t("system.deleteBackup") }}</n-button>
             </li>
           </ul>
           <p class="muted small">{{ t("system.restoreHint") }}</p>
@@ -185,6 +205,16 @@ onUnmounted(() => window.clearInterval(poll));
         </n-button>
       </n-card>
     </n-space>
+
+    <n-modal :show="!!deleteOf" preset="card" :title="t('system.deleteBackup')" :closable="!deleting" :mask-closable="!deleting" :close-on-esc="!deleting" style="width: min(440px, calc(100vw - 32px))" @update:show="(v: boolean) => !v && !deleting && (deleteOf = null)">
+      <template v-if="deleteOf">
+        <p class="delete-confirm">{{ t("system.deleteBackupConfirm", { name: deleteOf.name }) }}</p>
+        <n-space justify="end">
+          <n-button :disabled="!!deleting" @click="deleteOf = null">{{ t("system.cancelDelete") }}</n-button>
+          <n-button type="error" :loading="!!deleting" :disabled="!!deleting" @click="deleteOf && deleteBackup(deleteOf)">{{ t("system.deleteBackup") }}</n-button>
+        </n-space>
+      </template>
+    </n-modal>
 
     <n-modal :show="!!downloadOf" preset="card" :title="t('system.downloadTitle')" style="width: min(440px, calc(100vw - 32px))" @update:show="(v: boolean) => !v && (downloadOf = null)">
       <form class="form" @submit.prevent="downloadCopy">
@@ -214,6 +244,9 @@ onUnmounted(() => window.clearInterval(poll));
 </template>
 
 <style scoped>
+.delete-confirm {
+  overflow-wrap: anywhere;
+}
 .muted {
   color: var(--text-2);
   margin: 0 0 12px;

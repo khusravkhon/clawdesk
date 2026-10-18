@@ -143,6 +143,27 @@ export async function listBackups() {
   return items.sort((a, b) => b.name.localeCompare(a.name));
 }
 
+/** Deletes one completed archive, never a directory, symlink or caller-supplied path. */
+export async function deleteBackup(name) {
+  if (typeof name !== "string" || BACKUP_NAME.exec(name)?.[0] !== name) throw new BackupError("invalid_backup_name", "invalid backup name", 400);
+  if (busy) throw new BackupError("backup_busy", "a backup operation is already running", 409);
+  busy = true;
+  try {
+    const root = await fs.realpath(BACKUP_DIR);
+    const file = path.resolve(root, name);
+    if (path.dirname(file) !== root) throw new BackupError("invalid_backup_name", "invalid backup name", 400);
+    const stat = await fs.lstat(file);
+    if (!stat.isFile()) throw new BackupError("invalid_backup_file", "backup is not a regular archive", 409);
+    await fs.unlink(file);
+    return { deleted: true, name };
+  } catch (error) {
+    if (error.code === "ENOENT") throw new BackupError("backup_not_found", "backup no longer exists", 404);
+    throw error;
+  } finally {
+    busy = false;
+  }
+}
+
 async function prune() {
   const all = await listBackups();
   const groups = { regular: all.filter((b) => b.kind !== "before-reset"), "before-reset": all.filter((b) => b.kind === "before-reset") };
