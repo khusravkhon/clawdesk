@@ -198,13 +198,28 @@ if(ownsSandbox(mounts,roots))run(["stop",id]);
   return `node --input-type=module -e ${q(source)} ${q(JSON.stringify(roots))}`;
 }
 
+export async function resetGateway(command = docker, { stateDir = STATE_DIR, token = process.env.OPENCLAW_GATEWAY_TOKEN } = {}) {
+  if (!token) throw new BackupError("identity_missing", "Gateway identity is unavailable; reset was not started", 409);
+  const ids = (await command(["ps", "-q", "--filter", "label=com.docker.compose.service=gateway"])).split(/\s+/).filter(Boolean);
+  if (!ids.length) throw new BackupError("gateway_missing", "The running Gateway container was not found", 409);
+  const candidates = JSON.parse(await command(["inspect", ...ids])).filter((container) => {
+    const env = container.Config?.Env ?? [];
+    return container.Config?.Labels?.["com.docker.compose.project"] &&
+      container.Config.Labels["com.docker.compose.service"] === "gateway" &&
+      env.includes(`OPENCLAW_GATEWAY_TOKEN=${token}`) && env.includes(`OPENCLAW_STATE_DIR=${stateDir}`) &&
+      container.Mounts?.some((mount) => mount.Destination === stateDir && mount.Source && mount.Source !== "/");
+  });
+  if (candidates.length !== 1) throw new BackupError("identity_ambiguous", "Cannot uniquely identify this installation; reset was not started", 409);
+  return candidates[0];
+}
+
 /**
  * Starts the factory reset in a helper container and returns at once: the panel is stopped by it.
  * `ownerCode` lands in the fresh panel data, so the person who reset can set a new password right away.
  */
 export async function startReset(ownerCode) {
   if (typeof ownerCode !== "string" || !OWNER_CODE.test(ownerCode)) throw new BackupError("invalid_owner_code", "owner code missing", 400);
-  const self = JSON.parse(await docker(["inspect", process.env.HOSTNAME ?? ""]))[0];
+  const self = await resetGateway();
   const project = self.Config.Labels["com.docker.compose.project"];
   if (!project) throw new BackupError("not_compose", "the Gateway does not run under docker compose", 409);
   const image = self.Config.Image;
@@ -217,6 +232,7 @@ export async function startReset(ownerCode) {
 
   const lines = await docker(["ps", "-a", "--filter", `label=com.docker.compose.project=${project}`, "--format", '{{.Names}}\t{{.Label "com.docker.compose.service"}}']);
   const byService = Object.fromEntries(lines.split("\n").filter(Boolean).map((l) => l.split("\t").reverse()));
+  if (byService.gateway !== self.Name?.replace(/^\//, "")) throw new BackupError("identity_ambiguous", "Gateway service identity changed; reset was not started", 409);
   const volumes = new Set((await docker(["volume", "ls", "--format", "{{.Name}}"])).split("\n"));
   const volume = (n) => (volumes.has(`${project}_${n}`) ? `${project}_${n}` : null);
 
