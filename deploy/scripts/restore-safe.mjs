@@ -1,7 +1,8 @@
 // Restore accepts only ordinary files/directories. Links, devices and paths outside the
 // archive are rejected before the selected installation is stopped.
 import fs from 'node:fs/promises';
-import { createReadStream } from 'node:fs';
+import { createReadStream, existsSync } from 'node:fs';
+import { DatabaseSync } from 'node:sqlite';
 import { createGunzip } from 'node:zlib';
 import path from 'node:path';
 import os from 'node:os';
@@ -169,9 +170,21 @@ export async function preparePayload(archive, target, version) {
   for (const name of ['panel', 'freellmapi']) {
     if (await fs.stat(path.join(target, name)).catch(() => null)) await sqliteIntegrity(path.join(target, name));
   }
+  clearRestoredPluginLeases(path.join(path.dirname(candidates[0]), 'state', 'openclaw.sqlite'));
   await fs.writeFile(path.join(target, 'prepared-state.txt'), path.dirname(candidates[0]), { mode: 0o600 });
   // The fully restored payload is now independent of the original (possibly user-editable) archive.
   return manifest;
+}
+
+/** Only a prepared, offline restore copy may discard locks owned by the source installation. */
+export function clearRestoredPluginLeases(database) {
+  if (!existsSync(database)) return;
+  const db = new DatabaseSync(database);
+  try {
+    if (db.prepare("SELECT 1 FROM sqlite_master WHERE name='state_leases'").get()) {
+      db.prepare("DELETE FROM state_leases WHERE scope IN ('startup-migrations', 'core:plugin-lifecycle') AND lease_key='global'").run();
+    }
+  } finally { db.close(); }
 }
 
 export async function applyPayload(pairs, revision, io = fs) {

@@ -83,6 +83,10 @@ pub async fn status(app: &AppHandle) -> Result<LocalStatus> {
 
 async fn script(app: &AppHandle, archive: &PathBuf, password: &str, inspect: bool, project: &str) -> Result<serde_json::Value> {
     if password.contains(['\r', '\n']) { bail!("Backup password must be a single line"); }
+    let docker = local::command("docker").arg("info").stdout(Stdio::null()).stderr(Stdio::null()).status().await;
+    if !matches!(docker, Ok(status) if status.success()) {
+        bail!("Docker Desktop не готов. Запустите Docker Desktop, дождитесь готовности и повторите проверку. Данные приложения не изменялись.");
+    }
     let (dir, _) = settings(app)?;
     let bash = local::find_bash()?;
     let mut command = local::command(bash);
@@ -105,7 +109,10 @@ async fn script(app: &AppHandle, archive: &PathBuf, password: &str, inspect: boo
         }
         // Raw restore output can contain archive content or tool diagnostics. Keep it out
         // of the launcher: the exact failing phase is safe, archive contents are not.
-        bail!("Recovery validation or restore failed. Check the backup password, archive integrity and matching OpenClaw version. Existing data may already be replaced if failure happened after confirmation; keep this archive and retry.");
+        if inspect {
+            bail!("Проверка архива не пройдена. Проверьте пароль скачанной копии и совместимость версии OpenClaw. Восстановление не запускалось, данные приложения не изменялись.");
+        }
+        bail!("Восстановление не завершено. Не сбрасывайте установку повторно: сохраните архив и проверьте состояние Gateway и зависимости плагинов. Если ошибка произошла после подтверждения, данные уже могли быть заменены.");
     }
     if inspect { serde_json::from_slice(&output.stdout).context("Invalid recovery inspection response") }
     else { Ok(serde_json::json!({"restored": true})) }

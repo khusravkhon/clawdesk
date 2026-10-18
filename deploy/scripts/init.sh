@@ -141,6 +141,9 @@ else
   "${COMPOSE[@]}" run -T --rm --no-deps --entrypoint node gateway dist/index.js onboard     --non-interactive --accept-risk --skip-health     --mode local     --auth-choice skip     --gateway-auth token     --gateway-token-ref-env OPENCLAW_GATEWAY_TOKEN     --skip-channels     --no-install-daemon
 fi
 
+step "Checking installed plugin dependencies"
+"${COMPOSE[@]}" run -T --rm --no-deps --entrypoint node gateway /usr/local/lib/clawdesk-plugin-repair.mjs
+
 if [[ $DEV == 1 ]]; then
   step "Starting gateway (dev: 127.0.0.1:18789)"
   "${COMPOSE[@]}" up -d gateway freellmapi

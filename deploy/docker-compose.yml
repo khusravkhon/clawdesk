@@ -29,6 +29,8 @@ x-hardening: &hardening
 services:
   gateway:
     <<: *hardening
+    # Keep native migration-lock owner checks stable across replacement containers of this install.
+    hostname: clawdesk-gateway
     # Pinned: upgrading OpenClaw is a separate, tested change (see docs/architecture.md, decision 5).
     # OPENCLAW_IMAGE=openclaw/openclaw selects the official Docker Hub mirror of the same release.
     build:
