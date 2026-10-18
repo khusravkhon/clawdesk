@@ -1,13 +1,39 @@
 <script setup lang="ts">
 import type { GatewayConnectionState } from "@clawdesk/shared";
-import { NAlert, NButton, NCard, NDescriptions, NDescriptionsItem, NEmpty, NList, NListItem, NSpace, NTag, NThing } from "naive-ui";
-import { onMounted, onUnmounted } from "vue";
+import { NAlert, NButton, NCard, NDescriptions, NDescriptionsItem, NEmpty, NList, NListItem, NPopconfirm, NSpace, NTag, NThing } from "naive-ui";
+import { onMounted, onUnmounted, ref } from "vue";
 import { useI18n } from "vue-i18n";
 import PageHeader from "../components/ui/PageHeader.vue";
 import { useSystemStore } from "../stores/system";
+import { api, ApiError } from "../api/client";
 
 const { t } = useI18n();
 const system = useSystemStore();
+const restarting = ref(false);
+const restartResult = ref<"success" | "error" | "warning" | null>(null);
+const restartText = ref("");
+
+async function restartGateway(): Promise<void> {
+  if (restarting.value) return;
+  restarting.value = true;
+  restartResult.value = null;
+  try {
+    await api.system.restartGateway();
+    restartResult.value = "success";
+    restartText.value = t("status.restart.success");
+  } catch (error) {
+    const code = error instanceof ApiError ? error.body.error : "gateway_restart_unconfirmed";
+    const keys: Record<string, string> = {
+      gateway_restart_busy: "busy", gateway_unavailable: "unavailable",
+      gateway_restart_rejected: "rejected", gateway_restart_unconfirmed: "unconfirmed",
+    };
+    restartResult.value = code === "gateway_restart_rejected" || code === "gateway_unavailable" ? "error" : "warning";
+    restartText.value = t(`status.restart.${keys[code] ?? "unconfirmed"}`);
+  } finally {
+    restarting.value = false;
+    await system.refresh();
+  }
+}
 
 const stateType: Record<GatewayConnectionState, "success" | "warning" | "error" | "info" | "default"> = {
   idle: "default",
@@ -36,6 +62,18 @@ onUnmounted(() => clearInterval(timer));
 
       <template v-if="system.health">
         <n-card :title="t('status.gateway')">
+          <div id="gateway-restart" class="restart-controls">
+            <p>{{ t("status.restart.about") }}</p>
+            <n-popconfirm :positive-text="t('status.restart.button')" :negative-text="t('status.restart.cancel')" @positive-click="() => { void restartGateway(); }">
+              <template #trigger>
+                <n-button :loading="restarting" :disabled="restarting || system.health.gateway.state !== 'connected'" secondary>{{ t("status.restart.button") }}</n-button>
+              </template>
+              {{ t("status.restart.confirm") }}
+            </n-popconfirm>
+            <n-alert v-if="restarting" type="info" class="mt">{{ t("status.restart.waiting") }}</n-alert>
+            <n-alert v-else-if="restartResult" :type="restartResult" class="mt">{{ restartText }}</n-alert>
+            <n-alert v-else-if="system.health.gateway.state !== 'connected'" type="warning" class="mt">{{ t("status.restart.unavailable") }}</n-alert>
+          </div>
           <n-descriptions :column="1" label-placement="left" bordered>
             <n-descriptions-item :label="t('status.panel')">{{ system.health.version }}</n-descriptions-item>
             <n-descriptions-item label="Gateway">
@@ -77,6 +115,9 @@ onUnmounted(() => clearInterval(timer));
 </template>
 
 <style scoped>
+.restart-controls {
+  margin-bottom: 16px;
+}
 .mt {
   margin-top: 12px;
 }

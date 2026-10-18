@@ -49,6 +49,19 @@
     "extensions": "Skills & MCP"
   },
   "status": {
+    "restart": {
+      "button": "Restart Gateway",
+      "open": "Open restart controls",
+      "cancel": "Cancel",
+      "about": "Restart OpenClaw to apply changes that require a restart. Settings and saved data are kept. Current replies and tasks may be interrupted; agents and Telegram will briefly disconnect. This does not reboot your computer.",
+      "confirm": "Restart Gateway now? Let important tasks finish first. The panel will check that the connection returns.",
+      "waiting": "Restart requested. Waiting for Gateway to reconnect. This may take up to two minutes.",
+      "success": "Gateway has reconnected after the restart request.",
+      "busy": "A restart is already in progress. Wait and refresh the status.",
+      "unavailable": "Gateway is not connected. This button sends a command to a running service and cannot start a stopped service. Check your local installation or server.",
+      "rejected": "Gateway rejected the restart command. Check connection permissions and the system log.",
+      "unconfirmed": "Reconnection was not confirmed. Do not retry immediately: refresh the status and check the connection. The command outcome is still unknown."
+    },
     "title": "System status",
     "refresh": "Refresh",
     "panel": "Panel",
@@ -991,7 +1004,8 @@
         "download": "Backup copy downloaded"
       },
       "system": {
-        "reset": "Everything reset"
+        "reset": "Everything reset",
+        "restartGateway": "Gateway restarted"
       },
       "team": {
         "create": "Team created",
