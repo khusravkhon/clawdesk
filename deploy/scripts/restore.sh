@@ -161,9 +161,13 @@ while IFS= read -r line; do
 done <<< "$secrets"
 echo "restored the secrets the data is encrypted with into deploy/.env"
 
+step "Restoring approved plugin dependencies"
+# Portable OpenClaw backups omit node_modules and managed tool binaries. Hydrate them before health checks.
+"${COMPOSE[@]}" run -T --rm --no-deps --entrypoint node gateway /usr/local/lib/clawdesk-plugin-repair.mjs
+
 step "Starting ClawDesk"
 "${COMPOSE[@]}" up -d
 STOPPED=0
 echo
 echo "Restored. Sign in with the panel password from the time of the backup."
-echo "AI providers installed as plugins (DeepSeek, Qwen, Kimi…) may need to be connected again in the panel."
+echo "Approved plugin dependencies were checked before startup. External services may still require sign-in if their tokens expired."

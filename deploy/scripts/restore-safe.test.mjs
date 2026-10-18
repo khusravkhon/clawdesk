@@ -4,7 +4,29 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import os from 'node:os';
 import { spawnSync } from 'node:child_process';
-import { extractSafe, prepareRestore, preparePayload, applyPayload } from './restore-safe.mjs';
+import { extractSafe, prepareRestore, preparePayload, applyPayload, clearRestoredPluginLeases } from './restore-safe.mjs';
+import { DatabaseSync } from 'node:sqlite';
+
+test('prepared restore clears source startup/plugin locks and preserves delivery leases and user data', async () => {
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'clawdesk-restore-leases-'));
+  try {
+    const file = path.join(dir, 'state.sqlite');
+    const db = new DatabaseSync(file);
+    db.exec('CREATE TABLE state_leases(scope TEXT, lease_key TEXT, owner TEXT); CREATE TABLE notes(text TEXT); INSERT INTO notes VALUES (\'keep\')');
+    const add = db.prepare('INSERT INTO state_leases VALUES (?, ?, ?)');
+    for (const scope of ['startup-migrations', 'core:plugin-lifecycle', 'delivery']) add.run(scope, 'global', 'source');
+    db.close();
+    clearRestoredPluginLeases(file);
+    const read = new DatabaseSync(file, { readOnly: true });
+    assert.deepEqual(read.prepare('SELECT scope FROM state_leases').all().map(r => r.scope), ['delivery']);
+    assert.equal(read.prepare('SELECT text FROM notes').get().text, 'keep');
+    read.close();
+  } finally {
+    assert.equal(path.dirname(path.resolve(dir)), path.resolve(os.tmpdir()));
+    assert.ok(path.basename(dir).startsWith('clawdesk-restore-leases-'));
+    await fs.rm(dir, { recursive: true, force: true });
+  }
+});
 
 function tar(entries) {
   const parts = [];
