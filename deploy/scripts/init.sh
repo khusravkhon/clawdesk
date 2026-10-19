@@ -8,6 +8,10 @@
 # CLAWDESK_DOMAIN, CLAWDESK_FILES_DIR, CLAWDESK_TZ, CLAWDESK_VERSION, CLAWDESK_DATA_DIR, PANEL_PORT and
 # COMPOSE_PROJECT_NAME in the environment are written to deploy/.env
 # (install.sh passes them). With a domain, Caddy serves the panel over HTTPS.
+# OPENCLAW_VERSION is written from deploy/openclaw.version (an OPENCLAW_VERSION in the environment wins).
+#
+# Over a running install this is an update: a backup first, and the previous images come back if the
+# new ones fail (deploy/scripts/update-guard.sh).
 set -euo pipefail
 
 DEPLOY_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -20,6 +24,8 @@ COMPOSE=(docker compose -f docker-compose.yml)
 [[ $DEV == 1 ]] && COMPOSE+=(-f docker-compose.dev.yml)
 
 step() { printf '\n\033[1m==> %s\033[0m\n' "$*"; }
+# shellcheck source=update-guard.sh
+. "$DEPLOY_DIR/scripts/update-guard.sh"
 
 random_token() {
   if command -v openssl >/dev/null 2>&1; then openssl rand -hex 32
@@ -50,10 +56,21 @@ env_set() {
   else echo "$1=$2" >> .env; fi
 }
 
+[[ $DEV == 0 ]] && guard_detect
+if [[ $GUARD == 1 ]]; then
+  step "Backing up before the update"
+  guard_backup
+  guard_snapshot
+  trap guard_on_exit EXIT
+fi
+
 # Values from install.sh (or the person) win over what .env had; set-but-empty clears (e.g. --no-https).
 for name in CLAWDESK_DOMAIN CLAWDESK_FILES_DIR CLAWDESK_TZ CLAWDESK_VERSION CLAWDESK_DATA_DIR PANEL_PORT COMPOSE_PROJECT_NAME; do
   if [[ -n "${!name+set}" ]]; then env_set "$name" "${!name}"; fi
 done
+
+# The OpenClaw version travels with the code, so an update of the code brings its OpenClaw too.
+env_set OPENCLAW_VERSION "${OPENCLAW_VERSION:-$(tr -d '[:space:]' < openclaw.version)}"
 
 if [[ -z "$(env_get FREELLMAPI_ENCRYPTION_KEY)" ]]; then
   env_set FREELLMAPI_ENCRYPTION_KEY "$(random_token)"
@@ -165,6 +182,7 @@ if [[ $DEV == 1 ]]; then
 else
   step "Starting panel + gateway"
   if [[ $pulled == 1 ]]; then "${COMPOSE[@]}" up -d; else "${COMPOSE[@]}" up -d --build; fi
+  guard_verify
   port="$(grep '^PANEL_PORT=' .env | cut -d= -f2-)"
   url="http://127.0.0.1:${port:-8080}"
   if [[ -n "$DOMAIN" ]]; then

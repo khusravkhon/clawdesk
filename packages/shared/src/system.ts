@@ -3,7 +3,7 @@ import { PASSWORD_MIN } from "./auth.js";
 
 // System screen (14): backups and factory reset.
 
-export const BackupKind = z.enum(["daily", "manual", "before-reset"]);
+export const BackupKind = z.enum(["daily", "manual", "before-reset", "before-update"]);
 export type BackupKind = z.infer<typeof BackupKind>;
 
 export const BackupDto = z.object({

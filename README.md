@@ -14,7 +14,8 @@ Open-source self-hosted панель для [OpenClaw](https://github.com/opencl
 ```
 
 - Браузер говорит только с BFF. BFF — единственный клиент Gateway; device-токен и секреты живут на сервере.
-- OpenClaw — зависимость, а не форк. Версия зафиксирована: `2026.8.1`.
+- OpenClaw — зависимость, а не форк. Версия зафиксирована в одном файле: `deploy/openclaw.version`
+  (см. «Обновление OpenClaw»).
 - Модель — любая: Claude, OpenAI, DeepSeek, Qwen, Kimi, GLM, MiniMax, локальные или подписка. Каждый пользователь
   подключает свой ключ; модель младших агентов выбирается в интерфейсе.
 
@@ -35,6 +36,11 @@ deploy/
   install.sh               установка на сервер Ubuntu / Debian: Docker, код, HTTPS, первый запуск
   scripts/init.sh          первый запуск: .env, онбординг OpenClaw, старт
   scripts/local.sh         «Этот компьютер»: тот же стек в Docker Desktop, отдельно от dev
+  scripts/update-guard.sh  обновление: бэкап до, проверка после, откат образов при сбое
+  scripts/contract.sh      контрактный тест против живого Gateway
+  openclaw.version         закреплённая версия OpenClaw (единственный источник)
+scripts/
+  openclaw-version.mjs     проверка и смена версии OpenClaw во всех копиях, поиск новых релизов
 ```
 
 ## Разработка
@@ -48,7 +54,8 @@ pnpm dev:bff                             # BFF на :8787
 pnpm dev:web                             # админка на :5173 (проксирует /api на BFF)
 ```
 
-Проверки: `pnpm typecheck`, `pnpm test`, `pnpm build` (то же делает CI на каждый пуш в `main`).
+Проверки: `pnpm typecheck`, `pnpm test`, `pnpm build`, `node scripts/openclaw-version.mjs check`, контрактный тест
+`bash deploy/scripts/contract.sh` (то же делает CI на каждый пуш в `dev`).
 
 Релиз: тег `v0.1.0` → GitHub Actions публикует образы `clawdesk-panel`, `clawdesk-gateway`, `clawdesk-sandbox` в ghcr.io.
 На сервере `CLAWDESK_VERSION=0.1.0` в `deploy/.env` — установка скачает их вместо сборки (для приватных пакетов
@@ -68,6 +75,17 @@ sudo bash clawdesk/deploy/install.sh --domain panel.example.com
 ссылку `https://<домен>/setup?code=…` — по ней задаётся пароль владельца. Повторный запуск того же
 `install.sh` обновляет код и перезапускает, данные (`/var/lib/clawdesk`) и `deploy/.env` сохраняются.
 
+Обновление (повторный `install.sh` или «Обновить» в десктопе) защищено (`deploy/scripts/update-guard.sh`):
+
+1. Перед обновлением работающая версия делает бэкап «Перед обновлением» (виден в «Системе»). Не удался — обновление
+   не начинается (`CLAWDESK_UPDATE_SKIP_BACKUP=1` — обновить без него).
+2. Текущие образы сохраняются как `clawdesk-rollback/<сервис>:<проект>`, `deploy/.env` — как `.env.before-update`.
+3. После старта проверяем, что контейнеры действительно на новых образах (иначе пересоздаём), и ждём до 6 минут
+   (`CLAWDESK_UPDATE_HEALTH_TIMEOUT`, секунды): health-check Gateway зелёный и панель подключена к Gateway.
+4. Не дождались (или упал любой шаг) — возвращаются прежние образы и `.env`, стек перезапускается, установщик
+   завершается с ошибкой. Данные, которые успела записать новая версия, остаются; если прежняя версия на них не
+   поднимается, в журнале — команда `restore.sh` для бэкапа из шага 1.
+
 Бэкапы: каждую ночь в `/var/lib/clawdesk/backups` (последние 7), в панели — «Система»: сделать сейчас, скачать
 копию (шифруется паролем), сбросить всё. Восстановление: `sudo bash deploy/scripts/restore.sh <файл>`.
 
@@ -81,9 +99,42 @@ sudo bash clawdesk/deploy/install.sh --domain panel.example.com
 Наружу смотрят только 80/443 (Caddy). Панель — на `127.0.0.1:8080` (доступна через SSH-туннель), Gateway — только
 внутри контейнера.
 
+## Обновление OpenClaw
+
+OpenClaw выходит несколько раз в неделю и держит несколько стабильных линий параллельно (патчи 2026.8.x выходят
+рядом с 2026.9.x и 2026.10.x). ClawDesk не идёт за `latest` вслепую: каждая новая версия проверяется на живом
+Gateway и приходит пулл-реквестом в `dev`.
+
+- **Один источник версии:** `deploy/openclaw.version`. Копии, которые не могут читать файл (зависимости
+  `@openclaw/gateway-client` / `-protocol` в `apps/bff/package.json`, значение по умолчанию в `docker-compose.yml`,
+  `ARG` в `gateway.Dockerfile`, `pnpm-lock.yaml`), сверяет `node scripts/openclaw-version.mjs check` — в CI тоже.
+  `init.sh` пишет версию в `deploy/.env`, плагин llama.cpp и текст согласия в панели берут её же.
+- **Сменить вручную:** `node scripts/openclaw-version.mjs set 2026.9.33 && pnpm install`, затем тесты и контрактный тест.
+- **Контрактный тест** (`deploy/scripts/contract.sh`, job `contract` в CI): собирает образы Gateway и панели для
+  закреплённой версии, поднимает одноразовую установку (проект `clawdesk-contract`, данные
+  `/var/lib/clawdesk-contract`, свой `.env.contract` — рабочие установки не трогаются) и внутри контейнера панели
+  гоняет RPC, на которые опирается ClawDesk: подключение и парование, `agents.list/create/update/delete`,
+  `agents.files.set/get`, `config.get/patch`, `plugins.list`, `cron.add/list/remove` и ход чата через
+  модель-заглушку (`apps/bff/src/contract/smoke.ts`). `OPENCLAW_VERSION=2026.10.4 bash deploy/scripts/contract.sh` —
+  проверить другую версию, `CONTRACT_KEEP=1` — оставить стек поднятым.
+- **Ежедневный бамп** (`.github/workflows/openclaw-bump.yml`, 05:17 UTC): `npm view openclaw versions`, беты
+  пропускаются, учитываются только версии, для которых вышли и клиентские пакеты. На каждую новую версию — ветка
+  `openclaw/bump-<версия>` из `dev`, смена версии и lock-файла, сборка, тесты, контрактный тест и PR в `dev` со
+  ссылками на релиз, diff и CHANGELOG OpenClaw, таблицей проверок и чек-листом. Метки: `patch` — патч текущей
+  линии; `minor-line` + `manual review` — новая линия. Упавшие проверки — PR-черновик с меткой `checks failed`.
+  Существующая ветка `openclaw/bump-<версия>` пропускается (удалить ветку — попробовать снова).
+- **Ручной запуск:** Actions → OpenClaw bump → Run workflow. По умолчанию dry run: всё то же, но без ветки и PR —
+  текст PR в сводке запуска. Поле version — конкретная версия вместо самых новых. Запуск по расписанию и кнопка
+  появляются, когда workflow есть в `main`.
+- PR от стандартного `GITHUB_TOKEN` не запускает другие workflow, поэтому бамп гоняет проверки сам. С секретом
+  `OPENCLAW_BUMP_TOKEN` (токен с правами contents + pull-requests на запись) PR получает и обычный CI.
+- Обходы, привязанные к версии, помечены `openclaw-bump-review:`; `node scripts/openclaw-version.mjs review`
+  выводит их, и они попадают в чек-лист PR.
+- Экран «Система» показывает «ClawDesk 0.1.N · OpenClaw X»: версию релиза панели и версию работающего Gateway.
+
 ## Ветки и релизы
 
-- Работа идёт в ветке `dev`: на каждый пуш — сборка, типы, тесты (`.github/workflows/ci.yml`).
+- Работа идёт в ветке `dev`: на каждый пуш — сборка, типы, тесты, контрактный тест (`.github/workflows/ci.yml`).
 - В `main` попадает только пулл-реквест `dev` → `main`, его сливает владелец на GitHub.
 - Каждое слияние в `main` — релиз (`.github/workflows/release.yml`): те же проверки ещё раз, затем установщики
   Windows / Linux (macOS — когда репозиторий станет публичным) в GitHub Releases с версией `0.1.<номер запуска>` (мажор и минор — из

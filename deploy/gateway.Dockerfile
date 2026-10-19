@@ -2,6 +2,7 @@
 # OpenClaw Gateway + Docker CLI, so it can start sandbox containers for junior
 # agents (decision 2: sandbox for every junior agent). The Gateway talks to the
 # host Docker daemon through the mounted socket ("Docker-out-of-Docker").
+# The version is deploy/openclaw.version; this default is kept equal to it (scripts/openclaw-version.mjs).
 ARG OPENCLAW_VERSION=2026.8.1
 ARG OPENCLAW_IMAGE=ghcr.io/openclaw/openclaw
 
@@ -22,7 +23,7 @@ COPY --chmod=0755 docker-mountpoints.sh /usr/local/bin/docker
 COPY --from=gog /usr/local/bin/gog /usr/local/bin/gog
 # ClawDesk bridge: OpenClaw CLI steps without an RPC (MCP sign-in), for the panel, on loopback.
 COPY --chmod=0644 clawdesk-bridge.mjs clawdesk-backup.mjs clawdesk-teams.mjs clawdesk-oauth.mjs clawdesk-audio.mjs clawdesk-agent-folders.mjs clawdesk-file-sync.mjs clawdesk-video.mjs clawdesk-claude.mjs clawdesk-skills.mjs /usr/local/lib/
-COPY --chmod=0644 clawdesk-memory.mjs /usr/local/lib/
+COPY --chmod=0644 clawdesk-memory.mjs openclaw.version /usr/local/lib/
 COPY --chmod=0644 clawdesk-plugin-repair.mjs /usr/local/lib/
 COPY --chmod=0644 clawdesk-storage.mjs /usr/local/lib/
 COPY --chmod=0644 clawdesk-project-folders.mjs /usr/local/lib/

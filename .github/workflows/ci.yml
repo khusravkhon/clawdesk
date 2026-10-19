@@ -1,5 +1,6 @@
-# Every push to dev and every pull request (dev → main): build, typecheck, tests, and the install scripts.
-# The release workflow runs the same checks again on main before it builds the installers.
+# Every push to dev and every pull request (dev → main): build, typecheck, tests, the install scripts, and the
+# contract smoke test against a live OpenClaw Gateway. The release workflow runs the same checks again on main
+# before it builds the installers.
 name: CI
 
 on:
@@ -22,14 +23,24 @@ jobs:
         with:
           node-version: 24
           cache: pnpm
+      # One OpenClaw version everywhere (deploy/openclaw.version and its copies).
+      - run: node scripts/openclaw-version.mjs check
       - run: pnpm install --frozen-lockfile
       - run: pnpm -r build
       - run: pnpm typecheck
       - run: pnpm test
-      - name: Bridge modules (Linux)
-        run: node --test deploy/*.test.mjs
+      - name: Bridge modules and scripts (Linux)
+        run: node --test deploy/*.test.mjs scripts/*.test.mjs
       - name: Install scripts
         run: shellcheck -S warning deploy/install.sh deploy/scripts/*.sh
+
+  # The RPCs ClawDesk relies on, against the real Gateway of the pinned OpenClaw (deploy/scripts/contract.sh).
+  contract:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - run: bash deploy/scripts/contract.sh
 
   desktop:
     runs-on: ubuntu-22.04

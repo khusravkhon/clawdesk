@@ -21,3 +21,6 @@ deploy/data/
 
 # local scratch (probes, screenshots, installer checks)
 .tmp/
+
+# update safety state (deploy/scripts/update-guard.sh)
+deploy/.update-rollback

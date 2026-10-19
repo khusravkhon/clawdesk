@@ -15,6 +15,8 @@ const searchAgent = ref("main");
 const searching = ref(false);
 const searchResult = ref<LocalMemorySearchDto | null>(null);
 const searchError = ref<string | null>(null);
+// The plugin ships in lockstep with OpenClaw, so its version is the running Gateway's.
+const openclawVersion = ref("");
 const active = computed(() => !!data.value && !["idle", "ready", "error"].includes(data.value.job.state));
 const errorCode = computed(() => disconnected.value ? "bridge_unavailable" : data.value?.job.error ?? data.value?.error);
 const reason = computed(() => {
@@ -51,7 +53,10 @@ async function search(): Promise<void> {
     searchError.value = t(te(`localMemory.errors.${code}`) ? `localMemory.errors.${code}` : "localMemory.errors.memory_failed");
   } finally { searching.value = false; }
 }
-onMounted(poll);
+onMounted(() => {
+  void poll();
+  api.health().then((h) => { openclawVersion.value = h.gateway.serverVersion ?? ""; }, () => {});
+});
 onUnmounted(() => { stopped = true; clearTimeout(timer); });
 </script>
 
@@ -71,7 +76,7 @@ onUnmounted(() => { stopped = true; clearTimeout(timer); });
       <n-tag size="small" :type="agent.index === 'ready' ? 'success' : 'warning'">{{ t(`localMemory.index.${agent.index}`) }}</n-tag>
       <n-tag size="small" :type="agent.embeddings === 'ready' ? 'success' : agent.embeddings === 'error' ? 'error' : 'default'">{{ t(`localMemory.embeddings.${agent.embeddings}`) }}</n-tag>
     </div>
-    <n-checkbox v-model:checked="consent" :disabled="active">{{ t("localMemory.consent") }}</n-checkbox>
+    <n-checkbox v-model:checked="consent" :disabled="active">{{ t("localMemory.consent", { version: openclawVersion }) }}</n-checkbox>
     <div class="actions">
       <n-button type="primary" :disabled="!consent || active || requestPending" @click="action('setup')">{{ t("localMemory.install") }}</n-button>
       <n-button :disabled="active || requestPending" @click="action('check')">{{ t("localMemory.check") }}</n-button>
