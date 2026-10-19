@@ -1,0 +1,5 @@
+# Overlay for the contract smoke test (deploy/scripts/contract.sh): a throwaway install that must not read
+# deploy/.env of a real install on the same machine.
+services:
+  gateway:
+    env_file: !reset []

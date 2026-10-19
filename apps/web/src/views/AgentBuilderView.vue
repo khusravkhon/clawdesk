@@ -1,6 +1,6 @@
 <script setup lang="ts">
 // Junior-agent builder (screen 8): template → about → data → schedule → AI access → create.
-import { FolderName, type CreateAgentResultDto, type ScheduleInput, type TemplateDto } from "@clawdesk/shared";
+import { FolderName, CreateAgentResultDto, type DepartmentDto, type ScheduleInput, type TemplateDto } from "@clawdesk/shared";
 import { Plus, Trash2 } from "@lucide/vue";
 import {
   NAlert,
@@ -26,7 +26,8 @@ import {
 import { computed, onMounted, reactive, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import PageHeader from "../components/ui/PageHeader.vue";
-import { useRouter } from "vue-router";
+import { useRoute, useRouter } from "vue-router";
+import { DepartmentLinkError, linkDepartmentAgent } from "../company-assignment";
 import { api, ApiError } from "../api/client";
 import AiConnect from "../components/AiConnect.vue";
 import { useLocalized } from "../localized";
@@ -39,6 +40,13 @@ type ScheduleRow = { id: string; presetId: string | null; label: string; time: s
 const { t, locale } = useI18n();
 const tx = useLocalized();
 const router = useRouter();
+const route = useRoute();
+const department = ref<DepartmentDto | null>(null);
+const assignmentRole = route.query.assignment === "manager" ? "manager" : "member";
+const assignmentPending = ref(false);
+const assignmentError = ref<string | null>(null);
+const assigned = ref(false);
+const assignmentStorageKey = computed(() => department.value ? `clawdesk.department-create.${department.value.id}.${assignmentRole}` : null);
 const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
 const space = useSpaceStore();
 
@@ -85,6 +93,35 @@ async function load(): Promise<void> {
     const tg = await api.telegram.status().catch(() => null);
     telegramReady.value = !!tg?.connected && !!tg.owner;
     deliverToTelegram.value = telegramReady.value;
+    if (typeof route.query.departmentId === "string") {
+      if (space.mode !== "company") throw new Error(t("company.errors.company_only"));
+      const snapshot = await api.company.get();
+      const target = snapshot.departments.find((item) => item.id === route.query.departmentId);
+      if (!target) throw new Error(t("company.errors.department_missing"));
+      if (target.archived) throw new Error(t("company.errors.department_archived"));
+      department.value = target;
+      let recovered = false;
+      try {
+        const saved = JSON.parse(sessionStorage.getItem(assignmentStorageKey.value!) ?? "null");
+        if (saved && Date.now() - saved.at < 24 * 60 * 60 * 1000 && Date.now() >= saved.at) {
+          created.value = CreateAgentResultDto.parse(saved.agent);
+          if (saved.aiMode === "own") aiMode.value = "own";
+          step.value = 6;
+          assignmentError.value = t("company.assignmentRecovered");
+          recovered = true;
+        }
+      } catch { /* Invalid or unavailable browser storage does not prevent normal creation. */ }
+      if (!recovered) {
+        if (assignmentRole === "manager" && target.managerAgentId) throw new Error(t("company.errors.department_has_manager"));
+        if (assignmentRole === "manager") {
+          const managerTemplate = templates.value.find((item) => item.id === "department-head");
+          if (!managerTemplate) throw new Error(t("company.errors.manager_template_missing"));
+          pick(managerTemplate);
+          values.agentName = `${tx(managerTemplate.title)} — ${target.name}`.slice(0, 60);
+          values.departmentPurpose = target.description || target.name;
+        }
+      }
+    }
   } catch (error) {
     loadError.value = errorText(error);
   } finally {
@@ -124,7 +161,7 @@ function addSchedule(): void {
 }
 
 async function create(): Promise<void> {
-  if (!template.value || !schedulesOk.value) return;
+  if (created.value || !template.value || !schedulesOk.value) return;
   creating.value = true;
   createError.value = null;
   const payload: ScheduleInput[] = enabledSchedules.value.map((s) => ({
@@ -146,11 +183,30 @@ async function create(): Promise<void> {
       folder: useFolder.value ? folderName.value.trim() : null,
     });
     step.value = 6;
+    if (department.value) {
+      try { sessionStorage.setItem(assignmentStorageKey.value!, JSON.stringify({ at: Date.now(), agent: created.value, aiMode: aiMode.value })); }
+      catch { /* The created agent stays visible even without browser storage. */ }
+      await attach();
+    }
   } catch (error) {
     createError.value = errorText(error);
   } finally {
     creating.value = false;
   }
+}
+
+async function attach(): Promise<void> {
+  if (!department.value || !created.value || assignmentPending.value) return;
+  assignmentPending.value = true;
+  assignmentError.value = null;
+  try {
+    await linkDepartmentAgent(api.company, department.value.id, assignmentRole, created.value.agentId);
+    assigned.value = true;
+    try { sessionStorage.removeItem(assignmentStorageKey.value!); } catch { /* Assignment is already saved on the server. */ }
+  } catch (error) {
+    const code = error instanceof DepartmentLinkError ? error.code : error instanceof ApiError ? error.body.error : "failed";
+    assignmentError.value = t(`company.errors.${code}`) === `company.errors.${code}` ? t("company.errors.failed") : t(`company.errors.${code}`);
+  } finally { assignmentPending.value = false; }
 }
 
 function parseCron(cron: string): { time: string; days: string } {
@@ -185,6 +241,7 @@ onMounted(load);
       <n-button quaternary @click="router.push('/agents')">{{ t("builder.backToList") }}</n-button>
     </page-header>
     <n-space vertical size="large">
+      <n-alert v-if="department" type="info">{{ t(assignmentRole === 'manager' ? 'company.creatingManager' : 'company.creatingMember', { name: department.name }) }}</n-alert>
       <n-steps :current="Math.min(step, 5)" size="small">
         <n-step :title="t('builder.stepTemplate')" />
         <n-step :title="t('builder.stepAbout')" />
@@ -195,7 +252,7 @@ onMounted(load);
 
       <n-alert v-if="loadError" type="error">{{ loadError }}</n-alert>
 
-      <n-spin :show="loading">
+      <n-spin :show="loading" v-if="!loadError">
         <!-- 1. template -->
         <n-grid v-if="step === 1" cols="1 s:2 m:3" responsive="screen" :x-gap="12" :y-gap="12">
           <n-gi v-for="tpl in templates" :key="tpl.id">
@@ -330,11 +387,17 @@ onMounted(load);
           <n-alert type="success" :title="t('builder.created', { name: created.displayName })" class="block">
             {{ t(deliverToTelegram && telegramReady ? "builder.createdDetailTelegram" : "builder.createdDetail", { n: created.cronJobIds.length }) }}
           </n-alert>
+          <n-alert v-if="assignmentError" type="warning" class="block">
+            {{ t("company.agentKept") }} {{ assignmentError }}
+            <n-button :loading="assignmentPending" @click="attach">{{ t("company.retryAssignment") }}</n-button>
+          </n-alert>
+          <n-alert v-else-if="assigned" type="success" class="block">{{ t("company.assignmentSaved") }}</n-alert>
           <template v-if="aiMode === 'own' && !aiDone">
             <h3>{{ t("builder.connectOwn", { name: created.displayName }) }}</h3>
             <AiConnect :agent-id="created.agentId" @connected="aiDone = true" />
           </template>
           <n-space class="mt">
+            <n-button v-if="department" :disabled="assignmentPending" @click="router.push(`/company/departments/${department.id}`)">{{ t('company.backToDepartment') }}</n-button>
             <n-button type="primary" @click="router.push('/agents')">{{ t("builder.toList") }}</n-button>
           </n-space>
         </n-card>

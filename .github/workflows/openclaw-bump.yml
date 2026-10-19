@@ -1,0 +1,195 @@
+# Follows OpenClaw releases without auto-following them: once a day it looks for newer STABLE versions on npm
+# (betas never count) and, for each, makes a branch from dev that moves the single source of truth
+# (deploy/openclaw.version, through scripts/openclaw-version.mjs) plus pnpm-lock, runs the checks and the
+# contract test against the new Gateway, and opens a pull request into dev. Nothing merges by itself.
+#
+# OpenClaw ships several stable lines at once (2026.8.x patches keep coming next to 2026.9.x and 2026.10.x):
+#   "patch"                      newest patch of the line ClawDesk is on — usually safe;
+#   "minor-line", "manual review" newest release of a newer line — read its changelog first.
+# A branch openclaw/bump-<version> that already exists is skipped (delete it to try again).
+#
+# Pull requests opened with the default GITHUB_TOKEN do not start other workflows, so this one runs the
+# checks itself and writes the result into the pull request. With a repository secret OPENCLAW_BUMP_TOKEN
+# (a token with contents + pull-requests write) the pull request also gets the normal CI run.
+#
+# Try it by hand: Actions → OpenClaw bump → Run workflow (dry run is on by default: no branch, no PR,
+# the would-be PR text goes to the run summary).
+name: OpenClaw bump
+
+on:
+  schedule:
+    - cron: "17 5 * * *"
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Dry run: bump and test, but push nothing and open no PR"
+        type: boolean
+        default: true
+      version:
+        description: "Bump to this exact version instead of the newest ones (e.g. 2026.9.33)"
+        type: string
+        required: false
+
+concurrency:
+  group: openclaw-bump
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  plan:
+    runs-on: ubuntu-24.04
+    outputs:
+      candidates: ${{ steps.plan.outputs.candidates }}
+      current: ${{ steps.plan.outputs.current }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: dev
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - id: plan
+        env:
+          FORCED: ${{ inputs.version }}
+        run: |
+          node --input-type=module -e '
+            import { execFileSync } from "node:child_process";
+            import { candidates, lineOf, pinnedVersion } from "./scripts/openclaw-version.mjs";
+            const current = pinnedVersion();
+            const forced = (process.env.FORCED ?? "").trim();
+            let list;
+            if (forced) {
+              const kind = lineOf(forced) === lineOf(current) ? "patch" : "minor-line";
+              list = [{ version: forced, kind, labels: kind === "patch" ? ["openclaw", "patch"] : ["openclaw", "minor-line", "manual review"] }];
+            } else {
+              list = JSON.parse(execFileSync("node", ["scripts/openclaw-version.mjs", "next"], { encoding: "utf8" })).candidates;
+            }
+            // A bump that already has a branch is in review (or was turned down): leave it.
+            const open = execFileSync("git", ["ls-remote", "--heads", "origin"], { encoding: "utf8" });
+            list = list.filter((c) => !open.includes(`refs/heads/openclaw/bump-${c.version}\n`));
+            console.log(`OpenClaw ${current}; to bump: ${list.map((c) => `${c.version} (${c.kind})`).join(", ") || "nothing"}`);
+            const out = `current=${current}\ncandidates=${JSON.stringify(list)}\n`;
+            (await import("node:fs")).appendFileSync(process.env.GITHUB_OUTPUT, out);
+          '
+
+  bump:
+    needs: plan
+    if: needs.plan.outputs.candidates != '[]'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    permissions:
+      contents: write
+      pull-requests: write
+    strategy:
+      fail-fast: false
+      matrix:
+        candidate: ${{ fromJSON(needs.plan.outputs.candidates) }}
+    env:
+      VERSION: ${{ matrix.candidate.version }}
+      KIND: ${{ matrix.candidate.kind }}
+      CURRENT: ${{ needs.plan.outputs.current }}
+      BRANCH: openclaw/bump-${{ matrix.candidate.version }}
+      DRY_RUN: ${{ github.event_name == 'workflow_dispatch' && inputs.dry_run }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: dev
+          token: ${{ secrets.OPENCLAW_BUMP_TOKEN || github.token }}
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - name: Bump OpenClaw ${{ env.CURRENT }} → ${{ env.VERSION }}
+        run: |
+          node scripts/openclaw-version.mjs set "$VERSION"
+          pnpm install --no-frozen-lockfile
+          node scripts/openclaw-version.mjs check
+          git diff --stat
+
+      # Every check runs even after one fails: the pull request reports them all.
+      - id: build
+        continue-on-error: true
+        run: pnpm -r build && pnpm typecheck
+      - id: unit
+        continue-on-error: true
+        run: pnpm test && node --test deploy/*.test.mjs scripts/*.test.mjs
+      - id: contract
+        continue-on-error: true
+        run: bash deploy/scripts/contract.sh
+
+      - name: Pull request text
+        env:
+          BUILD: ${{ steps.build.outcome }}
+          UNIT: ${{ steps.unit.outcome }}
+          CONTRACT: ${{ steps.contract.outcome }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          mark() { [[ "$1" == success ]] && echo "✅ passed" || echo "❌ $1"; }
+          {
+            echo "Bumps OpenClaw **$CURRENT → $VERSION** (\`$KIND\`) through \`deploy/openclaw.version\` (\`scripts/openclaw-version.mjs set\`) and \`pnpm-lock.yaml\`."
+            echo
+            if [[ "$KIND" == patch ]]; then
+              echo "A patch inside the line ClawDesk is on."
+            else
+              echo "**A newer release line: manual review.** Read the changelog for breaking changes before merging."
+            fi
+            echo
+            echo "- Release: https://github.com/openclaw/openclaw/releases/tag/v$VERSION"
+            echo "- Changes since the pinned version: https://github.com/openclaw/openclaw/compare/v$CURRENT...v$VERSION"
+            echo "- Changelog: https://github.com/openclaw/openclaw/blob/v$VERSION/CHANGELOG.md"
+            echo
+            echo "| Check | Result |"
+            echo "| --- | --- |"
+            echo "| Build + typecheck | $(mark "$BUILD") |"
+            echo "| Unit tests (panel, bridge, scripts) | $(mark "$UNIT") |"
+            echo "| Contract test against the live $VERSION Gateway | $(mark "$CONTRACT") |"
+            echo
+            echo "Log: $RUN_URL"
+            echo
+            echo "### Before merging"
+            echo "- [ ] Changelog read; nothing ClawDesk relies on was removed or renamed"
+            echo "- [ ] Version-specific workarounds re-checked (\`openclaw-bump-review\` marks):"
+            node scripts/openclaw-version.mjs review | sed 's/^/  - /'
+            echo "- [ ] Updated a test install (desktop \"Обновить\" or \`install.sh\`): it backs up, updates and stays healthy"
+            echo
+            echo "🤖 Opened by the OpenClaw bump workflow"
+          } > pr-body.md
+          cat pr-body.md >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Push the branch
+        if: env.DRY_RUN != 'true'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git switch -c "$BRANCH"
+          git add -A deploy/openclaw.version apps/bff/package.json deploy/docker-compose.yml deploy/gateway.Dockerfile pnpm-lock.yaml
+          git commit -m "chore(openclaw): bump $CURRENT → $VERSION ($KIND)"
+          git push origin "$BRANCH"
+
+      - name: Open the pull request
+        if: env.DRY_RUN != 'true'
+        uses: actions/github-script@v7
+        env:
+          FAILED: ${{ steps.build.outcome != 'success' || steps.unit.outcome != 'success' || steps.contract.outcome != 'success' }}
+          LABELS: ${{ toJSON(matrix.candidate.labels) }}
+        with:
+          github-token: ${{ secrets.OPENCLAW_BUMP_TOKEN || github.token }}
+          script: |
+            const fs = require("node:fs");
+            const failed = process.env.FAILED === "true";
+            const { data: pr } = await github.rest.pulls.create({
+              ...context.repo,
+              base: "dev",
+              head: process.env.BRANCH,
+              title: `OpenClaw ${process.env.CURRENT} → ${process.env.VERSION} (${process.env.KIND})`,
+              body: fs.readFileSync("pr-body.md", "utf8"),
+              // A bump whose checks fail is a heads-up, not a merge candidate.
+              draft: failed,
+            });
+            const labels = [...JSON.parse(process.env.LABELS), ...(failed ? ["checks failed"] : [])];
+            await github.rest.issues.addLabels({ ...context.repo, issue_number: pr.number, labels });
+            core.notice(`Opened ${pr.html_url}`);

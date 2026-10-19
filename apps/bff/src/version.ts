@@ -5,4 +5,5 @@ import fs from "node:fs";
 const raw = fs.readFileSync(new URL("../package.json", import.meta.url), "utf8").replace(/^﻿/, "");
 const pkg = JSON.parse(raw) as { version: string };
 
-export const PANEL_VERSION: string = pkg.version;
+/** The release (0.1.N) baked into the panel image by the release workflow; the package version in development. */
+export const PANEL_VERSION: string = process.env.CLAWDESK_VERSION?.trim() || pkg.version;

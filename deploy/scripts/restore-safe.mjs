@@ -125,7 +125,7 @@ export async function extractSafe(archive, destination, gzip = false) {
 export async function prepareRestore(archive, target, version) {
   await extractSafe(archive, target);
   const manifest = JSON.parse(await fs.readFile(path.join(target, 'manifest.json'), 'utf8'));
-  if (manifest.format !== 1 || !['daily', 'manual', 'before-reset'].includes(manifest.kind) || typeof manifest.createdAt !== 'string' || !Number.isFinite(Date.parse(manifest.createdAt))) throw new Error('unsupported backup manifest');
+  if (manifest.format !== 1 || !['daily', 'manual', 'before-reset', 'before-update'].includes(manifest.kind) || typeof manifest.createdAt !== 'string' || !Number.isFinite(Date.parse(manifest.createdAt))) throw new Error('unsupported backup manifest');
   if (manifest.openclawVersion !== version) throw new Error('backup OpenClaw version does not match this installation');
   const allowed = new Set(['manifest.json', 'openclaw.tar.gz', 'env', 'panel', 'freellmapi', 'auth-secrets']);
   if ((await fs.readdir(target)).some((entry) => !allowed.has(entry))) throw new Error('unexpected backup payload');

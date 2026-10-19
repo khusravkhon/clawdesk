@@ -36,7 +36,7 @@ export type BridgeVideoResult = {
   error?: string;
 };
 
-export type BridgeBackup = { name: string; kind: "daily" | "manual" | "before-reset"; createdAt: string; size: number };
+export type BridgeBackup = { name: string; kind: "daily" | "manual" | "before-reset" | "before-update"; createdAt: string; size: number };
 
 export type GoogleLogin = { email: string; services: string[]; readonly: boolean; redirectUri?: string };
 export type GoogleBridgeStatus = {
@@ -184,6 +184,14 @@ export class BridgeClient {
   /** Recovers FreeLLMAPI's single account (one-time code from its log) and sets this password. */
   freellmapiReset(newPassword: string): Promise<{ ok: true }> {
     return this.#call("POST", "/freellmapi/reset", { newPassword }, 60_000);
+  }
+
+  projectWorkspace(projectId: string): Promise<import("@clawdesk/shared").ProjectWorkspaceDto> {
+    return this.#call("GET", `/projects/workspace?projectId=${encodeURIComponent(projectId)}`);
+  }
+
+  prepareProjectWorkspace(projectId: string, request: import("@clawdesk/shared").PrepareProjectWorkspaceRequest): Promise<import("@clawdesk/shared").ProjectWorkspaceDto> {
+    return this.#call("POST", "/projects/workspace", { projectId, ...request });
   }
 
   /** Makes (or finds) a junior agent's folder in the shared files folder. */

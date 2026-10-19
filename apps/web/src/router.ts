@@ -26,6 +26,10 @@ export const router = createRouter({
     { path: "/status", name: "status", component: () => import("./views/StatusView.vue"), meta: { aiOptional: true } },
     { path: "/usage", name: "usage", component: () => import("./views/UsageView.vue") },
     { path: "/teams", name: "teams", component: () => import("./views/TeamsView.vue") },
+    { path: "/company", name: "company", component: () => import("./views/CompanyView.vue"), meta: { aiOptional: true } },
+    { path: "/company/departments/:departmentId", name: "department", component: () => import("./views/CompanyView.vue"), meta: { aiOptional: true } },
+    { path: "/company/projects", name: "company-projects", component: () => import("./views/ProjectsView.vue"), meta: { aiOptional: true } },
+    { path: "/company/projects/:projectId", name: "company-project", component: () => import("./views/ProjectsView.vue"), meta: { aiOptional: true } },
     { path: "/system", name: "system", component: () => import("./views/SystemView.vue"), meta: { aiOptional: true } },
   ],
 });
@@ -92,6 +96,7 @@ router.beforeEach(async (to) => {
   }
   if (!space.space && to.name !== "setup-mode" && !to.meta.aiOptional) return { name: "setup-mode" };
   if (to.name === "today" && space.mode === "company") return { name: "dashboard" };
+  if (["company", "department", "company-projects", "company-project"].includes(String(to.name)) && space.mode !== "company") return { name: "dashboard" };
   if (to.name === "dashboard" && space.mode === "personal") return true;
   if (to.name === "setup-mode" || to.name === "setup-ai" || to.meta.aiOptional || aiConnected === true || devSkipsAiGuard()) return true;
   if (aiConnected === null) {

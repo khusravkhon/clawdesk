@@ -1,6 +1,6 @@
 <script setup lang="ts">
 // Screen 14: backups (nightly, on demand, encrypted download) and the factory reset.
-import type { BackupDto, BackupsDto } from "@clawdesk/shared";
+import type { BackupDto, BackupsDto, HealthDto } from "@clawdesk/shared";
 import { Download, HardDriveDownload, RotateCcw, TriangleAlert } from "@lucide/vue";
 import { NAlert, NButton, NCard, NInput, NModal, NSkeleton, NSpace, NTag, useMessage } from "naive-ui";
 import { computed, onMounted, onUnmounted, ref } from "vue";
@@ -18,6 +18,9 @@ const message = useMessage();
 const space = useSpaceStore();
 
 const data = ref<BackupsDto | null>(null);
+const health = ref<HealthDto | null>(null);
+/** "ClawDesk 0.1.N · OpenClaw X": the release this panel came from and the Gateway it talks to. */
+const versions = computed(() => health.value && `ClawDesk ${health.value.version} · OpenClaw ${health.value.gateway.serverVersion ?? "—"}`);
 const loadError = ref<string | null>(null);
 const creating = ref(false);
 const deleting = ref<string | null>(null);
@@ -138,13 +141,18 @@ function waitForRestart(code: string): void {
 
 const kindLabel = (kind: BackupDto["kind"]) => t(`system.kind.${kind}`);
 
-onMounted(load);
+onMounted(() => {
+  void load();
+  api.health().then((h) => { health.value = h; }, () => {});
+});
 onUnmounted(() => window.clearInterval(poll));
 </script>
 
 <template>
   <div>
-    <page-header :title="t('system.title')" :subtitle="t('system.subtitle')" />
+    <page-header :title="t('system.title')" :subtitle="t('system.subtitle')">
+      <span v-if="versions" class="versions" data-testid="versions">{{ versions }}</span>
+    </page-header>
 
     <n-card v-if="ownerCode" class="restarting">
       <h2>{{ t("system.resettingTitle") }}</h2>
@@ -177,7 +185,7 @@ onUnmounted(() => window.clearInterval(poll));
           <ul v-else class="list">
             <li v-for="b in data!.backups" :key="b.name">
               <span class="when">{{ formatDateTime(b.createdAt, locale) }}</span>
-              <n-tag size="small" :bordered="false" :type="b.kind === 'before-reset' ? 'warning' : 'default'">{{ kindLabel(b.kind) }}</n-tag>
+              <n-tag size="small" :bordered="false" :type="b.kind === 'before-reset' || b.kind === 'before-update' ? 'warning' : 'default'">{{ kindLabel(b.kind) }}</n-tag>
               <span class="muted size">{{ formatBytes(b.size, locale) }}</span>
               <n-button size="small" secondary @click="openDownload(b)">
                 <template #icon><download :size="14" /></template>
@@ -244,6 +252,11 @@ onUnmounted(() => window.clearInterval(poll));
 </template>
 
 <style scoped>
+.versions {
+  color: var(--text-2);
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+}
 .delete-confirm {
   overflow-wrap: anywhere;
 }

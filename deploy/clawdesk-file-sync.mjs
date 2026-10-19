@@ -78,6 +78,13 @@ export async function directoryIdentityWithin(root, relative) {
   } finally { await handle.close(); }
 }
 
+/** Keep the verified directory open until the caller's filesystem operation finishes. */
+export async function withDirectoryWithin(root, relative, run, create = false) {
+  const handle = await directory(root, relative ? relative.split("/") : [], create);
+  try { return await run(fdPath(handle)); }
+  finally { await handle.close(); }
+}
+
 async function readAt(parent, name, metrics, cache, key) {
   let handle;
   try {

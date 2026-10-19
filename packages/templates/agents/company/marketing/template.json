@@ -1,0 +1,71 @@
+{
+  "id": "marketing",
+  "mode": "company",
+  "role": "specialist",
+  "emoji": "📣",
+  "title": {
+    "ru": "Маркетолог",
+    "en": "Marketing specialist"
+  },
+  "description": {
+    "ru": "Готовит контент-планы и кампании с учётом продукта, аудитории и голоса бренда.",
+    "en": "Plans content and campaigns around the product, audience and brand voice."
+  },
+  "fields": [
+    {
+      "key": "agentName",
+      "type": "text",
+      "label": {
+        "ru": "Имя агента",
+        "en": "Agent name"
+      },
+      "default": "Маркетолог"
+    },
+    {
+      "key": "companyContext",
+      "type": "textarea",
+      "label": {
+        "ru": "О компании и её работе",
+        "en": "Company and business context"
+      }
+    },
+    {
+      "key": "audience",
+      "type": "textarea",
+      "label": {
+        "ru": "Продукт, аудитория и цель продвижения",
+        "en": "Product, audience and marketing goal"
+      }
+    },
+    {
+      "key": "channels",
+      "type": "textarea",
+      "label": {
+        "ru": "Каналы и стиль бренда",
+        "en": "Channels and brand voice"
+      },
+      "required": false,
+      "default": "Уточни доступные каналы, тон бренда и ограничения перед подготовкой плана."
+    }
+  ],
+  "sources": [
+    "folder"
+  ],
+  "folder": {
+    "ru": "Маркетинг",
+    "en": "Marketing specialist"
+  },
+  "cronPresets": [
+    {
+      "id": "summary",
+      "label": {
+        "ru": "Пн 10:00 — контент-план недели",
+        "en": "Scheduled work summary"
+      },
+      "cron": "0 10 * * 1",
+      "prompt": "Подготовь контент-план на неделю: цель, канал, тема, формат, призыв к действию и срок. Используй доступные материалы компании; отметь недостающие сведения."
+    }
+  ],
+  "canAskMain": true,
+  "sandbox": true
+}

@@ -13,6 +13,8 @@ import type { AuthService } from "./auth/auth-service.js";
 import type { BackupService } from "./backups/backup-service.js";
 import type { BridgeClient } from "./gateway/bridge-client.js";
 import type { SpaceService } from "./space/space-service.js";
+import { CompanyService } from "./company/company-service.js";
+import { registerCompanyRoutes } from "./routes/company.js";
 import type { TeamService } from "./teams/team-service.js";
 import type { AuditService } from "./audit/audit-service.js";
 import type { SignInSessionManager } from "./ai-setup/signin-sessions.js";
@@ -143,6 +145,7 @@ export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
   registerSystemRoutes(app, deps);
   registerSpaceRoutes(app, deps);
   registerTeamRoutes(app, deps);
+  registerCompanyRoutes(app, new CompanyService(deps));
   registerAuditRoutes(app, deps);
   registerUsageRoutes(app, { usage: new UsageService(deps) });
 

@@ -32,6 +32,7 @@ const menu = computed<MenuOption[]>(() => [
   { key: "/chat", label: link("/chat", t("nav.chat")), icon: icon(MessagesSquare) },
   { key: "/assistant", label: link("/assistant", t("nav.assistant")), icon: icon(UserRound) },
   { key: "/agents", label: link("/agents", t("nav.agents")), icon: icon(Bot) },
+  ...(space.mode === "company" ? [{ key: "/company", label: link("/company", t("company.title")), icon: icon(Blocks) }] : []),
   // Project teams are how the company mode makes agents.
   ...(space.mode === "company" ? [{ key: "/teams", label: link("/teams", t("nav.teams")), icon: icon(FolderGit2) }] : []),
   { key: "/schedules", label: link("/schedules", t("nav.schedules")), icon: icon(CalendarClock) },

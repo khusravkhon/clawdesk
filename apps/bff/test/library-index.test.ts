@@ -131,7 +131,7 @@ describe("indexed owner library", () => {
       expect(new LibraryService(upgradedAgain.db).search("новая").hits.map(hit => hit.id)).toEqual(["after-rollback"]);
       const check = new Database(rollbackPath);
       handles.push(check);
-      expect(check.prepare("SELECT count(*) AS n FROM __drizzle_migrations WHERE created_at >= 1792230000000").get()).toEqual({ n: 2 });
+      expect(check.prepare("SELECT count(*) AS n FROM __drizzle_migrations WHERE created_at IN (1792230000000, 1792231000000)").get()).toEqual({ n: 2 });
       expect(check.prepare("SELECT count(*) AS n FROM personal_reminders").get()).toEqual({ n: 0 });
     } finally {
       for (const handle of handles) { try { handle.close(); } catch { /* Already closed. */ } }
