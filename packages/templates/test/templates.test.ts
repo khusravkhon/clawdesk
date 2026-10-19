@@ -6,11 +6,18 @@ describe("templates", () => {
   it("every bundled template parses and renders with its defaults plus required fields", () => {
     const templates = listTemplates();
     expect(templates.map((t) => `${t.mode}/${t.id}`).sort()).toEqual([
+      "company/analyst",
       "company/custom",
+      "company/department-head",
       "company/developer",
+      "company/hr",
       "company/main",
+      "company/marketing",
+      "company/operations",
       "company/pm",
       "company/reviewer",
+      "company/sales",
+      "company/support",
       "personal/accountant",
       "personal/custom",
       "personal/dietitian",
@@ -35,8 +42,34 @@ describe("templates", () => {
     }
   });
 
+  it("offers business specialists without team-only fields or connected service assumptions", () => {
+    const specialists = listTemplates().filter((t) => t.mode === "company" && t.role === "specialist" && !["custom", "department-head"].includes(t.id));
+    expect(specialists.map((t) => t.id).sort()).toEqual(["analyst", "hr", "marketing", "operations", "sales", "support"]);
+    for (const template of specialists) {
+      expect(template.fields.some((f) => f.key === "agentName" && f.default)).toBe(true);
+      expect(template.sources).toContain("folder");
+      expect(template.folder?.ru).toBeTruthy();
+      expect(template.sandbox).toBe(true);
+      expect(template.canAskMain).toBe(true);
+      expect(template.cronPresets.length).toBeGreaterThan(0);
+      const values = Object.fromEntries(template.fields.filter((f) => f.default === undefined).map((f) => [f.key, `Company ${f.key}`]));
+      expect(() => renderTemplateFiles(template, values)).not.toThrow();
+    }
+  });
+
   it("fails on a required field without value", () => {
     expect(() => renderTemplateFiles(loadTemplate("personal", "dietitian"), {})).toThrow(/goal/);
+  });
+
+  it("prepares a department manager without automatic schedules or source access", () => {
+    const template = loadTemplate("company", "department-head");
+    expect(template.role).toBe("specialist");
+    expect(template.sources).toEqual([]);
+    expect(template.cronPresets).toEqual([]);
+    expect(() => renderTemplateFiles(template, {})).toThrow(/departmentPurpose/);
+    const files = renderTemplateFiles(template, { departmentPurpose: "IT", limits: "Do not publish", responsibilities: "Review deliverables" });
+    expect(files["SOUL.md"]).toContain("Do not publish");
+    expect(files["SOUL.md"]).toContain("Review deliverables");
   });
 
   it("fails on unknown placeholders instead of shipping them", () => {

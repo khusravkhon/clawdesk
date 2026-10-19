@@ -14,6 +14,8 @@ export * from "./auth.js";
 export * from "./system.js";
 export * from "./space.js";
 export * from "./teams.js";
+export * from "./company.js";
+export * from "./project-acceptance.js";
 export * from "./audit.js";
 export * from "./usage.js";
 export * from "./video.js";

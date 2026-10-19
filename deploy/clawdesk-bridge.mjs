@@ -51,6 +51,7 @@ import { removeWorkspaceSkill, SkillRemoveError } from "./clawdesk-skills.mjs";
 import { cancelVideo, downloadVideo, framesOfVideo, studyVideo, videoProgress, VideoError } from "./clawdesk-video.mjs";
 import { LocalMemory, MemoryError } from "./clawdesk-memory.mjs";
 import { StorageManager, StorageError } from "./clawdesk-storage.mjs";
+import { ProjectFolders, ProjectFolderError } from "./clawdesk-project-folders.mjs";
 
 const HOST = process.env.CLAWDESK_BRIDGE_HOST || "127.0.0.1";
 const PORT = Number(process.env.CLAWDESK_BRIDGE_PORT || 18790);
@@ -244,6 +245,7 @@ async function googleRemove(body) {
 // source of that mount (on Docker Desktop not the path the person typed).
 
 const FILES_IN_GATEWAY = path.join(process.env.OPENCLAW_STATE_DIR || "/var/lib/clawdesk/openclaw", "workspace", "files");
+const projectFolders = new ProjectFolders({ stateDir: process.env.OPENCLAW_STATE_DIR || "/var/lib/clawdesk/openclaw" });
 function spaceMode() {
   let db;
   try {
@@ -425,6 +427,17 @@ async function handle(req) {
   const url = new URL(req.url, "http://bridge");
   if (req.method === "GET" && url.pathname === "/health") return { status: 200, body: { ok: true } };
   if (!authorized(req)) return { status: 401, body: { error: "unauthorized", message: "missing or wrong token" } };
+  if (url.pathname === "/projects/workspace") {
+    if (spaceMode() !== "company") return { status: 409, body: { error: "company_only" } };
+    try {
+      if (req.method === "GET") return { status: 200, body: await projectFolders.status(url.searchParams.get("projectId")) };
+      if (req.method === "POST") return { status: 200, body: await projectFolders.prepare(await readJson(req)) };
+      return { status: 404, body: { error: "not_found" } };
+    } catch (error) {
+      const code = error instanceof ProjectFolderError ? error.code : "workspace_unavailable";
+      return { status: error instanceof ProjectFolderError ? error.status : 503, body: { error: code, message: code } };
+    }
+  }
 
   if (url.pathname.startsWith("/storage/")) {
     if (!personalMode()) return { status: 404, body: { error: "not_found", message: "not_found" } };

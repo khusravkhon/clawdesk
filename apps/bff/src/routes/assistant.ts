@@ -6,7 +6,6 @@ import type { SpaceService } from "../space/space-service.js";
 
 export function registerAssistantRoutes(app: FastifyInstance, deps: { assistant: AssistantService; bridge?: BridgeClient; space?: SpaceService }): void {
   app.post("/api/assistant/local-memory/search", async (request, reply) => {
-    if (deps.space?.mode() === "company") return reply.status(404).send({ error: "not_found", message: "personal mode only" });
     const { agentId, query } = LocalMemorySearchRequest.parse(request.body);
     if (!deps.bridge) return reply.status(503).send({ error: "bridge_unavailable", message: "bridge_unavailable" });
     try { return LocalMemorySearchDto.parse(await deps.bridge.localMemorySearch(agentId, query)); }
@@ -16,7 +15,6 @@ export function registerAssistantRoutes(app: FastifyInstance, deps: { assistant:
     }
   });
   const memory = async (reply: import("fastify").FastifyReply, run: (bridge: BridgeClient) => Promise<LocalMemoryStatusDto>) => {
-    if (deps.space?.mode() === "company") return reply.status(404).send({ error: "not_found", message: "personal mode only" });
     if (!deps.bridge) return reply.status(503).send({ error: "bridge_unavailable", message: "bridge_unavailable" });
     try { return LocalMemoryStatusDto.parse(await run(deps.bridge)); }
     catch (error) {

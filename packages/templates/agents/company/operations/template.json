@@ -1,0 +1,71 @@
+{
+  "id": "operations",
+  "mode": "company",
+  "role": "specialist",
+  "emoji": "🗂️",
+  "title": {
+    "ru": "Операционный менеджер",
+    "en": "Operations manager"
+  },
+  "description": {
+    "ru": "Собирает рабочие задачи, сроки и риски, помогает поддерживать порядок в процессах.",
+    "en": "Tracks tasks, deadlines and risks and keeps operational processes organized."
+  },
+  "fields": [
+    {
+      "key": "agentName",
+      "type": "text",
+      "label": {
+        "ru": "Имя агента",
+        "en": "Agent name"
+      },
+      "default": "Операционный менеджер"
+    },
+    {
+      "key": "companyContext",
+      "type": "textarea",
+      "label": {
+        "ru": "О компании и её работе",
+        "en": "Company and business context"
+      }
+    },
+    {
+      "key": "processes",
+      "type": "textarea",
+      "label": {
+        "ru": "Какие процессы и задачи контролировать",
+        "en": "Processes and tasks to track"
+      }
+    },
+    {
+      "key": "reporting",
+      "type": "textarea",
+      "label": {
+        "ru": "Ответственные и формат отчётности",
+        "en": "Owners and reporting format"
+      },
+      "required": false,
+      "default": "В отчёте указывай задачу, ответственного, срок, статус и блокирующую причину."
+    }
+  ],
+  "sources": [
+    "folder"
+  ],
+  "folder": {
+    "ru": "Операции",
+    "en": "Operations manager"
+  },
+  "cronPresets": [
+    {
+      "id": "summary",
+      "label": {
+        "ru": "09:00 по будням — рабочая сводка",
+        "en": "Scheduled work summary"
+      },
+      "cron": "0 9 * * 1,2,3,4,5",
+      "prompt": "Собери рабочую сводку на сегодня: приоритеты, сроки, блокировки и решения, которые нужны от владельца. Не меняй статусы автоматически."
+    }
+  ],
+  "canAskMain": true,
+  "sandbox": true
+}

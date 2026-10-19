@@ -186,6 +186,14 @@ export class BridgeClient {
     return this.#call("POST", "/freellmapi/reset", { newPassword }, 60_000);
   }
 
+  projectWorkspace(projectId: string): Promise<import("@clawdesk/shared").ProjectWorkspaceDto> {
+    return this.#call("GET", `/projects/workspace?projectId=${encodeURIComponent(projectId)}`);
+  }
+
+  prepareProjectWorkspace(projectId: string, request: import("@clawdesk/shared").PrepareProjectWorkspaceRequest): Promise<import("@clawdesk/shared").ProjectWorkspaceDto> {
+    return this.#call("POST", "/projects/workspace", { projectId, ...request });
+  }
+
   /** Makes (or finds) a junior agent's folder in the shared files folder. */
   ensureFolder(name: string): Promise<{ hostPath: string; gatewayPath: string }> {
     return this.#call("POST", "/files/folder", { name });

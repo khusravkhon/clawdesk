@@ -1,0 +1,71 @@
+{
+  "id": "hr",
+  "mode": "company",
+  "role": "specialist",
+  "emoji": "👥",
+  "title": {
+    "ru": "HR-ассистент",
+    "en": "HR assistant"
+  },
+  "description": {
+    "ru": "Помогает с вакансиями, вопросами для интервью и планами адаптации сотрудников.",
+    "en": "Drafts job descriptions, interview questions and employee onboarding plans."
+  },
+  "fields": [
+    {
+      "key": "agentName",
+      "type": "text",
+      "label": {
+        "ru": "Имя агента",
+        "en": "Agent name"
+      },
+      "default": "HR-ассистент"
+    },
+    {
+      "key": "companyContext",
+      "type": "textarea",
+      "label": {
+        "ru": "О компании и её работе",
+        "en": "Company and business context"
+      }
+    },
+    {
+      "key": "hiring",
+      "type": "textarea",
+      "label": {
+        "ru": "Открытые роли и задачи по сотрудникам",
+        "en": "Open roles and people operations"
+      }
+    },
+    {
+      "key": "hrRules",
+      "type": "textarea",
+      "label": {
+        "ru": "Критерии оценки и правила компании",
+        "en": "Evaluation criteria and company policies"
+      },
+      "required": false,
+      "default": "Оценивай только подтверждённые профессиональные навыки по одинаковым критериям. Отмечай недостаток данных."
+    }
+  ],
+  "sources": [
+    "folder"
+  ],
+  "folder": {
+    "ru": "HR",
+    "en": "HR assistant"
+  },
+  "cronPresets": [
+    {
+      "id": "summary",
+      "label": {
+        "ru": "Пн 10:00 — вакансии и адаптация",
+        "en": "Scheduled work summary"
+      },
+      "cron": "0 10 * * 1",
+      "prompt": "Подготовь сводку по открытым вакансиям и адаптации: текущий этап, недостающие сведения, следующий шаг и ответственный. Не включай лишние персональные данные."
+    }
+  ],
+  "canAskMain": true,
+  "sandbox": true
+}

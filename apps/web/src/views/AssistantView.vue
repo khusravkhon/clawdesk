@@ -163,7 +163,7 @@ onMounted(load);
             <span v-if="memorySaving === o" class="opt-desc">{{ t("assistant.memory.restarting") }}</span>
           </button>
         </div>
-        <LocalMemorySetup v-if="space.mode === 'personal'" />
+        <LocalMemorySetup />
       </section>
     </template>
   </div>

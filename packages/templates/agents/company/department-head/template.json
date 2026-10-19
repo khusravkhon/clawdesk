@@ -1,0 +1,18 @@
+{
+  "id": "department-head",
+  "mode": "company",
+  "role": "specialist",
+  "emoji": "🧭",
+  "title": { "ru": "Руководитель отдела", "en": "Department manager", "tg": "Роҳбари шуъба" },
+  "description": { "ru": "Уточняет задачи отдела, проверяет результаты и поднимает нерешённые вопросы главному агенту.", "en": "Clarifies department tasks, reviews results and escalates unresolved issues to the company lead.", "tg": "Вазифаҳои шуъбаро равшан мекунад ва натиҷаҳоро месанҷад." },
+  "fields": [
+    { "key": "agentName", "type": "text", "label": { "ru": "Имя руководителя", "en": "Manager name", "tg": "Номи роҳбар" }, "default": "Руководитель отдела" },
+    { "key": "departmentPurpose", "type": "textarea", "label": { "ru": "За что отвечает отдел", "en": "Department purpose", "tg": "Вазифаи шуъба" } },
+    { "key": "responsibilities", "type": "textarea", "label": { "ru": "Что должен делать руководитель", "en": "Manager responsibilities", "tg": "Вазифаҳои роҳбар" }, "default": "Уточняй цели, разбивай работу на понятные задачи, проверяй результаты и сообщай о блокировках." },
+    { "key": "limits", "type": "textarea", "label": { "ru": "Ограничения и когда спрашивать разрешение", "en": "Restrictions and when to request approval", "tg": "Маҳдудиятҳо ва дархости иҷозат" }, "default": "Не расширяй доступы агентов и не трать бюджет без разрешения. Публикации, внешние обязательства и изменения критичных данных согласовывай с владельцем." }
+  ],
+  "sources": [],
+  "cronPresets": [],
+  "canAskMain": true,
+  "sandbox": true
+}

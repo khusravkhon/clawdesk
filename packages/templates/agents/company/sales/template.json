@@ -1,0 +1,71 @@
+{
+  "id": "sales",
+  "mode": "company",
+  "role": "specialist",
+  "emoji": "🤝",
+  "title": {
+    "ru": "Менеджер по продажам",
+    "en": "Sales manager"
+  },
+  "description": {
+    "ru": "Готовит предложения, ведёт следующие шаги по сделкам и помогает с ответами клиентам.",
+    "en": "Drafts proposals, tracks deal next steps and prepares customer replies."
+  },
+  "fields": [
+    {
+      "key": "agentName",
+      "type": "text",
+      "label": {
+        "ru": "Имя агента",
+        "en": "Agent name"
+      },
+      "default": "Менеджер по продажам"
+    },
+    {
+      "key": "companyContext",
+      "type": "textarea",
+      "label": {
+        "ru": "О компании и её работе",
+        "en": "Company and business context"
+      }
+    },
+    {
+      "key": "product",
+      "type": "textarea",
+      "label": {
+        "ru": "Что продаёте и кому",
+        "en": "What you sell and to whom"
+      }
+    },
+    {
+      "key": "salesRules",
+      "type": "textarea",
+      "label": {
+        "ru": "Цены, этапы сделки и условия",
+        "en": "Pricing, deal stages and terms"
+      },
+      "required": false,
+      "default": "Уточняй актуальные цены. Скидки и обязательства согласовывай с владельцем."
+    }
+  ],
+  "sources": [
+    "folder"
+  ],
+  "folder": {
+    "ru": "Продажи",
+    "en": "Sales manager"
+  },
+  "cronPresets": [
+    {
+      "id": "summary",
+      "label": {
+        "ru": "09:00 по будням — сделки и следующие шаги",
+        "en": "Scheduled work summary"
+      },
+      "cron": "0 9 * * 1,2,3,4,5",
+      "prompt": "Подготовь обзор открытых сделок: просроченные следующие шаги, сделки без ответа и действия на сегодня. Если данных нет, укажи, что нужно предоставить."
+    }
+  ],
+  "canAskMain": true,
+  "sandbox": true
+}

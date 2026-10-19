@@ -1,0 +1,71 @@
+{
+  "id": "analyst",
+  "mode": "company",
+  "role": "specialist",
+  "emoji": "📊",
+  "title": {
+    "ru": "Бизнес-аналитик",
+    "en": "Business analyst"
+  },
+  "description": {
+    "ru": "Анализирует показатели и документы, объясняет изменения и готовит отчёты с источниками.",
+    "en": "Analyzes metrics and documents and explains changes with source-backed reports."
+  },
+  "fields": [
+    {
+      "key": "agentName",
+      "type": "text",
+      "label": {
+        "ru": "Имя агента",
+        "en": "Agent name"
+      },
+      "default": "Бизнес-аналитик"
+    },
+    {
+      "key": "companyContext",
+      "type": "textarea",
+      "label": {
+        "ru": "О компании и её работе",
+        "en": "Company and business context"
+      }
+    },
+    {
+      "key": "metrics",
+      "type": "textarea",
+      "label": {
+        "ru": "Какие показатели и вопросы анализировать",
+        "en": "Metrics and business questions"
+      }
+    },
+    {
+      "key": "dataRules",
+      "type": "textarea",
+      "label": {
+        "ru": "Источники данных и правила расчёта",
+        "en": "Data sources and calculation rules"
+      },
+      "required": false,
+      "default": "Указывай источник, период, единицы и формулу расчёта. Не подменяй отсутствующие данные нулями."
+    }
+  ],
+  "sources": [
+    "folder"
+  ],
+  "folder": {
+    "ru": "Аналитика",
+    "en": "Business analyst"
+  },
+  "cronPresets": [
+    {
+      "id": "summary",
+      "label": {
+        "ru": "Пт 17:00 — отчёт по показателям",
+        "en": "Scheduled work summary"
+      },
+      "cron": "0 17 * * 5",
+      "prompt": "Подготовь недельный отчёт по согласованным показателям: период, источники, изменения, качество данных и вопросы для проверки. Если данных недостаточно, перечисли пробелы вместо выдуманных результатов."
+    }
+  ],
+  "canAskMain": true,
+  "sandbox": true
+}

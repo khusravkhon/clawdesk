@@ -1,0 +1,71 @@
+{
+  "id": "support",
+  "mode": "company",
+  "role": "specialist",
+  "emoji": "💬",
+  "title": {
+    "ru": "Поддержка клиентов",
+    "en": "Customer support"
+  },
+  "description": {
+    "ru": "Разбирает обращения, ищет ответы в базе знаний и готовит решения для клиентов.",
+    "en": "Triages requests, searches the knowledge base and drafts customer solutions."
+  },
+  "fields": [
+    {
+      "key": "agentName",
+      "type": "text",
+      "label": {
+        "ru": "Имя агента",
+        "en": "Agent name"
+      },
+      "default": "Поддержка клиентов"
+    },
+    {
+      "key": "companyContext",
+      "type": "textarea",
+      "label": {
+        "ru": "О компании и её работе",
+        "en": "Company and business context"
+      }
+    },
+    {
+      "key": "service",
+      "type": "textarea",
+      "label": {
+        "ru": "Продукт и типичные обращения",
+        "en": "Product and common requests"
+      }
+    },
+    {
+      "key": "supportRules",
+      "type": "textarea",
+      "label": {
+        "ru": "Правила поддержки и эскалации",
+        "en": "Support and escalation rules"
+      },
+      "required": false,
+      "default": "Если проверенного решения нет, передай причину и детали ответственному. Не запрашивай пароли."
+    }
+  ],
+  "sources": [
+    "folder"
+  ],
+  "folder": {
+    "ru": "Поддержка",
+    "en": "Customer support"
+  },
+  "cronPresets": [
+    {
+      "id": "summary",
+      "label": {
+        "ru": "17:00 по будням — нерешённые обращения",
+        "en": "Scheduled work summary"
+      },
+      "cron": "0 17 * * 1,2,3,4,5",
+      "prompt": "Составь сводку нерешённых обращений: приоритет, причина задержки, ответственный и следующий шаг. Отдельно отметь повторяющиеся проблемы."
+    }
+  ],
+  "canAskMain": true,
+  "sandbox": true
+}

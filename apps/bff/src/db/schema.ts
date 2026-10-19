@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { blob, index, integer, primaryKey, sqliteTable, text, uniqueIndex } from "drizzle-orm/sqlite-core";
+import { blob, foreignKey, index, integer, primaryKey, sqliteTable, text, uniqueIndex } from "drizzle-orm/sqlite-core";
 
 // Panel metadata only. OpenClaw config is the source of truth for how agents
 // run; rows here are joined to it by agentId. Secrets (model keys, OAuth
@@ -48,13 +48,107 @@ export const panelSessions = sqliteTable(
   (t) => [index("panel_sessions_user_idx").on(t.userId)],
 );
 
+export const departments = sqliteTable("departments", {
+  id: text("id").primaryKey(),
+  requestId: text("request_id").notNull().unique(),
+  requestPayload: text("request_payload").notNull(),
+  name: text("name").notNull(),
+  description: text("description").notNull().default(""),
+  archived: integer("archived", { mode: "boolean" }).notNull().default(false),
+  revision: integer("revision").notNull().default(0),
+  createdAt: createdAt(),
+});
+
+export const companyProjects = sqliteTable("company_projects", {
+  id: text("id").primaryKey(),
+  requestId: text("request_id").notNull().unique(),
+  requestPayload: text("request_payload").notNull(),
+  name: text("name").notNull(),
+  description: text("description").notNull().default(""),
+  departmentId: text("department_id").references(() => departments.id),
+  status: text("status", { enum: ["draft", "planned", "archived"] }).notNull().default("draft"),
+  revision: integer("revision").notNull().default(0),
+  createdAt: createdAt(),
+}, (t) => [index("company_projects_department_idx").on(t.departmentId)]);
+
+export const projectBriefs = sqliteTable("project_briefs", {
+  projectId: text("project_id").primaryKey().references(() => companyProjects.id, { onDelete: "cascade" }),
+  fields: text("fields", { mode: "json" }).$type<import("@clawdesk/shared").ProjectBriefFields>().notNull(),
+  step: integer("step").notNull().default(0),
+  revision: integer("revision").notNull().default(1),
+  requestId: text("request_id").notNull(),
+  requestPayload: text("request_payload").notNull(),
+  updatedAt: integer("updated_at").notNull(),
+});
+
+export const projectRules = sqliteTable("project_rules", {
+  id: text("id").primaryKey(),
+  projectId: text("project_id").notNull().references(() => companyProjects.id, { onDelete: "cascade" }),
+  number: integer("number").notNull(),
+  currentVersion: integer("current_version").notNull().default(1),
+  revision: integer("revision").notNull().default(0),
+  requestId: text("request_id").notNull(),
+  requestPayload: text("request_payload").notNull(),
+}, (t) => [uniqueIndex("project_rules_number_uq").on(t.projectId, t.number), uniqueIndex("project_rules_request_uq").on(t.projectId, t.requestId)]);
+
+export const projectRuleVersions = sqliteTable("project_rule_versions", {
+  ruleId: text("rule_id").notNull().references(() => projectRules.id, { onDelete: "cascade" }),
+  version: integer("version").notNull(),
+  fields: text("fields", { mode: "json" }).$type<import("@clawdesk/shared").BusinessRuleFields>().notNull(),
+  createdAt: integer("created_at").notNull(),
+  createdBy: text("created_by", { enum: ["owner"] }).notNull().default("owner"),
+  requestId: text("request_id").notNull(),
+  requestPayload: text("request_payload").notNull(),
+  approvedAt: integer("approved_at"),
+  approvedBy: text("approved_by", { enum: ["owner"] }),
+  approvalRequestId: text("approval_request_id"),
+  approvalPayload: text("approval_payload"),
+}, (t) => [primaryKey({ columns: [t.ruleId, t.version] }), uniqueIndex("rule_versions_request_uq").on(t.ruleId, t.requestId)]);
+
+export const acceptanceCases = sqliteTable("acceptance_cases", {
+  id: text("id").primaryKey(),
+  ruleId: text("rule_id").notNull().references(() => projectRules.id, { onDelete: "cascade" }),
+  ruleVersion: integer("rule_version").notNull(),
+  number: integer("number").notNull(),
+  revision: integer("revision").notNull().default(1),
+  requestId: text("request_id").notNull(),
+  requestPayload: text("request_payload").notNull(),
+}, (t) => [uniqueIndex("acceptance_case_number_uq").on(t.ruleId, t.number), uniqueIndex("acceptance_case_request_uq").on(t.ruleId, t.requestId), foreignKey({ columns: [t.ruleId, t.ruleVersion], foreignColumns: [projectRuleVersions.ruleId, projectRuleVersions.version] })]);
+
+export const acceptanceRevisions = sqliteTable("acceptance_revisions", {
+  caseId: text("case_id").notNull().references(() => acceptanceCases.id, { onDelete: "cascade" }),
+  revision: integer("revision").notNull(),
+  fields: text("fields", { mode: "json" }).$type<import("@clawdesk/shared").AcceptanceFields>().notNull(),
+  createdAt: integer("created_at").notNull(),
+  requestId: text("request_id").notNull(),
+  requestPayload: text("request_payload").notNull(),
+}, (t) => [primaryKey({ columns: [t.caseId, t.revision] }), uniqueIndex("acceptance_revision_request_uq").on(t.caseId, t.requestId)]);
+
+export const acceptanceChecks = sqliteTable("acceptance_checks", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  caseId: text("case_id").notNull().references(() => acceptanceCases.id, { onDelete: "cascade" }),
+  revision: integer("revision").notNull(),
+  outcome: text("outcome", { enum: ["passed", "failed", "blocked"] }).notNull(),
+  context: text("context").notNull(),
+  observed: text("observed").notNull(),
+  evidence: text("evidence").notNull(),
+  source: text("source", { enum: ["manual"] }).notNull().default("manual"),
+  checkedBy: text("checked_by", { enum: ["owner"] }).notNull().default("owner"),
+  createdAt: integer("created_at").notNull(),
+  requestId: text("request_id").notNull(),
+  requestPayload: text("request_payload").notNull(),
+}, (t) => [uniqueIndex("acceptance_check_request_uq").on(t.caseId, t.requestId), index("acceptance_checks_case_idx").on(t.caseId, t.revision, t.id), foreignKey({ columns: [t.caseId, t.revision], foreignColumns: [acceptanceRevisions.caseId, acceptanceRevisions.revision] })]);
+
 export const teams = sqliteTable("teams", {
   id: text("id").primaryKey(),
   name: text("name").notNull(),
   repoUrl: text("repo_url"),
   telegramGroupId: text("telegram_group_id"),
+  departmentId: text("department_id").references(() => departments.id),
+  projectId: text("project_id").references(() => companyProjects.id),
+  organizationRevision: integer("organization_revision").notNull().default(0),
   createdAt: createdAt(),
-});
+}, (t) => [index("teams_department_idx").on(t.departmentId), index("teams_project_idx").on(t.projectId)]);
 
 export const agents = sqliteTable(
   "agents",
@@ -77,6 +171,17 @@ export const agents = sqliteTable(
   },
   (t) => [index("agents_parent_idx").on(t.parentId), index("agents_team_idx").on(t.teamId)],
 );
+
+export const departmentManagers = sqliteTable("department_managers", {
+  departmentId: text("department_id").primaryKey().references(() => departments.id, { onDelete: "cascade" }),
+  agentId: text("agent_id").notNull().unique().references(() => agents.id, { onDelete: "cascade" }),
+});
+
+export const companyAgentAssignments = sqliteTable("company_agent_assignments", {
+  agentId: text("agent_id").primaryKey().references(() => agents.id, { onDelete: "cascade" }),
+  departmentId: text("department_id").references(() => departments.id),
+  revision: integer("revision").notNull().default(0),
+}, (t) => [index("company_agent_department_idx").on(t.departmentId)]);
 
 export const dataSources = sqliteTable("data_sources", {
   id: text("id").primaryKey(),

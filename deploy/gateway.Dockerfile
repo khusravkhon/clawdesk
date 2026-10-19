@@ -25,6 +25,7 @@ COPY --chmod=0644 clawdesk-bridge.mjs clawdesk-backup.mjs clawdesk-teams.mjs cla
 COPY --chmod=0644 clawdesk-memory.mjs /usr/local/lib/
 COPY --chmod=0644 clawdesk-plugin-repair.mjs /usr/local/lib/
 COPY --chmod=0644 clawdesk-storage.mjs /usr/local/lib/
+COPY --chmod=0644 clawdesk-project-folders.mjs /usr/local/lib/
 COPY --chmod=0755 gateway-start.sh /usr/local/bin/clawdesk-gateway-start
 # ClawDesk's own skills (Figma), loaded through skills.load.extraDirs when the owner connects them.
 COPY skills /usr/local/share/clawdesk/skills
