@@ -9,6 +9,8 @@ import { BridgeError } from "../gateway/bridge-client.js";
 import { ProjectRuleError } from "../company/project-rules-service.js";
 import { CreateAcceptanceRequest, RecordAcceptanceCheckRequest, UpdateAcceptanceRequest } from "@clawdesk/shared";
 import { AcceptanceError } from "../company/project-acceptance-service.js";
+import { AnswerProjectBuilderRequest, BuilderMutationRequest, ConfirmProjectBuilderRequest, PlanProjectBuilderRequest, ProjectPreviewRequest } from "@clawdesk/shared";
+import { ProjectBuilderError } from "../company/project-builder-service.js";
 
 const Params = z.object({ id: z.string().min(1).max(128).regex(/^[a-zA-Z0-9_-]+$/) });
 const RuleParams = Params.extend({ ruleId: z.uuid() });
@@ -20,11 +22,11 @@ export function registerCompanyRoutes(app: FastifyInstance, company: CompanyServ
     scope.setErrorHandler((error, _request, reply) => {
       if (error instanceof ZodError) return reply.status(400).send({ error: "invalid_request", message: "request validation failed" });
       if (error instanceof BridgeError) {
-        const known = new Set(["invalid_workspace", "workspace_unavailable", "workspace_already_linked", "workspace_in_use", "workspace_limit", "workspace_exists", "workspace_not_directory", "company_only"]);
+        const known = new Set(["invalid_workspace", "workspace_unavailable", "workspace_already_linked", "workspace_in_use", "workspace_limit", "workspace_exists", "workspace_not_directory", "company_only", "builder_files_changed", "builder_existing_readonly", "invalid_builder_request", "builder_plan_changed", "builder_workspace_not_empty", "preview_identity_changed", "preview_image_unavailable", "preview_unavailable", "preview_not_running", "invalid_preview_request", "existing_workspace_required", "workspace_required", "workspace_changed"]);
         const code = known.has(error.code) ? error.code : "workspace_unavailable";
         return reply.status(code === "invalid_workspace" ? 400 : code === "workspace_unavailable" ? 503 : 409).send({ error: code, message: code });
       }
-      if (!(error instanceof CompanyError) && !(error instanceof ProjectRuleError) && !(error instanceof AcceptanceError)) throw error;
+      if (!(error instanceof CompanyError) && !(error instanceof ProjectRuleError) && !(error instanceof AcceptanceError) && !(error instanceof ProjectBuilderError)) throw error;
       const status = error.code === "company_only" || error.code.endsWith("_missing") ? 404 : error.code === "gateway_unavailable" ? 503 : 409;
       return reply.status(status).send({ error: error.code, message: error.code });
     });
@@ -44,6 +46,19 @@ export function registerCompanyRoutes(app: FastifyInstance, company: CompanyServ
     });
     scope.post("/api/company/projects", async (request, reply) => reply.status(201).send(company.createProject(CreateProjectRequest.parse(request.body))));
     scope.get("/api/company/projects/:id/brief", (request) => company.projectBrief(Params.parse(request.params).id));
+    scope.get("/api/company/projects/:id/builder", request => company.builder.get(Params.parse(request.params).id));
+    scope.get("/api/company/projects/:id/builder/analysis", request => company.builder.analyze(Params.parse(request.params).id));
+    scope.post("/api/company/projects/:id/builder/answer", request => company.builder.answer(Params.parse(request.params).id, AnswerProjectBuilderRequest.parse(request.body)));
+    scope.post("/api/company/projects/:id/builder/plan", request => company.builder.plan(Params.parse(request.params).id, PlanProjectBuilderRequest.parse(request.body)));
+    scope.post("/api/company/projects/:id/builder/approve", request => company.builder.approve(Params.parse(request.params).id, ConfirmProjectBuilderRequest.parse(request.body)));
+    scope.post("/api/company/projects/:id/builder/prepare", request => company.builder.prepare(Params.parse(request.params).id, ConfirmProjectBuilderRequest.parse(request.body)));
+    scope.post("/api/company/projects/:id/builder/preview/start", request => company.builder.start(Params.parse(request.params).id, BuilderMutationRequest.parse(request.body)));
+    scope.post("/api/company/projects/:id/builder/preview/stop", request => company.builder.stop(Params.parse(request.params).id, BuilderMutationRequest.parse(request.body)));
+    scope.get("/api/company/projects/:id/builder/preview", async (request, reply) => {
+      const result = await company.builder.preview(Params.parse(request.params).id, { method: "GET", path: "/" });
+      return reply.status(result.status).header("Content-Security-Policy", "default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; connect-src 'none'; form-action 'none'; frame-ancestors 'self'").header("Cache-Control", "no-store").type(result.contentType).send(result.body);
+    });
+    scope.post("/api/company/projects/:id/builder/preview/request", request => company.builder.preview(Params.parse(request.params).id, ProjectPreviewRequest.parse(request.body)));
     scope.put("/api/company/projects/:id/brief", (request) => company.saveProjectBrief(Params.parse(request.params).id, SaveProjectBriefRequest.parse(request.body)));
     scope.get("/api/company/projects/:id/rules", (request) => company.rules.list(Params.parse(request.params).id));
     scope.get("/api/company/projects/:id/rules/:ruleId/acceptance", (request) => {

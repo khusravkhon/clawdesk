@@ -190,6 +190,30 @@ export class BridgeClient {
     return this.#call("GET", `/projects/workspace?projectId=${encodeURIComponent(projectId)}`);
   }
 
+  builderStatus(projectId: string): Promise<import("@clawdesk/shared").ProjectBuilderRuntimeDto> {
+    return this.#call("GET", `/projects/builder?projectId=${encodeURIComponent(projectId)}`);
+  }
+
+  prepareProjectApp(projectId: string, request: { planId: string; templateId: string; projectName: string; brief: import("@clawdesk/shared").ProjectBriefFields; rules: import("@clawdesk/shared").BusinessRuleDto[] }): Promise<import("@clawdesk/shared").ProjectBuilderRuntimeDto> {
+    return this.#call("POST", "/projects/builder/prepare", { projectId, ...request });
+  }
+
+  startProjectPreview(projectId: string, request: { planId: string }): Promise<import("@clawdesk/shared").ProjectBuilderRuntimeDto> {
+    return this.#call("POST", "/projects/builder/start", { projectId, ...request });
+  }
+
+  stopProjectPreview(projectId: string): Promise<import("@clawdesk/shared").ProjectBuilderRuntimeDto> {
+    return this.#call("POST", "/projects/builder/stop", { projectId });
+  }
+
+  projectPreviewRequest(projectId: string, request: { method: "GET" | "POST" | "PATCH" | "DELETE"; path: string; body?: unknown }): Promise<{ status: number; contentType: string; body: string }> {
+    return this.#call("POST", "/projects/builder/request", { projectId, ...request });
+  }
+
+  analyzeProjectWorkspace(projectId: string): Promise<{ files: string[]; dependencies: string[]; hasGit: boolean; truncated: boolean }> {
+    return this.#call("GET", `/projects/builder/analyze?projectId=${encodeURIComponent(projectId)}`);
+  }
+
   prepareProjectWorkspace(projectId: string, request: import("@clawdesk/shared").PrepareProjectWorkspaceRequest): Promise<import("@clawdesk/shared").ProjectWorkspaceDto> {
     return this.#call("POST", "/projects/workspace", { projectId, ...request });
   }

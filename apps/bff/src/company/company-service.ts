@@ -11,6 +11,7 @@ import { ProjectBriefFields, type ProjectBriefDto, type SaveProjectBriefRequest 
 import { projectBriefs } from "../db/schema.js";
 import { ProjectRulesService } from "./project-rules-service.js";
 import { ProjectAcceptanceService } from "./project-acceptance-service.js";
+import { ProjectBuilderService, type ProjectBuilderBridge } from "./project-builder-service.js";
 
 export class CompanyError extends Error {
   constructor(readonly code: "company_only" | "department_missing" | "team_missing" | "revision_conflict" | "manager_invalid" | "manager_assigned" | "agent_invalid" | "agent_assigned" | "department_archived" | "gateway_unavailable" | "request_conflict" | "project_missing" | "project_archived" | "project_department_mismatch" | "team_project_assigned") { super(code); }
@@ -20,10 +21,12 @@ export class CompanyError extends Error {
 export class CompanyService {
   readonly rules: ProjectRulesService;
   readonly acceptance: ProjectAcceptanceService;
+  readonly builder: ProjectBuilderService;
 
-  constructor(private readonly deps: { db: Db; gateway: GatewayService; space: SpaceService; bridge?: Pick<BridgeClient, "projectWorkspace" | "prepareProjectWorkspace"> }) {
+  constructor(private readonly deps: { db: Db; gateway: GatewayService; space: SpaceService; bridge?: Pick<BridgeClient, "projectWorkspace" | "prepareProjectWorkspace"> & Partial<ProjectBuilderBridge> }) {
     this.rules = new ProjectRulesService({ db: deps.db, checkProject: (id, writing) => this.#briefProject(id, writing) });
     this.acceptance = new ProjectAcceptanceService({ db: deps.db, checkProject: (id, writing) => this.#briefProject(id, writing) });
+    this.builder = new ProjectBuilderService({ db: deps.db, checkProject: (id, writing) => this.#briefProject(id, writing), brief: id => this.projectBrief(id), saveBrief: (id, request) => this.saveProjectBrief(id, request), rules: id => this.rules.list(id).rules, bridge: deps.bridge?.builderStatus ? deps.bridge as ProjectBuilderBridge : undefined });
   }
 
   #company(): void { if (this.deps.space.mode() !== "company") throw new CompanyError("company_only"); }
@@ -268,15 +271,17 @@ export class CompanyService {
       const team = tx.select().from(teams).where(eq(teams.id, id)).get();
       if (!team) throw new CompanyError("team_missing");
       if (team.organizationRevision !== req.revision) throw new CompanyError("revision_conflict");
+      let departmentId = team.departmentId;
       if (req.projectId) {
         const project = tx.select().from(companyProjects).where(eq(companyProjects.id, req.projectId)).get();
         if (!project) throw new CompanyError("project_missing");
         if (project.status === "archived") throw new CompanyError("project_archived");
         this.#projectDepartment(project.departmentId);
-        if (project.departmentId && project.departmentId !== team.departmentId) throw new CompanyError("project_department_mismatch");
+        if (project.departmentId && team.departmentId && project.departmentId !== team.departmentId) throw new CompanyError("project_department_mismatch");
         if (team.projectId && team.projectId !== req.projectId) throw new CompanyError("team_project_assigned");
+        departmentId ??= project.departmentId;
       }
-      tx.update(teams).set({ projectId: req.projectId, organizationRevision: req.revision + 1 }).where(eq(teams.id, id)).run();
+      tx.update(teams).set({ projectId: req.projectId, departmentId, organizationRevision: req.revision + 1 }).where(eq(teams.id, id)).run();
     });
   }
 }

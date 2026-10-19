@@ -85,6 +85,14 @@ export async function withDirectoryWithin(root, relative, run, create = false) {
   finally { await handle.close(); }
 }
 
+/** Descend from an already-open directory without re-walking its /proc descriptor symlink. */
+export async function withChildDirectoryWithin(directory, name, run) {
+  if (!/^\/proc\/self\/fd\/\d+$/.test(directory) || !name || name === "." || name === ".." || /[\/\\\x00]/.test(name)) throw new Error("unsafe file path");
+  const handle = await fs.open(`${directory}/${name}`, DIRECTORY);
+  try { return await run(fdPath(handle)); }
+  finally { await handle.close(); }
+}
+
 async function readAt(parent, name, metrics, cache, key) {
   let handle;
   try {

@@ -1,4 +1,12 @@
 import type {
+  ProjectBuilderDto,
+  ProjectWorkspaceAnalysisDto,
+  BuilderMutationRequest,
+  AnswerProjectBuilderRequest,
+  PlanProjectBuilderRequest,
+  ConfirmProjectBuilderRequest,
+  ProjectPreviewRequest,
+  ProjectPreviewResponse,
   CompanyDto,
   CreateDepartmentRequest,
   UpdateDepartmentRequest,
@@ -338,6 +346,23 @@ export const api = {
     figmaDisconnect: () => post<SourcesDto>("/api/sources/figma/disconnect"),
   },
   company: {
+    builder: (id: string) => request<ProjectBuilderDto>(`/api/company/projects/${encodeURIComponent(id)}/builder`),
+    analyzeBuilder: (id: string) => request<ProjectWorkspaceAnalysisDto>(`/api/company/projects/${encodeURIComponent(id)}/builder/analysis`),
+    answerBuilder: (id: string, body: AnswerProjectBuilderRequest) => post<ProjectBuilderDto>(`/api/company/projects/${encodeURIComponent(id)}/builder/answer`, body),
+    planBuilder: (id: string, body: PlanProjectBuilderRequest) => post<ProjectBuilderDto>(`/api/company/projects/${encodeURIComponent(id)}/builder/plan`, body),
+    approveBuilder: (id: string, body: ConfirmProjectBuilderRequest) => post<ProjectBuilderDto>(`/api/company/projects/${encodeURIComponent(id)}/builder/approve`, body),
+    prepareBuilder: (id: string, body: ConfirmProjectBuilderRequest) => post<ProjectBuilderDto>(`/api/company/projects/${encodeURIComponent(id)}/builder/prepare`, body),
+    startBuilder: (id: string, body: BuilderMutationRequest) => post<ProjectBuilderDto>(`/api/company/projects/${encodeURIComponent(id)}/builder/preview/start`, body),
+    stopBuilder: (id: string, body: BuilderMutationRequest) => post<ProjectBuilderDto>(`/api/company/projects/${encodeURIComponent(id)}/builder/preview/stop`, body),
+    builderPreviewRequest: (id: string, body: ProjectPreviewRequest) => post<ProjectPreviewResponse>(`/api/company/projects/${encodeURIComponent(id)}/builder/preview/request`, body),
+    builderPreview: async (id: string): Promise<string> => {
+      const res = await fetch(`/api/company/projects/${encodeURIComponent(id)}/builder/preview`, { headers: { accept: "text/html" } });
+      if (!res.ok) throw new ApiError(res.status, await res.json().catch(() => ({ error: "bad_response", message: res.statusText })));
+      if (!res.headers.get("content-type")?.includes("text/html")) throw new Error("Invalid preview");
+      const html = await res.text();
+      if (html.length > 1_000_000) throw new Error("Invalid preview size");
+      return html;
+    },
     acceptanceSuite: (id: string, ruleId: string, version?: number) => request<AcceptanceSuiteDto>(`/api/company/projects/${encodeURIComponent(id)}/rules/${encodeURIComponent(ruleId)}/acceptance${version ? `?version=${version}` : ''}`),
     createAcceptance: (id: string, ruleId: string, body: CreateAcceptanceRequest) => post<AcceptanceCaseDto>(`/api/company/projects/${encodeURIComponent(id)}/rules/${encodeURIComponent(ruleId)}/acceptance`, body),
     updateAcceptance: (id: string, ruleId: string, caseId: string, body: UpdateAcceptanceRequest) => put<AcceptanceCaseDto>(`/api/company/projects/${encodeURIComponent(id)}/rules/${encodeURIComponent(ruleId)}/acceptance/${encodeURIComponent(caseId)}`, body),
