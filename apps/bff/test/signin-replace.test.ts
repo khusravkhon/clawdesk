@@ -45,10 +45,10 @@ describe("subscription sign-in retry", () => {
   it("cancels the agent's waiting sign-in and starts the new one once OpenClaw frees its lock", async () => {
     const { gateway, calls } = fakeGateway(0);
     const manager = new SignInSessionManager(gateway, pino({ level: "silent" }), async () => {}, null, 1);
-    const first = await manager.start("main", "openai");
+    const first = await manager.start("dev-agent", "openai");
     await until(() => manager.get(first.sessionId).status === "waiting_for_user");
 
-    const second = await manager.start("main", "openai");
+    const second = await manager.start("dev-agent", "openai");
     expect(manager.get(first.sessionId).status).toBe("cancelled");
     expect(calls).toContain(`wizard.cancel ${first.sessionId}`);
     expect(calls.filter((c) => c === `openclaw.setup.auth.start ${second.sessionId}`)).toHaveLength(2);
@@ -58,7 +58,7 @@ describe("subscription sign-in retry", () => {
   it("gives up after a few busy answers", async () => {
     const { gateway } = fakeGateway(10);
     const manager = new SignInSessionManager(gateway, pino({ level: "silent" }), async () => {}, null, 1);
-    await expect(manager.start("main", "openai")).rejects.toThrow(/already in progress/);
+    await expect(manager.start("dev-agent", "openai")).rejects.toThrow(/already in progress/);
   });
 
   it("recognises OpenClaw's busy answer", () => {
