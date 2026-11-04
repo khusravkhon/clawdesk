@@ -53,6 +53,7 @@ import { LocalMemory, MemoryError } from "./clawdesk-memory.mjs";
 import { StorageManager, StorageError } from "./clawdesk-storage.mjs";
 import { ProjectFolders, ProjectFolderError } from "./clawdesk-project-folders.mjs";
 import { ProjectBuilder } from "./clawdesk-project-builder.mjs";
+import { ProjectWork } from "./clawdesk-project-work.mjs";
 import { sharedFolderSource } from "./clawdesk-shared-folder.mjs";
 import { composeServiceContainer } from "./clawdesk-containers.mjs";
 
@@ -249,6 +250,7 @@ async function googleRemove(body) {
 
 const FILES_IN_GATEWAY = path.join(process.env.OPENCLAW_STATE_DIR || "/var/lib/clawdesk/openclaw", "workspace", "files");
 const projectFolders = new ProjectFolders({ stateDir: process.env.OPENCLAW_STATE_DIR || "/var/lib/clawdesk/openclaw" });
+const projectWork = new ProjectWork({ stateDir: process.env.OPENCLAW_STATE_DIR || "/var/lib/clawdesk/openclaw", configPath: process.env.OPENCLAW_CONFIG_PATH || "/var/lib/clawdesk/openclaw/openclaw.json" });
 const projectBuilder = new ProjectBuilder({ folders: projectFolders, stateDir: process.env.OPENCLAW_STATE_DIR || "/var/lib/clawdesk/openclaw" });
 function spaceMode() {
   let db;
@@ -424,15 +426,31 @@ async function handle(req) {
     if (spaceMode() !== "company") return { status: 409, body: { error: "company_only" } };
     try {
       if (req.method === "GET" && url.pathname === "/projects/builder") return { status: 200, body: await projectBuilder.status(url.searchParams.get("projectId")) };
+      if (req.method === "GET" && url.pathname === "/projects/builder/files") return { status: 200, body: { files: await projectBuilder.appFiles(url.searchParams.get("projectId")) } };
       if (req.method === "GET" && url.pathname === "/projects/builder/analyze") return { status: 200, body: await projectBuilder.analyze(url.searchParams.get("projectId")) };
       if (req.method === "POST") {
         const { projectId, ...body } = await readJson(req);
-        const operation = { "/projects/builder/prepare": "prepare", "/projects/builder/start": "start", "/projects/builder/stop": "stop", "/projects/builder/request": "request", "/projects/builder/checks": "checks" }[url.pathname];
+        const operation = { "/projects/builder/prepare": "prepare", "/projects/builder/start": "start", "/projects/builder/stop": "stop", "/projects/builder/request": "request", "/projects/builder/checks": "checks", "/projects/builder/apply": "apply" }[url.pathname];
         if (operation) return { status: 200, body: await projectBuilder[operation](projectId, body) };
       }
       return { status: 404, body: { error: "not_found" } };
     } catch (error) {
       const code = error instanceof ProjectFolderError ? error.code : "builder_unavailable";
+      return { status: error instanceof ProjectFolderError ? error.status : 503, body: { error: code, message: code } };
+    }
+  }
+  // Executors' work copies (P6.2): created, refilled and read by the panel only.
+  if (url.pathname.startsWith("/projects/work/")) {
+    if (spaceMode() !== "company") return { status: 409, body: { error: "company_only" } };
+    try {
+      if (req.method !== "POST") return { status: 404, body: { error: "not_found" } };
+      const { agentId, files } = await readJson(req);
+      if (url.pathname === "/projects/work/ensure") return { status: 200, body: await projectWork.ensure(agentId) };
+      if (url.pathname === "/projects/work/prepare") return { status: 200, body: await projectWork.prepare(agentId, files) };
+      if (url.pathname === "/projects/work/snapshot") return { status: 200, body: await projectWork.snapshot(agentId) };
+      return { status: 404, body: { error: "not_found" } };
+    } catch (error) {
+      const code = error instanceof ProjectFolderError ? error.code : "work_unavailable";
       return { status: error instanceof ProjectFolderError ? error.status : 503, body: { error: code, message: code } };
     }
   }

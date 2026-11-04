@@ -1781,5 +1781,100 @@
       "workspace_required": "Choose a working folder and create the app files first.",
       "preview_unavailable": "Could not start the check container. Check the local environment."
     }
+  },
+  "projectTasks": {
+    "title": "Rule tasks",
+    "intro": "The project's executors implement an approved rule through checks: QA writes tests that fail on the current code, the developer makes them pass without touching the tests, and you review the changes and accept them into the app. Each works in their own copy; the app itself changes only when you accept.",
+    "executors": "Executors",
+    "noExecutors": "No executors yet. Two agents will be created — QA and a developer — with the main agent's model. Each gets access to its own copy of the app only.",
+    "assign": "Assign executors",
+    "executorsHint": "An agent's answer appears in its chat. When it is done, come back here and press the check button.",
+    "roles": {
+      "qa": "QA",
+      "developer": "developer"
+    },
+    "newTask": "New task",
+    "noApprovedRules": "No approved rules. Approve a rule in “Business rules”.",
+    "rule": "Rule",
+    "note": "Note for the executors",
+    "create": "Start task",
+    "steps": {
+      "qa": "QA tests",
+      "dev": "Development",
+      "review": "Review",
+      "done": "Accepted"
+    },
+    "now": {
+      "qa": "{name} is writing tests for the rule. When the agent answers in its chat, press “Check QA's work”.",
+      "dev": "{name} is implementing the rule. When the agent answers in its chat, press “Check the developer's work”.",
+      "review": "The work passed the checks. Review the changes and accept them into the app, or return them to the developer with a comment.",
+      "done": "Accepted.",
+      "cancelled": "Cancelled."
+    },
+    "returned": "Returned with a comment",
+    "checkOk": {
+      "qa": "QA's tests accepted: a rule test fails on the current code and no code changed.",
+      "dev": "The developer's work passed: every test passes and no test changed."
+    },
+    "checkRefused": "The panel did not accept the work",
+    "ignored": "Not counted (not regular files)",
+    "changes": "Changes against the app",
+    "change": {
+      "added": "added",
+      "modified": "modified",
+      "removed": "removed"
+    },
+    "diffTooLarge": "The file is too large to show its changes.",
+    "returnComment": "Comment, if you return it to the developer",
+    "check": {
+      "qa": "Check QA's work",
+      "dev": "Check the developer's work"
+    },
+    "sendFindings": "Send the findings to the agent",
+    "remind": "Send the assignment again",
+    "accept": "Accept into the app",
+    "acceptConfirm": "The changes will be written into the app. Continue?",
+    "return": "Return to the developer",
+    "cancel": "Cancel task",
+    "cancelConfirm": "The task will be closed without changing the app. Continue?",
+    "empty": "No tasks yet.",
+    "history": "Past tasks",
+    "status": {
+      "qa": "QA tests",
+      "dev": "development",
+      "review": "review",
+      "done": "accepted",
+      "cancelled": "cancelled"
+    },
+    "failed": "Could not complete the action.",
+    "limits": "You do the review: there is no reviewer agent yet. A stage ends with your button — the panel does not guess that an agent is done. Tests run in the same sandbox as the app's code; that is why the developer may not change tests and you see the code changes before accepting. A project has one task at a time.",
+    "reasons": {
+      "layout": "The work copy has subfolders or links — files must stay flat.",
+      "no_changes": "Nothing changed.",
+      "removed_files": "App files were removed.",
+      "changed_code": "App code changed — at the QA stage only *.test.mjs files may change.",
+      "tests_missing": "No tests whose name starts with the rule's code.",
+      "tests_not_failing": "No rule test fails on the current code, so none proves the rule is not met yet.",
+      "tests_flaky": "A rule test is flaky.",
+      "existing_failing": "Other tests stopped passing.",
+      "changed_tests": "Tests were changed, removed or added — tests must not change at the development stage.",
+      "tests_failing": "Not every test passes (a flaky or skipped rule test is not a pass either).",
+      "run_blocked": "The check run produced no result (environment failure or timeout)."
+    },
+    "errors": {
+      "executors_required": "Assign the project's executors first.",
+      "rule_missing": "Rule not found.",
+      "rule_not_approved": "Approve this rule version first.",
+      "task_active": "The project already has an unfinished task.",
+      "task_missing": "Task not found.",
+      "task_closed": "The task is at another stage — refresh the card.",
+      "revision_conflict": "The task changed — refresh the card and try again.",
+      "request_conflict": "A repeated request with different content.",
+      "task_busy": "An action on this project is already running.",
+      "gateway_unavailable": "No connection to the Gateway.",
+      "work_app_changed": "The app changed after the task started — this work cannot be accepted on top of the new files.",
+      "work_missing": "The executor's work copy was not found.",
+      "work_layout": "The work copy is damaged."
+    }
   }
 }

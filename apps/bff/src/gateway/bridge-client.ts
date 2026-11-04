@@ -202,9 +202,33 @@ export class BridgeClient {
     return this.#call("POST", "/projects/builder/start", { projectId, ...request });
   }
 
-  /** The project's own checks in a throwaway container; a run takes up to two minutes. */
-  runProjectChecks(projectId: string): Promise<import("@clawdesk/shared").ProjectChecksRunResult> {
-    return this.#call("POST", "/projects/builder/checks", { projectId }, 180_000);
+  /** The project's own checks in a throwaway container (on given files, e.g. a work copy); up to two minutes. */
+  runProjectChecks(projectId: string, files?: Record<string, string>): Promise<import("@clawdesk/shared").ProjectChecksRunResult> {
+    return this.#call("POST", "/projects/builder/checks", { projectId, ...(files ? { files } : {}) }, 180_000);
+  }
+
+  /** The app's current flat files (P6.2 baseline and review). */
+  projectAppFiles(projectId: string): Promise<{ files: Record<string, string> }> {
+    return this.#call("GET", `/projects/builder/files?projectId=${encodeURIComponent(projectId)}`);
+  }
+
+  /** Writes accepted work into app/ if it still matches `baseline` (name → sha256). */
+  applyProjectWork(projectId: string, files: Record<string, string>, baseline: Record<string, string>): Promise<{ files: string[]; applied: true }> {
+    return this.#call("POST", "/projects/builder/apply", { projectId, files, baseline });
+  }
+
+  /** An executor's work copy: its path (created if missing), refilled for a stage, or read back. */
+  /** The executor agent's work copy: the folder "project" in its own workspace (/workspace/project in its sandbox). */
+  ensureProjectWork(agentId: string): Promise<{ path: string }> {
+    return this.#call("POST", "/projects/work/ensure", { agentId });
+  }
+
+  prepareProjectWork(agentId: string, files: Record<string, string>): Promise<{ path: string; files: string[] }> {
+    return this.#call("POST", "/projects/work/prepare", { agentId, files });
+  }
+
+  snapshotProjectWork(agentId: string): Promise<{ files: Record<string, string>; ignored: string[]; hashes: Record<string, string> }> {
+    return this.#call("POST", "/projects/work/snapshot", { agentId });
   }
 
   stopProjectPreview(projectId: string): Promise<import("@clawdesk/shared").ProjectBuilderRuntimeDto> {

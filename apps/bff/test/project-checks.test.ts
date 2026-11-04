@@ -97,6 +97,7 @@ describe("project checks", () => {
     company.acceptance.create(projectId, ruleId, scenario(TB002));
     close();
     const sqlite = new Database(path.join(root, "panel.sqlite"));
+    sqlite.exec("DROP TABLE project_task_events; DROP TABLE project_tasks; DELETE FROM __drizzle_migrations WHERE created_at = 1792348000000");
     sqlite.exec("DROP TABLE acceptance_test_links; DROP TABLE project_check_results; DROP TABLE project_check_runs; DELETE FROM __drizzle_migrations WHERE created_at = 1792347000000");
     sqlite.close();
     ({ db, close } = openDb(path.join(root, "panel.sqlite")));

@@ -1,0 +1,17 @@
+{
+  "id": "project-qa",
+  "mode": "company",
+  "role": "team_member",
+  "emoji": "🧪",
+  "title": { "ru": "QA проекта", "en": "Project QA", "tg": "QA-и лоиҳа" },
+  "description": {
+    "ru": "Пишет проверяемые тесты к согласованному правилу до реализации. Код приложения не меняет.",
+    "en": "Writes checkable tests for an approved rule before it is implemented. Never changes the app's code.",
+    "tg": "Пеш аз амалисозӣ ба қоидаи тасдиқшуда тестҳои санҷидашаванда менависад. Коди барномаро иваз намекунад."
+  },
+  "fields": [{ "key": "agentName", "type": "text", "label": { "ru": "Имя", "en": "Name", "tg": "Ном" }, "default": "QA" }],
+  "sources": [],
+  "cronPresets": [],
+  "canAskMain": true,
+  "sandbox": true
+}

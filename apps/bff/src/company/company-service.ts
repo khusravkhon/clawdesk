@@ -13,6 +13,11 @@ import { ProjectRulesService } from "./project-rules-service.js";
 import { ProjectAcceptanceService } from "./project-acceptance-service.js";
 import { ProjectBuilderService, type ProjectBuilderBridge } from "./project-builder-service.js";
 import { ProjectChecksService, type ProjectChecksBridge } from "./project-checks-service.js";
+import { ProjectExecutors } from "./project-executors.js";
+import { ProjectTasksService, type TaskBridge } from "./project-tasks-service.js";
+import { mainSessionKey } from "../chat/chat-service.js";
+import type { Logger } from "pino";
+import { randomUUID as newId } from "node:crypto";
 
 export class CompanyError extends Error {
   constructor(readonly code: "company_only" | "department_missing" | "team_missing" | "revision_conflict" | "manager_invalid" | "manager_assigned" | "agent_invalid" | "agent_assigned" | "department_archived" | "gateway_unavailable" | "request_conflict" | "project_missing" | "project_archived" | "project_department_mismatch" | "team_project_assigned") { super(code); }
@@ -24,11 +29,26 @@ export class CompanyService {
   readonly acceptance: ProjectAcceptanceService;
   readonly builder: ProjectBuilderService;
   readonly checks: ProjectChecksService;
+  readonly tasks: ProjectTasksService;
 
-  constructor(private readonly deps: { db: Db; gateway: GatewayService; space: SpaceService; bridge?: Pick<BridgeClient, "projectWorkspace" | "prepareProjectWorkspace"> & Partial<ProjectBuilderBridge> & Partial<ProjectChecksBridge> }) {
+  constructor(private readonly deps: { db: Db; gateway: GatewayService; space: SpaceService; logger?: Logger; sandboxEnabled?: boolean; bridge?: Pick<BridgeClient, "projectWorkspace" | "prepareProjectWorkspace"> & Partial<ProjectBuilderBridge> & Partial<ProjectChecksBridge> & Partial<TaskBridge> & Partial<Pick<BridgeClient, "ensureProjectWork">> }) {
     this.rules = new ProjectRulesService({ db: deps.db, checkProject: (id, writing) => this.#briefProject(id, writing) });
     this.acceptance = new ProjectAcceptanceService({ db: deps.db, checkProject: (id, writing) => this.#briefProject(id, writing) });
     this.checks = new ProjectChecksService({ db: deps.db, checkProject: (id, writing) => this.#briefProject(id, writing), bridge: deps.bridge?.runProjectChecks ? deps.bridge as ProjectChecksBridge : undefined });
+    const bridge = deps.bridge;
+    const taskBridge = bridge?.projectAppFiles && bridge.prepareProjectWork && bridge.snapshotProjectWork && bridge.runProjectChecks && bridge.applyProjectWork ? bridge as TaskBridge : undefined;
+    this.tasks = new ProjectTasksService({
+      db: deps.db,
+      checkProject: (id, writing) => { const project = this.#briefProject(id, writing); return { id: project.id, name: project.name, description: project.description, departmentId: project.departmentId }; },
+      rule: (projectId, ruleId, version) => {
+        const rule = this.rules.list(projectId).rules.find(item => item.id === ruleId);
+        const selected = rule && this.rules.history(projectId, ruleId).versions.find(item => item.version === version);
+        return rule && selected ? { id: rule.id, code: rule.code, version: selected.version, fields: selected.fields, approvedAt: selected.approvedAt } : null;
+      },
+      executors: deps.logger && bridge?.ensureProjectWork ? new ProjectExecutors({ db: deps.db, gateway: deps.gateway, logger: deps.logger, sandboxEnabled: deps.sandboxEnabled ?? false, bridge: bridge as Pick<BridgeClient, "ensureProjectWork"> }) : undefined,
+      bridge: taskBridge,
+      send: taskBridge ? async (agentId, message) => { await deps.gateway.request("chat.send", { sessionKey: mainSessionKey(agentId), agentId, message, idempotencyKey: newId() }); } : undefined,
+    });
     this.builder = new ProjectBuilderService({ db: deps.db, checkProject: (id, writing) => this.#briefProject(id, writing), brief: id => this.projectBrief(id), saveBrief: (id, request) => this.saveProjectBrief(id, request), rules: id => this.rules.list(id).rules, bridge: deps.bridge?.builderStatus ? deps.bridge as ProjectBuilderBridge : undefined });
   }
 

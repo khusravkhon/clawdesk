@@ -15,6 +15,8 @@ describe("templates", () => {
       "company/marketing",
       "company/operations",
       "company/pm",
+      "company/project-developer",
+      "company/project-qa",
       "company/reviewer",
       "company/sales",
       "company/support",

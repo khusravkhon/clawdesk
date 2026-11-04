@@ -182,6 +182,37 @@ export const acceptanceTestLinks = sqliteTable("acceptance_test_links", {
   createdAt: integer("created_at").notNull(),
 }, (t) => [primaryKey({ columns: [t.caseId, t.revision] }), foreignKey({ columns: [t.caseId, t.revision], foreignColumns: [acceptanceRevisions.caseId, acceptanceRevisions.revision] }).onDelete("cascade")]);
 
+/** P6.2: work on one approved rule version by the project's executors (see project-tasks-service). */
+export const projectTasks = sqliteTable("project_tasks", {
+  id: text("id").primaryKey(),
+  projectId: text("project_id").notNull().references(() => companyProjects.id, { onDelete: "cascade" }),
+  number: integer("number").notNull(),
+  ruleId: text("rule_id").notNull().references(() => projectRules.id, { onDelete: "cascade" }),
+  ruleVersion: integer("rule_version").notNull(),
+  title: text("title").notNull(),
+  note: text("note").notNull().default(""),
+  status: text("status", { enum: ["qa", "dev", "review", "done", "cancelled"] }).notNull(),
+  revision: integer("revision").notNull().default(0),
+  /** The app's files when the task started (the work must apply on top of exactly these). */
+  baseFiles: text("base_files", { mode: "json" }).$type<Record<string, string>>().notNull(),
+  qaTests: text("qa_tests", { mode: "json" }).$type<Record<string, string> | null>(),
+  devFiles: text("dev_files", { mode: "json" }).$type<Record<string, string> | null>(),
+  lastCheck: text("last_check", { mode: "json" }).$type<import("@clawdesk/shared").ProjectTaskCheckDto | null>(),
+  returnComment: text("return_comment").notNull().default(""),
+  createdAt: integer("created_at").notNull(),
+  updatedAt: integer("updated_at").notNull(),
+  requestId: text("request_id").notNull(),
+}, (t) => [uniqueIndex("project_task_number_uq").on(t.projectId, t.number), uniqueIndex("project_task_request_uq").on(t.projectId, t.requestId)]);
+
+export const projectTaskEvents = sqliteTable("project_task_events", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  taskId: text("task_id").notNull().references(() => projectTasks.id, { onDelete: "cascade" }),
+  kind: text("kind", { enum: ["created", "sent", "qa_checked", "dev_checked", "accepted", "returned", "cancelled"] }).notNull(),
+  note: text("note").notNull().default(""),
+  createdAt: integer("created_at").notNull(),
+  requestId: text("request_id").notNull(),
+}, (t) => [uniqueIndex("project_task_event_request_uq").on(t.taskId, t.requestId)]);
+
 export const teams = sqliteTable("teams", {
   id: text("id").primaryKey(),
   name: text("name").notNull(),

@@ -192,6 +192,39 @@ test("checks run the project's current files in a hardened throwaway container",
     assert.deepEqual(run.tests.filter(item => item.status !== "passed").map(item => item.name.slice(0, 6)), ["TB-002"]);
 });
 
+test("accepted work is written into app/ only from the baseline it started from, and keeps the build intact", linux, async t => {
+    const f = await fixture(t);
+    await f.builder.prepare("project-a", request);
+    const app = path.join(f.directory, "app");
+    const before = await f.builder.appFiles("project-a");
+    assert.ok(before["server.mjs"] && before["checks.test.mjs"] && !before[".clawdesk-build.json"]);
+    const { createHash } = await import("node:crypto");
+    const baseline = Object.fromEntries(Object.entries(before).map(([name, data]) => [name, createHash("sha256").update(data).digest("hex")]));
+    const next = { ...before, "server.mjs": before["server.mjs"] + "\n// changed by the developer\n", "rules.test.mjs": "// new tests\n" };
+    delete next["README.md"];
+    const buildRecord = await fs.readFile(path.join(app, ".clawdesk-build.json"), "utf8");
+    assert.deepEqual(await f.builder.apply("project-a", { files: next, baseline }), { files: Object.keys(next).sort(), applied: true });
+    assert.match(await fs.readFile(path.join(app, "server.mjs"), "utf8"), /changed by the developer/);
+    assert.equal(await fs.readFile(path.join(app, "rules.test.mjs"), "utf8"), "// new tests\n");
+    await assert.rejects(fs.stat(path.join(app, "README.md")), { code: "ENOENT" });
+    assert.equal(await fs.readFile(path.join(app, ".clawdesk-build.json"), "utf8"), buildRecord);
+    assert.equal((await f.create().status("project-a")).state, "prepared");
+    // The same baseline again: app/ moved on, so the stale work is refused and nothing changes.
+    await assert.rejects(f.builder.apply("project-a", { files: before, baseline }), { code: "work_app_changed" });
+    assert.match(await fs.readFile(path.join(app, "server.mjs"), "utf8"), /changed by the developer/);
+    await assert.rejects(f.builder.apply("project-a", { files: { "../x.mjs": "" }, baseline }), { code: "invalid_builder_request" });
+});
+
+test("checks run handed-in files only for a qualifying project", linux, async t => {
+    const f = await fixture(t);
+    await assert.rejects(f.builder.checks("project-a", { files: {} }), { code: "checks_unsupported" });
+    await f.builder.prepare("project-a", request);
+    const files = await f.builder.appFiles("project-a");
+    const run = await f.builder.checks("project-a", { files: { ...files, "server.mjs": files["server.mjs"].replace("|| !body.title.trim() ", "") } });
+    assert.deepEqual(run.tests.filter(item => item.status !== "passed").map(item => item.name.slice(0, 6)), ["TB-002"]);
+    await assert.rejects(f.builder.checks("project-a", { files: { "tasks.sqlite": "x" } }), { code: "invalid_builder_request" });
+});
+
 test("checks refuse existing folders, oversized projects, and report a failed runner as blocked", linux, async t => {
     const existing = await fixture(t, { existing: true });
     await assert.rejects(existing.builder.checks("project-a"), { code: "checks_unsupported" });

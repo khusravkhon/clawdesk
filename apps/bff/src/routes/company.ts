@@ -12,7 +12,8 @@ import { AcceptanceError } from "../company/project-acceptance-service.js";
 import { AnswerProjectBuilderRequest, BuilderMutationRequest, ConfirmProjectBuilderRequest, PlanProjectBuilderRequest, ProjectPreviewRequest } from "@clawdesk/shared";
 import { ProjectBuilderError } from "../company/project-builder-service.js";
 import { ProjectChecksError } from "../company/project-checks-service.js";
-import { RunProjectChecksRequest } from "@clawdesk/shared";
+import { RunProjectChecksRequest, AssignExecutorsRequest, CreateProjectTaskRequest, ProjectTaskActionRequest, ReturnProjectTaskRequest } from "@clawdesk/shared";
+import { ProjectTaskError } from "../company/project-tasks-service.js";
 
 const Params = z.object({ id: z.string().min(1).max(128).regex(/^[a-zA-Z0-9_-]+$/) });
 const RuleParams = Params.extend({ ruleId: z.uuid() });
@@ -24,11 +25,11 @@ export function registerCompanyRoutes(app: FastifyInstance, company: CompanyServ
     scope.setErrorHandler((error, _request, reply) => {
       if (error instanceof ZodError) return reply.status(400).send({ error: "invalid_request", message: "request validation failed" });
       if (error instanceof BridgeError) {
-        const known = new Set(["invalid_workspace", "workspace_unavailable", "workspace_already_linked", "workspace_in_use", "workspace_limit", "workspace_exists", "workspace_not_directory", "company_only", "builder_files_changed", "builder_existing_readonly", "invalid_builder_request", "builder_plan_changed", "builder_workspace_not_empty", "preview_identity_changed", "preview_image_unavailable", "preview_unavailable", "preview_not_running", "invalid_preview_request", "existing_workspace_required", "workspace_required", "workspace_changed", "checks_unsupported", "checks_too_large", "checks_no_files"]);
+        const known = new Set(["invalid_workspace", "workspace_unavailable", "workspace_already_linked", "workspace_in_use", "workspace_limit", "workspace_exists", "workspace_not_directory", "company_only", "builder_files_changed", "builder_existing_readonly", "invalid_builder_request", "builder_plan_changed", "builder_workspace_not_empty", "preview_identity_changed", "preview_image_unavailable", "preview_unavailable", "preview_not_running", "invalid_preview_request", "existing_workspace_required", "workspace_required", "workspace_changed", "checks_unsupported", "checks_too_large", "checks_no_files", "work_app_changed", "work_missing", "work_layout", "invalid_work_request"]);
         const code = known.has(error.code) ? error.code : "workspace_unavailable";
         return reply.status(code === "invalid_workspace" ? 400 : code === "workspace_unavailable" ? 503 : 409).send({ error: code, message: code });
       }
-      if (!(error instanceof CompanyError) && !(error instanceof ProjectRuleError) && !(error instanceof AcceptanceError) && !(error instanceof ProjectBuilderError) && !(error instanceof ProjectChecksError)) throw error;
+      if (!(error instanceof CompanyError) && !(error instanceof ProjectRuleError) && !(error instanceof AcceptanceError) && !(error instanceof ProjectBuilderError) && !(error instanceof ProjectChecksError) && !(error instanceof ProjectTaskError)) throw error;
       const status = error.code === "company_only" || error.code.endsWith("_missing") ? 404 : error.code === "gateway_unavailable" ? 503 : 409;
       return reply.status(status).send({ error: error.code, message: error.code });
     });
@@ -48,6 +49,15 @@ export function registerCompanyRoutes(app: FastifyInstance, company: CompanyServ
     });
     scope.post("/api/company/projects", async (request, reply) => reply.status(201).send(company.createProject(CreateProjectRequest.parse(request.body))));
     scope.get("/api/company/projects/:id/brief", (request) => company.projectBrief(Params.parse(request.params).id));
+    const TaskParams = Params.extend({ taskId: z.uuid() });
+    scope.get("/api/company/projects/:id/executors", request => company.tasks.executors(Params.parse(request.params).id));
+    scope.post("/api/company/projects/:id/executors", request => company.tasks.assignExecutors(Params.parse(request.params).id, AssignExecutorsRequest.parse(request.body)));
+    scope.get("/api/company/projects/:id/tasks", request => company.tasks.list(Params.parse(request.params).id));
+    scope.post("/api/company/projects/:id/tasks", async (request, reply) => reply.status(201).send(await company.tasks.create(Params.parse(request.params).id, CreateProjectTaskRequest.parse(request.body))));
+    for (const [action, run] of [["check", "checkStage"], ["resend", "resend"], ["accept", "accept"], ["cancel", "cancel"]] as const) {
+      scope.post(`/api/company/projects/:id/tasks/:taskId/${action}`, request => { const { id, taskId } = TaskParams.parse(request.params); return company.tasks[run](id, taskId, ProjectTaskActionRequest.parse(request.body)); });
+    }
+    scope.post("/api/company/projects/:id/tasks/:taskId/return", request => { const { id, taskId } = TaskParams.parse(request.params); return company.tasks.returnToDeveloper(id, taskId, ReturnProjectTaskRequest.parse(request.body)); });
     scope.get("/api/company/projects/:id/checks", request => company.checks.list(Params.parse(request.params).id));
     scope.post("/api/company/projects/:id/checks/run", request => company.checks.run(Params.parse(request.params).id, RunProjectChecksRequest.parse(request.body)));
     scope.get("/api/company/projects/:id/builder", request => company.builder.get(Params.parse(request.params).id));

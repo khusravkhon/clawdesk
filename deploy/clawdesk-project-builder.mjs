@@ -5,7 +5,7 @@ import { spawn } from "node:child_process";
 import { ProjectFolderError } from "./clawdesk-project-folders.mjs";
 import { withDirectoryWithin, withChildDirectoryWithin } from "./clawdesk-file-sync.mjs";
 import { resetGateway } from "./clawdesk-backup.mjs";
-import { CHECKS_BOOTSTRAP, CHECK_ARGUMENT_LIMIT, CHECK_PAYLOAD_LIMIT, filesFingerprint, parseCheckOutput, selectCheckFiles } from "./clawdesk-project-checks.mjs";
+import { CHECKS_BOOTSTRAP, CHECK_ARGUMENT_LIMIT, CHECK_FILE, CHECK_PAYLOAD_LIMIT, filesFingerprint, parseCheckOutput, selectCheckFiles } from "./clawdesk-project-checks.mjs";
 const hash = value => createHash("sha256").update(value).digest("hex");
 export const PROJECT_TEMPLATE_FILES = ["server.mjs", "index.html", "checks.test.mjs", "package.json", "README.md", "PROJECT-REQUIREMENTS.json", "LICENSE", ".clawdesk-build.json"];
 /** Files a build record covers: projects created before a template version keep their own list. */
@@ -26,6 +26,35 @@ async function readFile(directory, name, limit = 262144) {
     finally {
         await handle.close();
     }
+}
+/** Reads a flat project directory: regular files only (selectCheckFiles), at most CHECK_PAYLOAD_LIMIT in all. */
+export async function readFlatFiles(directory) {
+    const files = {};
+    let size = 0;
+    for (const name of selectCheckFiles(await fs.readdir(directory, { withFileTypes: true }))) {
+        const data = await readFile(directory, name, CHECK_PAYLOAD_LIMIT).catch(error => {
+            throw error instanceof ProjectBuilderError ? new ProjectBuilderError("checks_too_large", 413) : error;
+        });
+        size += Buffer.byteLength(data);
+        if (size > CHECK_PAYLOAD_LIMIT)
+            fail("checks_too_large", 413);
+        files[name] = data;
+    }
+    return files;
+}
+/** Files handed in by the panel: the same names and limits as files read from disk. */
+export function checkedFiles(files) {
+    if (!files || typeof files !== "object" || Array.isArray(files))
+        fail("invalid_builder_request", 400);
+    let size = 0;
+    for (const [name, data] of Object.entries(files)) {
+        if (!CHECK_FILE.test(name) || /\.sqlite(?:-(?:wal|shm|journal))?$/.test(name) || typeof data !== "string")
+            fail("invalid_builder_request", 400);
+        size += Buffer.byteLength(data);
+    }
+    if (size > CHECK_PAYLOAD_LIMIT)
+        fail("checks_too_large", 413);
+    return files;
 }
 export function dockerCommand(args, { timeoutMs = 20000 } = {}) {
     return new Promise((resolve, reject) => {
@@ -290,32 +319,9 @@ export class ProjectBuilder {
      * a copy of the current files (not the template's: changed code is what checks are for). Only projects
      * created by the builder qualify. Files are read under the folder lock; the run itself is outside it.
      */
-    async checks(id) {
-        const files = await this.#with(id, async (workspace, state) => {
-            if (workspace.mode !== "new" || !(await this.#record(state, id)))
-                fail("checks_unsupported");
-            try {
-                return await withChildDirectoryWithin(workspace.directory, "app", async (app) => {
-                    const files = {};
-                    let size = 0;
-                    for (const name of selectCheckFiles(await fs.readdir(app, { withFileTypes: true }))) {
-                        const data = await readFile(app, name, CHECK_PAYLOAD_LIMIT).catch(error => {
-                            throw error instanceof ProjectBuilderError ? new ProjectBuilderError("checks_too_large", 413) : error;
-                        });
-                        size += Buffer.byteLength(data);
-                        if (size > CHECK_PAYLOAD_LIMIT)
-                            fail("checks_too_large", 413);
-                        files[name] = data;
-                    }
-                    return files;
-                });
-            }
-            catch (error) {
-                if (error.code === "ENOENT")
-                    fail("checks_no_files");
-                throw error;
-            }
-        });
+    async checks(id, request = {}) {
+        // Files given by the panel (an executor's work copy) or the app's own; either way the project must qualify.
+        const files = request.files === undefined ? await this.appFiles(id) : (await this.appFiles(id), checkedFiles(request.files));
         const payload = Buffer.from(JSON.stringify(files)).toString("base64");
         if (payload.length > CHECK_ARGUMENT_LIMIT)
             fail("checks_too_large", 413);
@@ -336,6 +342,64 @@ export class ProjectBuilder {
             return { status: "blocked", reason: "runner_failed", tests: [], durationMs: Date.now() - started, filesFingerprint: filesFingerprint(files) };
         }
         return { ...parseCheckOutput(stdout, nonce, files), durationMs: Date.now() - started, filesFingerprint: filesFingerprint(files) };
+    }
+    /** The app's current flat files (see selectCheckFiles), for checks, executors' work copies and reviews. */
+    appFiles(id) {
+        return this.#with(id, async (workspace, state) => {
+            if (workspace.mode !== "new" || !(await this.#record(state, id)))
+                fail("checks_unsupported");
+            try {
+                return await withChildDirectoryWithin(workspace.directory, "app", async (app) => readFlatFiles(app));
+            }
+            catch (error) {
+                if (error.code === "ENOENT")
+                    fail("checks_no_files");
+                throw error;
+            }
+        });
+    }
+    /**
+     * Writes reviewed work into app/ (P6.2): only if app/ still has exactly the files the work started from
+     * (baseline name → sha256), then updates the build record so the result counts as the project's files.
+     * Files missing from `files` are removed; dotfiles (the build record) and local databases are never touched.
+     */
+    async apply(id, { files, baseline }) {
+        const next = checkedFiles(files);
+        if (!baseline || typeof baseline !== "object")
+            fail("invalid_builder_request", 400);
+        return this.#with(id, async (workspace, state) => {
+            const record = await this.#record(state, id);
+            if (workspace.mode !== "new" || !record)
+                fail("checks_unsupported");
+            return withChildDirectoryWithin(workspace.directory, "app", async (app) => {
+                const current = await readFlatFiles(app);
+                const same = Object.keys(current).length === Object.keys(baseline).length && Object.entries(current).every(([name, data]) => baseline[name] === hash(data));
+                if (!same)
+                    fail("work_app_changed");
+                for (const [name, data] of Object.entries(next)) {
+                    if (current[name] === data)
+                        continue;
+                    const temp = `.clawdesk-apply-${randomUUID()}.tmp`;
+                    try {
+                        await fs.writeFile(`${app}/${temp}`, data, { flag: "wx", mode: 0o644 });
+                        await fs.rename(`${app}/${temp}`, `${app}/${name}`);
+                    }
+                    finally {
+                        await fs.unlink(`${app}/${temp}`).catch(() => { });
+                    }
+                }
+                for (const name of Object.keys(current))
+                    if (!Object.hasOwn(next, name))
+                        await fs.unlink(`${app}/${name}`);
+                const hashes = {};
+                for (const name of recordFiles(record).filter(name => name.startsWith(".")))
+                    hashes[name] = hash(await readFile(app, name));
+                for (const [name, data] of Object.entries(next))
+                    hashes[name] = hash(data);
+                await this.#save(state, id, { ...record, hashes });
+                return { files: Object.keys(next).sort(), applied: true };
+            });
+        });
     }
     /** A leftover checks container of this installation and project (e.g. after a timeout), and only that. */
     async #removeChecks(name, install) {
