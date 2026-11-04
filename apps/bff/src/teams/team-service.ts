@@ -1,6 +1,6 @@
 import { CreateAgentRequest, FolderName, GITHUB_REPO_URL, parseTopicLink, type CreateTeamRequest, type PullRequestDto, type TeamDto, type TeamRepoStatusDto, type TeamRole, type TeamsDto } from "@clawdesk/shared";
 import { loadTemplate } from "@clawdesk/templates";
-import { and, eq, inArray } from "drizzle-orm";
+import { and, eq, inArray, isNotNull } from "drizzle-orm";
 import type { Logger } from "pino";
 import type { Db } from "../db/client.js";
 import { agents, agentSourceGrants, channelBindings, dataSources, schedules, teams } from "../db/schema.js";
@@ -50,7 +50,8 @@ export class TeamService {
 
   list(): TeamsDto {
     const { db } = this.deps;
-    const rows = db.select().from(teams).all();
+    // GitHub teams only: a project's executors (P6.2) are a team without a repository, managed on the project.
+    const rows = db.select().from(teams).where(isNotNull(teams.repoUrl)).all();
     const members = db.select().from(agents).where(eq(agents.role, "team_member")).all();
     const topics = db.select().from(channelBindings).where(and(eq(channelBindings.channel, "telegram"), eq(channelBindings.peerKind, "group"))).all();
     const docs = db.select().from(dataSources).where(eq(dataSources.kind, "folder")).all();
