@@ -1648,7 +1648,7 @@
     "automatedHint": {
       "failed": "Latest run: the test failed — the behaviour does not match the rule.",
       "flaky": "The test passes only sometimes. That is not a pass: the instability needs fixing.",
-      "changed": "The test file changed after it was linked. Until the scenario is saved again (a new revision) the result does not count.",
+      "changed": "The test changed after it was linked (for older links: its file). Until the scenario is saved again (a new revision), the result does not count.",
       "unlinked": "The reference did not match a test of the latest run when the scenario was saved. Pick a test from the list and save the scenario.",
       "blocked": "The latest run produced no trustworthy result (environment failure, timeout or no tests)."
     }
@@ -1784,7 +1784,7 @@
   },
   "projectTasks": {
     "title": "Rule tasks",
-    "intro": "The project's executors implement an approved rule through checks: QA writes tests that fail on the current code, the developer makes them pass without touching the tests, and you review the changes and accept them into the app. Each works in their own copy; the app itself changes only when you accept.",
+    "intro": "The project's executors implement an approved rule through checks: QA writes tests that fail on the current code, the developer makes them pass without touching the tests, and you review the changes and accept them into the app. If the rule is already implemented and you approved a new version, the task becomes a change: QA rewrites this rule's tests, other rules' tests stay as they were. Each works in its own copy; the app itself changes only when you accept.",
     "executors": "Executors",
     "noExecutors": "No executors yet. Two agents will be created — QA and a developer — with the main agent's model. Each gets access to its own copy of the app only.",
     "assign": "Assign executors",
@@ -1813,7 +1813,7 @@
     },
     "returned": "Returned with a comment",
     "checkOk": {
-      "qa": "QA's tests accepted: a rule test fails on the current code and no code changed.",
+      "qa": "QA's tests accepted: a rule test fails on the current code; the code and other rules' tests are unchanged.",
       "dev": "The developer's work passed: every test passes and no test changed."
     },
     "checkRefused": "The panel did not accept the work",
@@ -1844,22 +1844,26 @@
       "dev": "development",
       "review": "review",
       "done": "accepted",
-      "cancelled": "cancelled"
+      "cancelled": "cancelled",
+      "rolled_back": "rolled back"
     },
     "failed": "Could not complete the action.",
-    "limits": "You do the review: there is no reviewer agent yet. A stage ends with your button — the panel does not guess that an agent is done. Tests run in the same sandbox as the app's code; that is why the developer may not change tests and you see the code changes before accepting. A project has one task at a time.",
+    "limits": "You do the review: there is no reviewer agent yet. A stage ends with your button — the panel does not guess that an agent has finished. Tests run in the same sandbox as the app's code; that is why the developer may not change tests and QA may not change other rules' tests or the existing shared test code, and you see the changes before accepting. A test belongs to a rule if its name starts with the rule's code or it is linked to one of the rule's scenarios. Only the latest accepted task can be rolled back, and only while the app has not changed since. One task per project at a time.",
     "reasons": {
       "layout": "The work copy has subfolders or links — files must stay flat.",
       "no_changes": "Nothing changed.",
       "removed_files": "App files were removed.",
       "changed_code": "App code changed — at the QA stage only *.test.mjs files may change.",
-      "tests_missing": "No tests whose name starts with the rule's code.",
+      "tests_missing": "No tests of this rule: a test's name must start with the rule's code, or the test must be linked to one of its scenarios.",
       "tests_not_failing": "No rule test fails on the current code, so none proves the rule is not met yet.",
       "tests_flaky": "A rule test is flaky.",
       "existing_failing": "Other tests stopped passing.",
       "changed_tests": "Tests were changed, removed or added — tests must not change at the development stage.",
       "tests_failing": "Not every test passes (a flaky or skipped rule test is not a pass either).",
-      "run_blocked": "The check run produced no result (environment failure or timeout)."
+      "run_blocked": "The check run produced no result (environment failure or timeout).",
+      "protected_tests_changed": "Tests of other rules were changed or removed — they must stay as they are.",
+      "shared_test_code_changed": "Existing shared test code (imports, helpers, before/after) was changed — it affects every test. Adding new shared code is fine, changing existing code is not.",
+      "tests_unreadable": "A test file does not parse as a JavaScript module — the panel cannot compare it test by test."
     },
     "errors": {
       "executors_required": "Assign the project's executors first.",
@@ -1872,9 +1876,45 @@
       "request_conflict": "A repeated request with different content.",
       "task_busy": "An action on this project is already running.",
       "gateway_unavailable": "No connection to the Gateway.",
-      "work_app_changed": "The app changed after the task started — this work cannot be accepted on top of the new files.",
+      "work_app_changed": "The app changed after the task started (or after it was accepted) — this cannot be done on top of the new files.",
       "work_missing": "The executor's work copy was not found.",
-      "work_layout": "The work copy is damaged."
-    }
+      "work_layout": "The work copy is damaged.",
+      "rule_outdated": "The rule has a newer version. A task can be started and accepted only on the current version.",
+      "data_confirmation_required": "Confirm that the app's existing data fits the new rule version.",
+      "rollback_unavailable": "Only the latest accepted task can be rolled back, and only when the project has no unfinished task."
+    },
+    "createChange": "Start a change task",
+    "changeTag": "change: version {from} → {to}",
+    "outdated": "The rule changed again after this task started. This work cannot be accepted: cancel the task and start a new one on the current version.",
+    "impact": {
+      "title": "Changing rule {code}: version {from} → {to}",
+      "intro": "The app now works by the version implemented by task {task}. The previous version stays in the rule's history.",
+      "before": "before",
+      "after": "after",
+      "sameText": "The field texts did not change.",
+      "tests": "Tests that protect the rule now",
+      "noTests": "The latest checks run has no tests of this rule. Run the project checks to see them here.",
+      "scenarios": "Scenarios of version {version}",
+      "noScenarios": "The previous version has no scenarios.",
+      "files": "Task {task} changed the files: {files}.",
+      "newScenarios": "Scenarios for the new version: {count}. Scenarios of the previous version are not carried over — add them in “Acceptance scenarios”.",
+      "data": "The panel changes code only. It does not migrate data the app already has: if that data does not fit the new rule, decide it separately. You will be asked to confirm this when accepting the work.",
+      "implemented": "This version is already implemented by task {task}.",
+      "newRule": "The rule is not implemented in the app yet — this is a new task."
+    },
+    "testChanges": "Test changes",
+    "testChange": {
+      "added": "added",
+      "modified": "modified",
+      "removed": "removed"
+    },
+    "ruleTest": "this rule's test",
+    "otherTest": "another rule's test",
+    "warnings": {
+      "shared_test_code_added": "Shared code (a helper, import or before/after hook) was added to a test file. It affects every test in the file — look at it in the changes."
+    },
+    "confirmData": "I checked that the data the app already has fits the new rule version (the panel does not migrate data).",
+    "rollback": "Restore the previous version",
+    "rollbackConfirm": "The app returns to the files it had before task {task}. The app's data does not change. Continue?"
   }
 }

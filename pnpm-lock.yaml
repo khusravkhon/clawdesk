@@ -25,6 +25,9 @@ importers:
       '@openclaw/gateway-protocol':
         specifier: 2026.8.1
         version: 2026.8.1
+      acorn:
+        specifier: 8.19.0
+        version: 8.19.0
       better-sqlite3:
         specifier: 12.11.1
         version: 12.11.1

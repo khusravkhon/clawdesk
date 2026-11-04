@@ -3,6 +3,7 @@ import type { AutomatedCheckDto, ProjectCheckRunDto, ProjectCheckRunSummaryDto, 
 import { and, desc, eq, inArray } from "drizzle-orm";
 import type { Db } from "../db/client.js";
 import { acceptanceTestLinks, projectCheckResults, projectCheckRuns } from "../db/schema.js";
+import { testHashes } from "./project-test-units.js";
 
 // P6.1: runs of a generated project's own checks and what they mean for acceptance scenarios.
 // A run is stored as it happened (also "blocked" ones); a scenario's automated status is derived
@@ -11,7 +12,8 @@ import { acceptanceTestLinks, projectCheckResults, projectCheckRuns } from "../d
 export class ProjectChecksError extends Error {
   constructor(readonly code: "checks_busy" | "request_conflict" | "gateway_unavailable") { super(code); }
 }
-export type ProjectChecksBridge = { runProjectChecks(projectId: string): Promise<ProjectChecksRunResult> };
+/** With projectAppFiles the panel reads the files first and runs exactly those, so it can hash each test (P6.3). */
+export type ProjectChecksBridge = { runProjectChecks(projectId: string, files?: Record<string, string>): Promise<ProjectChecksRunResult>; projectAppFiles?(projectId: string): Promise<{ files: Record<string, string> }> };
 
 const HISTORY = 20;
 type Tx = Pick<Db, "select" | "insert">;
@@ -38,11 +40,13 @@ export class ProjectChecksService {
     if (this.#busy.has(projectId)) throw new ProjectChecksError("checks_busy");
     this.#busy.add(projectId);
     try {
-      const result = await this.deps.bridge.runProjectChecks(projectId);
+      const files = this.deps.bridge.projectAppFiles ? (await this.deps.bridge.projectAppFiles(projectId)).files : null;
+      const result = files ? await this.deps.bridge.runProjectChecks(projectId, files) : await this.deps.bridge.runProjectChecks(projectId);
+      const hashes = files ? testHashes(files, result.tests) : new Map<string, string | null>();
       const id = randomUUID();
       this.deps.db.transaction((tx) => {
         tx.insert(projectCheckRuns).values({ id, projectId, status: result.status, reason: result.reason, filesFingerprint: result.filesFingerprint, durationMs: Math.max(0, Math.round(result.durationMs)), createdAt: Date.now(), requestId: request.requestId }).run();
-        for (const test of result.tests) tx.insert(projectCheckResults).values({ runId: id, testId: test.id.slice(0, 1000), file: test.file.slice(0, 200), name: test.name.slice(0, 800), status: test.status, message: test.message.slice(0, 1000), fileHash: test.fileHash }).onConflictDoNothing().run();
+        for (const test of result.tests) tx.insert(projectCheckResults).values({ runId: id, testId: test.id.slice(0, 1000), file: test.file.slice(0, 200), name: test.name.slice(0, 800), status: test.status, message: test.message.slice(0, 1000), fileHash: test.fileHash, testHash: hashes.get(test.id) ?? null }).onConflictDoNothing().run();
       });
       return this.#runDto(id);
     } finally { this.#busy.delete(projectId); }
@@ -68,7 +72,7 @@ function latestRun(db: Tx, projectId: string, completedOnly = false) {
 
 /**
  * Called when a scenario revision is saved: if its test reference names a test of the latest completed
- * run, that test (and its file's hash) becomes the one this revision protects.
+ * run, that test (and its own block's hash, else its file's) becomes the one this revision protects.
  */
 export function linkScenarioTest(db: Tx, projectId: string, caseId: string, revision: number, testRef: string): void {
   const testId = testRef.trim();
@@ -77,7 +81,7 @@ export function linkScenarioTest(db: Tx, projectId: string, caseId: string, revi
   if (!run) return;
   const result = db.select().from(projectCheckResults).where(and(eq(projectCheckResults.runId, run.id), eq(projectCheckResults.testId, testId))).get();
   if (!result?.fileHash) return;
-  db.insert(acceptanceTestLinks).values({ caseId, revision, testId, fileHash: result.fileHash, runId: run.id, createdAt: Date.now() }).onConflictDoNothing().run();
+  db.insert(acceptanceTestLinks).values({ caseId, revision, testId, fileHash: result.fileHash, testHash: result.testHash, runId: run.id, createdAt: Date.now() }).onConflictDoNothing().run();
 }
 
 /** A scenario revision's automated status against the latest run (see AutomatedCheckStatus). */
@@ -91,6 +95,7 @@ export function scenarioAutomatedStatus(db: Tx, projectId: string, caseId: strin
   if (run.status === "blocked") return { testId, status: "blocked", runId: run.id, runAt: run.createdAt, message: run.reason ?? "" };
   const result = db.select().from(projectCheckResults).where(and(eq(projectCheckResults.runId, run.id), eq(projectCheckResults.testId, link.testId))).get();
   if (!result) return { testId, status: "not_run", runId: run.id, runAt: run.createdAt, message: "" };
-  if (result.fileHash !== link.fileHash) return { testId, status: "changed", runId: run.id, runAt: run.createdAt, message: "" };
+  // A link with the test's own hash survives edits to other tests in its file; older links compare the whole file.
+  if (link.testHash ? result.testHash !== link.testHash : result.fileHash !== link.fileHash) return { testId, status: "changed", runId: run.id, runAt: run.createdAt, message: "" };
   return { testId, status: result.status, runId: run.id, runAt: run.createdAt, message: result.message };
 }

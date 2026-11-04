@@ -134,6 +134,13 @@
       "when": 1792348000000,
       "tag": "0018_project_tasks",
       "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "6",
+      "when": 1792349000000,
+      "tag": "0019_project_rule_changes",
+      "breakpoints": true
     }
   ]
 }

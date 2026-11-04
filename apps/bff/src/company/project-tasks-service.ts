@@ -1,28 +1,39 @@
 import { createHash, randomUUID } from "node:crypto";
-import type { AssignExecutorsRequest, BusinessRuleFields, CreateProjectTaskRequest, ProjectChecksRunResult, ProjectExecutorRole, ProjectExecutorsDto, ProjectTaskActionRequest, ProjectTaskCheckDto, ProjectTaskDto, ProjectTasksDto, ReturnProjectTaskRequest } from "@clawdesk/shared";
-import { and, asc, desc, eq, inArray } from "drizzle-orm";
+import type { AcceptProjectTaskRequest, AssignExecutorsRequest, BusinessRuleFields, CreateProjectTaskRequest, ProjectChecksRunResult, ProjectExecutorRole, ProjectExecutorsDto, ProjectTaskActionRequest, ProjectTaskCheckDto, ProjectTaskDto, ProjectTasksDto, ReturnProjectTaskRequest, RuleChangeImpactDto } from "@clawdesk/shared";
+import { and, asc, desc, eq, inArray, ne } from "drizzle-orm";
 import type { Db } from "../db/client.js";
-import { projectRules, projectTaskEvents, projectTasks } from "../db/schema.js";
+import { acceptanceCases, acceptanceRevisions, acceptanceTestLinks, projectCheckResults, projectCheckRuns, projectRules, projectTaskEvents, projectTasks } from "../db/schema.js";
 import type { BridgeClient } from "../gateway/bridge-client.js";
+import { scenarioAutomatedStatus } from "./project-checks-service.js";
 import type { ExecutorsPort } from "./project-executors.js";
-import { changesBetween, developerBase, isTestFile, judgeDev, judgeQa, type StageVerdict } from "./project-task-rules.js";
+import { changesBetween, developerBase, isTestFile, judgeDev, judgeQa, ruleTestsOf, testChangesBetween, type StageVerdict } from "./project-task-rules.js";
+import type { RuleScope } from "./project-test-units.js";
 
 // P6.2: a task on one approved rule version. QA writes tests in its copy; the panel accepts them only if
 // they fail on the current code. The developer works on app + QA's tests; the panel accepts only if the
 // test files are untouched and everything passes. The owner reviews the changes and accepts them into app/
 // (on top of exactly the files the task started from) or returns the task to the developer.
 // Stage completion is the owner's button: the panel never guesses that an agent has finished.
+//
+// P6.3: a task on a newer version of a rule the app already implements is a change. QA may rewrite the
+// rule's own tests (named with its code or linked to its scenarios), never other tests; accepting needs
+// the owner's word on existing data; a task whose rule changed again cannot be accepted; the latest
+// accepted task can be rolled back to the files it started from.
 
 export class ProjectTaskError extends Error {
-  constructor(readonly code: "executors_required" | "rule_missing" | "rule_not_approved" | "task_active" | "task_missing" | "task_closed" | "revision_conflict" | "request_conflict" | "task_busy" | "gateway_unavailable" | "work_app_changed") { super(code); }
+  constructor(readonly code: "executors_required" | "rule_missing" | "rule_not_approved" | "task_active" | "task_missing" | "task_closed" | "revision_conflict" | "request_conflict" | "task_busy" | "gateway_unavailable" | "work_app_changed" | "rule_outdated" | "data_confirmation_required" | "rollback_unavailable") { super(code); }
 }
 
 type Project = { id: string; name: string; description: string; departmentId: string | null };
 type Rule = { id: string; code: string; version: number; fields: BusinessRuleFields; approvedAt: number | null };
+type TaskRow = typeof projectTasks.$inferSelect;
 export type TaskBridge = Pick<BridgeClient, "projectAppFiles" | "prepareProjectWork" | "snapshotProjectWork" | "runProjectChecks" | "applyProjectWork">;
 const ACTIVE = ["qa", "dev", "review"] as const;
+const FIELDS = ["title", "statement", "source", "role", "preconditions", "expectedResult", "exceptions", "allowedExample", "deniedExample", "openQuestions"] as const satisfies readonly (keyof BusinessRuleFields)[];
 const sha = (value: string) => createHash("sha256").update(value).digest("hex");
+const hashes = (files: Record<string, string>) => Object.fromEntries(Object.entries(files).map(([name, data]) => [name, sha(data)]));
 const code = (number: number) => `TASK-${String(number).padStart(3, "0")}`;
+const ruleCode = (number: number) => `BR-${String(number).padStart(3, "0")}`;
 
 export class ProjectTasksService {
   #busy = new Set<string>();
@@ -50,16 +61,101 @@ export class ProjectTasksService {
     this.deps.checkProject(projectId, false);
     const rows = this.deps.db.select().from(projectTasks).where(eq(projectTasks.projectId, projectId)).orderBy(desc(projectTasks.number)).all();
     const events = rows.length ? this.deps.db.select().from(projectTaskEvents).where(inArray(projectTaskEvents.taskId, rows.map(row => row.id))).orderBy(asc(projectTaskEvents.id)).all() : [];
-    const codes = new Map(this.deps.db.select({ id: projectRules.id, number: projectRules.number }).from(projectRules).where(eq(projectRules.projectId, projectId)).all().map(row => [row.id, `BR-${String(row.number).padStart(3, "0")}`]));
-    return { tasks: rows.map(row => this.#dto(row, events.filter(event => event.taskId === row.id), codes.get(row.ruleId) ?? "BR-???")) };
+    const rules = new Map(this.deps.db.select({ id: projectRules.id, number: projectRules.number, currentVersion: projectRules.currentVersion }).from(projectRules).where(eq(projectRules.projectId, projectId)).all().map(row => [row.id, row]));
+    const active = rows.some(row => (ACTIVE as readonly string[]).includes(row.status));
+    const rollbackable = active ? null : latestAccepted(rows);
+    const scopes = new Map<string, RuleScope>();
+    const scopeOf = (ruleId: string) => { if (!scopes.has(ruleId)) scopes.set(ruleId, this.#scope(projectId, ruleId)); return scopes.get(ruleId)!; };
+    return {
+      tasks: rows.map(row => {
+        const rule = rules.get(row.ruleId);
+        return this.#dto(row, events.filter(event => event.taskId === row.id), rule ? ruleCode(rule.number) : "BR-???", rule?.currentVersion ?? row.ruleVersion, row.id === rollbackable?.id, scopeOf);
+      }),
+    };
   }
 
-  #dto(row: typeof projectTasks.$inferSelect, events: (typeof projectTaskEvents.$inferSelect)[], ruleCode: string): ProjectTaskDto {
+  #dto(row: TaskRow, events: (typeof projectTaskEvents.$inferSelect)[], rule: string, currentVersion: number, canRollback: boolean, scopeOf: (ruleId: string) => RuleScope): ProjectTaskDto {
+    const reviewing = row.status === "review" || row.status === "done";
+    const reviewTests = reviewing ? testChangesBetween(row.baseFiles, row.devFiles ?? {}, scopeOf(row.ruleId)) : null;
     return {
-      id: row.id, code: code(row.number), ruleId: row.ruleId, ruleCode, ruleVersion: row.ruleVersion, title: row.title, note: row.note, status: row.status, revision: row.revision,
-      lastCheck: row.lastCheck ?? null,
-      review: row.status === "review" || row.status === "done" ? changesBetween(row.baseFiles, row.devFiles ?? {}) : null,
-      returnComment: row.returnComment, events: events.map(event => ({ kind: event.kind, at: event.createdAt, note: event.note })), createdAt: row.createdAt, updatedAt: row.updatedAt,
+      id: row.id, code: code(row.number), ruleId: row.ruleId, ruleCode: rule, ruleVersion: row.ruleVersion, previousVersion: row.previousVersion ?? null,
+      outdated: (ACTIVE as readonly string[]).includes(row.status) && currentVersion !== row.ruleVersion,
+      title: row.title, note: row.note, status: row.status, revision: row.revision,
+      // Checks stored before P6.3 have no test-by-test changes.
+      lastCheck: row.lastCheck ? { ...row.lastCheck, testChanges: row.lastCheck.testChanges ?? [], warnings: row.lastCheck.warnings ?? [] } : null,
+      review: reviewing ? changesBetween(row.baseFiles, row.devFiles ?? {}) : null,
+      reviewTests: reviewTests?.tests ?? null, reviewWarnings: reviewTests?.warnings ?? [],
+      returnComment: row.returnComment, rolledBackAt: row.rolledBackAt ?? null, canRollback,
+      events: events.map(event => ({ kind: event.kind, at: event.createdAt, note: event.note })), createdAt: row.createdAt, updatedAt: row.updatedAt,
+    };
+  }
+
+  /**
+   * The tests a task on this rule may change: named with its code, or linked to any of its scenarios; tests
+   * linked to another rule's current scenarios stay protected (see inRuleScope).
+   */
+  #scope(projectId: string, ruleId: string): RuleScope {
+    const rules = this.deps.db.select().from(projectRules).where(eq(projectRules.projectId, projectId)).all();
+    const own = rules.find(rule => rule.id === ruleId);
+    const linked: string[] = [], otherLinked: string[] = [];
+    if (!rules.length) return { code: own ? ruleCode(own.number) : "BR-???", linked, otherLinked };
+    const cases = this.deps.db.select({ row: acceptanceCases, fields: acceptanceRevisions.fields }).from(acceptanceCases)
+      .innerJoin(acceptanceRevisions, and(eq(acceptanceRevisions.caseId, acceptanceCases.id), eq(acceptanceRevisions.revision, acceptanceCases.revision)))
+      .where(inArray(acceptanceCases.ruleId, rules.map(rule => rule.id))).all();
+    const links = cases.length ? this.deps.db.select().from(acceptanceTestLinks).where(inArray(acceptanceTestLinks.caseId, cases.map(item => item.row.id))).all() : [];
+    for (const { row, fields } of cases) {
+      const mine = row.ruleId === ruleId;
+      const current = rules.find(rule => rule.id === row.ruleId)?.currentVersion === row.ruleVersion;
+      if (!mine && !current) continue;
+      const target = mine ? linked : otherLinked;
+      // Own scenarios: every revision's link (an older one may name the test of the old behaviour); others: the current revision.
+      for (const link of links.filter(item => item.caseId === row.id && (mine || item.revision === row.revision))) target.push(link.testId);
+      if (fields.testRef.trim()) target.push(fields.testRef.trim());
+    }
+    return { code: own ? ruleCode(own.number) : "BR-???", linked: [...new Set(linked)], otherLinked: [...new Set(otherLinked)] };
+  }
+
+  /** The rule version the app implements now: the latest accepted, not rolled back task on the rule. */
+  #implemented(projectId: string, ruleId: string): TaskRow | null {
+    const rows = this.deps.db.select().from(projectTasks).where(and(eq(projectTasks.projectId, projectId), eq(projectTasks.ruleId, ruleId), eq(projectTasks.status, "done"))).all();
+    return latestAccepted(rows);
+  }
+
+  /** Tests of the latest completed project run that belong to the rule. */
+  #latestRuleTests(projectId: string, scope: RuleScope) {
+    const run = this.deps.db.select().from(projectCheckRuns).where(and(eq(projectCheckRuns.projectId, projectId), eq(projectCheckRuns.status, "completed"))).orderBy(desc(projectCheckRuns.createdAt)).get();
+    if (!run) return [];
+    const results = this.deps.db.select().from(projectCheckResults).where(eq(projectCheckResults.runId, run.id)).all();
+    return ruleTestsOf(results.map(row => ({ id: row.testId, file: row.file, name: row.name, status: row.status, message: row.message, fileHash: row.fileHash })), scope).sort((a, b) => a.id.localeCompare(b.id));
+  }
+
+  /** P6.3: what a task on this rule version would change, for the owner before creating it. */
+  impact(projectId: string, ruleId: string, version?: number): RuleChangeImpactDto {
+    this.deps.checkProject(projectId, false);
+    const current = this.deps.db.select().from(projectRules).where(and(eq(projectRules.id, ruleId), eq(projectRules.projectId, projectId))).get();
+    if (!current) throw new ProjectTaskError("rule_missing");
+    const rule = this.deps.rule(projectId, ruleId, version ?? current.currentVersion);
+    if (!rule) throw new ProjectTaskError("rule_missing");
+    const implemented = this.#implemented(projectId, ruleId);
+    const previous = implemented && implemented.ruleVersion < rule.version ? this.deps.rule(projectId, ruleId, implemented.ruleVersion) : null;
+    const scope = this.#scope(projectId, ruleId);
+    const cases = this.deps.db.select({ row: acceptanceCases, fields: acceptanceRevisions.fields }).from(acceptanceCases)
+      .innerJoin(acceptanceRevisions, and(eq(acceptanceRevisions.caseId, acceptanceCases.id), eq(acceptanceRevisions.revision, acceptanceCases.revision)))
+      .where(eq(acceptanceCases.ruleId, ruleId)).orderBy(asc(acceptanceCases.number)).all();
+    const active = this.deps.db.select({ number: projectTasks.number }).from(projectTasks).where(and(eq(projectTasks.projectId, projectId), inArray(projectTasks.status, [...ACTIVE]))).get();
+    return {
+      ruleId, code: rule.code, version: rule.version, approved: rule.approvedAt !== null, fields: rule.fields,
+      previousVersion: previous?.version ?? null, previousFields: previous?.fields ?? null,
+      changedFields: previous ? FIELDS.filter(field => previous.fields[field] !== rule.fields[field]) : [],
+      implementedBy: implemented ? code(implemented.number) : null,
+      files: implemented ? changesBetween(implemented.baseFiles, implemented.devFiles ?? {}).map(change => change.name) : [],
+      tests: this.#latestRuleTests(projectId, scope).map(test => ({ id: test.id, name: test.name, status: test.status })),
+      scenarios: previous ? cases.filter(item => item.row.ruleVersion === previous.version).map(({ row, fields }) => ({
+        code: `AC-${String(row.number).padStart(3, "0")}`, title: fields.title, ruleVersion: row.ruleVersion, testRef: fields.testRef,
+        status: scenarioAutomatedStatus(this.deps.db, projectId, row.id, row.revision, fields.testRef)?.status ?? null,
+      })) : [],
+      newScenarios: cases.filter(item => item.row.ruleVersion === rule.version).length,
+      activeTask: active ? code(active.number) : null,
     };
   }
 
@@ -94,6 +190,7 @@ export class ProjectTasksService {
     const rule = this.deps.rule(projectId, request.ruleId, request.ruleVersion);
     if (!rule) throw new ProjectTaskError("rule_missing");
     if (rule.approvedAt === null) throw new ProjectTaskError("rule_not_approved");
+    if (this.#outdated(projectId, { ruleId: rule.id, ruleVersion: rule.version })) throw new ProjectTaskError("rule_outdated");
     const qa = this.#executor(projectId, "qa");
     this.#executor(projectId, "developer");
     const { bridge, send } = this.#need();
@@ -101,16 +198,19 @@ export class ProjectTasksService {
     this.#busy.add(projectId);
     try {
       if (this.deps.db.select().from(projectTasks).where(and(eq(projectTasks.projectId, projectId), inArray(projectTasks.status, [...ACTIVE]))).get()) throw new ProjectTaskError("task_active");
+      const implemented = this.#implemented(projectId, rule.id);
+      const before = implemented && implemented.ruleVersion < rule.version ? this.deps.rule(projectId, rule.id, implemented.ruleVersion) : null;
       const { files } = await bridge.projectAppFiles(projectId);
       await bridge.prepareProjectWork(qa.agentId, files);
       const id = randomUUID(), now = Date.now();
       const last = this.deps.db.select({ number: projectTasks.number }).from(projectTasks).where(eq(projectTasks.projectId, projectId)).orderBy(desc(projectTasks.number)).get();
       const number = (last?.number ?? 0) + 1;
       this.deps.db.transaction((tx) => {
-        tx.insert(projectTasks).values({ id, projectId, number, ruleId: rule.id, ruleVersion: rule.version, title: rule.fields.title, note: request.note, status: "qa", baseFiles: files, createdAt: now, updatedAt: now, requestId: request.requestId }).run();
-        tx.insert(projectTaskEvents).values({ taskId: id, kind: "created", note: "", createdAt: now, requestId: request.requestId }).run();
+        tx.insert(projectTasks).values({ id, projectId, number, ruleId: rule.id, ruleVersion: rule.version, previousVersion: before?.version ?? null, title: rule.fields.title, note: request.note, status: "qa", baseFiles: files, createdAt: now, updatedAt: now, requestId: request.requestId }).run();
+        tx.insert(projectTaskEvents).values({ taskId: id, kind: "created", note: before ? `change:${before.version}` : "", createdAt: now, requestId: request.requestId }).run();
       });
-      await this.#sendStage(projectId, id, "qa", qa.agentId, qaMessage(code(number), rule, request.note), send);
+      const message = before ? changeQaMessage(code(number), before, rule, request.note, this.#latestRuleTests(projectId, this.#scope(projectId, rule.id)).map(test => test.name)) : qaMessage(code(number), rule, request.note);
+      await this.#sendStage(projectId, id, "qa", qa.agentId, message, send);
       return this.#one(projectId, id);
     } finally { this.#busy.delete(projectId); }
   }
@@ -121,7 +221,7 @@ export class ProjectTasksService {
   }
 
   /** Runs one action once per requestId on the task's current revision. */
-  async #act(projectId: string, taskId: string, request: ProjectTaskActionRequest, writing: boolean, action: (row: typeof projectTasks.$inferSelect) => Promise<void>): Promise<ProjectTaskDto> {
+  async #act(projectId: string, taskId: string, request: ProjectTaskActionRequest, writing: boolean, action: (row: TaskRow) => Promise<void>): Promise<ProjectTaskDto> {
     this.deps.checkProject(projectId, writing);
     const row = this.#task(projectId, taskId);
     if (this.deps.db.select().from(projectTaskEvents).where(and(eq(projectTaskEvents.taskId, taskId), eq(projectTaskEvents.requestId, request.requestId))).get()) return this.#one(projectId, taskId);
@@ -133,7 +233,7 @@ export class ProjectTasksService {
     return this.#one(projectId, taskId);
   }
 
-  #save(row: typeof projectTasks.$inferSelect, patch: Partial<typeof projectTasks.$inferInsert>, event: { kind: (typeof projectTaskEvents.$inferInsert)["kind"]; note?: string; requestId: string }): void {
+  #save(row: TaskRow, patch: Partial<typeof projectTasks.$inferInsert>, event: { kind: (typeof projectTaskEvents.$inferInsert)["kind"]; note?: string; requestId: string }): void {
     this.deps.db.transaction((tx) => {
       const current = tx.select({ revision: projectTasks.revision }).from(projectTasks).where(eq(projectTasks.id, row.id)).get();
       if (current?.revision !== row.revision) throw new ProjectTaskError("revision_conflict");
@@ -141,6 +241,11 @@ export class ProjectTasksService {
       tx.update(projectTasks).set({ ...patch, revision: row.revision + 1, updatedAt: now }).where(eq(projectTasks.id, row.id)).run();
       tx.insert(projectTaskEvents).values({ taskId: row.id, kind: event.kind, note: event.note ?? "", createdAt: now, requestId: event.requestId }).run();
     });
+  }
+
+  #outdated(projectId: string, row: Pick<TaskRow, "ruleId" | "ruleVersion">): boolean {
+    const rule = this.deps.db.select({ currentVersion: projectRules.currentVersion }).from(projectRules).where(and(eq(projectRules.id, row.ruleId), eq(projectRules.projectId, projectId))).get();
+    return !rule || rule.currentVersion !== row.ruleVersion;
   }
 
   /** "Check the QA's work" or "check the developer's work", depending on the task's stage. */
@@ -155,7 +260,7 @@ export class ProjectTasksService {
       const snapshot = await bridge.snapshotProjectWork(this.#executor(projectId, role).agentId);
       const base = stage === "qa" ? row.baseFiles : developerBase(row.baseFiles, row.qaTests ?? {});
       const run = await bridge.runProjectChecks(projectId, snapshot.files);
-      const input = { base, next: snapshot.files, ignored: snapshot.ignored, run, ruleCode: rule.code };
+      const input = { base, next: snapshot.files, ignored: snapshot.ignored, run, scope: this.#scope(projectId, row.ruleId) };
       const verdict = stage === "qa" ? judgeQa(input) : judgeDev(input);
       const lastCheck = checkDto(stage, verdict, run, snapshot.ignored);
       if (!verdict.ok) {
@@ -166,7 +271,7 @@ export class ProjectTasksService {
         const qaTests = Object.fromEntries(Object.entries(snapshot.files).filter(([name]) => isTestFile(name) && row.baseFiles[name] !== snapshot.files[name]));
         await bridge.prepareProjectWork(this.#executor(projectId, "developer").agentId, developerBase(row.baseFiles, qaTests));
         this.#save(row, { status: "dev", qaTests, lastCheck }, { kind: "qa_checked", note: "ok", requestId: request.requestId });
-        await this.#sendStage(projectId, row.id, "developer", this.#executor(projectId, "developer").agentId, devMessage(code(row.number), rule, row.note, verdict), send);
+        await this.#sendStage(projectId, row.id, "developer", this.#executor(projectId, "developer").agentId, devMessage(code(row.number), rule, row.note, verdict, row.previousVersion), send);
       } else {
         this.#save(row, { status: "review", devFiles: snapshot.files, lastCheck }, { kind: "dev_checked", note: "ok", requestId: request.requestId });
       }
@@ -186,17 +291,38 @@ export class ProjectTasksService {
     });
   }
 
-  accept(projectId: string, taskId: string, request: ProjectTaskActionRequest): Promise<ProjectTaskDto> {
+  accept(projectId: string, taskId: string, request: AcceptProjectTaskRequest): Promise<ProjectTaskDto> {
     return this.#act(projectId, taskId, request, true, async (row) => {
       if (row.status !== "review" || !row.devFiles) throw new ProjectTaskError("task_closed");
+      // A newer rule version means this work answers a question nobody asks any more.
+      if (this.#outdated(projectId, row)) throw new ProjectTaskError("rule_outdated");
+      // The panel changes code, never the app's data: the owner confirms the data still fits the changed rule.
+      if (row.previousVersion !== null && request.confirmData !== true) throw new ProjectTaskError("data_confirmation_required");
       const { bridge } = this.#need();
-      const baseline = Object.fromEntries(Object.entries(row.baseFiles).map(([name, data]) => [name, sha(data)]));
-      try { await bridge.applyProjectWork(projectId, row.devFiles, baseline); }
+      try { await bridge.applyProjectWork(projectId, row.devFiles, hashes(row.baseFiles)); }
       catch (error) {
         if ((error as { code?: string }).code === "work_app_changed") throw new ProjectTaskError("work_app_changed");
         throw error;
       }
-      this.#save(row, { status: "done" }, { kind: "accepted", requestId: request.requestId });
+      this.#save(row, { status: "done" }, { kind: "accepted", note: row.previousVersion !== null ? "data_confirmed" : "", requestId: request.requestId });
+    });
+  }
+
+  /**
+   * Returns app/ to the files the latest accepted task started from — only while app/ holds exactly what
+   * that task wrote and no task is active. The rule's previous version becomes the implemented one again.
+   */
+  rollback(projectId: string, taskId: string, request: ProjectTaskActionRequest): Promise<ProjectTaskDto> {
+    return this.#act(projectId, taskId, request, true, async (row) => {
+      const rows = this.deps.db.select().from(projectTasks).where(and(eq(projectTasks.projectId, projectId), ne(projectTasks.status, "cancelled"))).all();
+      if (row.status !== "done" || !row.devFiles || row.rolledBackAt !== null || rows.some(item => (ACTIVE as readonly string[]).includes(item.status)) || latestAccepted(rows)?.id !== row.id) throw new ProjectTaskError("rollback_unavailable");
+      const { bridge } = this.#need();
+      try { await bridge.applyProjectWork(projectId, row.baseFiles, hashes(row.devFiles)); }
+      catch (error) {
+        if ((error as { code?: string }).code === "work_app_changed") throw new ProjectTaskError("work_app_changed");
+        throw error;
+      }
+      this.#save(row, { rolledBackAt: Date.now() }, { kind: "rolled_back", requestId: request.requestId });
     });
   }
 
@@ -219,11 +345,16 @@ export class ProjectTasksService {
   }
 }
 
+/** The accepted task whose files app/ holds now: done, not rolled back, accepted last. */
+function latestAccepted(rows: TaskRow[]): TaskRow | null {
+  return rows.filter(row => row.status === "done" && row.rolledBackAt === null).sort((a, b) => b.updatedAt - a.updatedAt || b.number - a.number)[0] ?? null;
+}
+
 function checkDto(stage: "qa" | "dev", verdict: StageVerdict, run: ProjectChecksRunResult, ignored: string[]): ProjectTaskCheckDto {
   const counts = { passed: 0, failed: 0, flaky: 0, skipped: 0 };
   for (const test of run.tests) counts[test.status]++;
   return {
-    stage, ok: verdict.ok, reasons: verdict.reasons, changes: verdict.changes, ruleTests: verdict.ruleTests, otherProblems: verdict.otherProblems, ignored,
+    stage, ok: verdict.ok, reasons: verdict.reasons, changes: verdict.changes, ruleTests: verdict.ruleTests, otherProblems: verdict.otherProblems, testChanges: verdict.testChanges, warnings: verdict.warnings, ignored,
     run: { id: "", status: run.status, reason: run.reason, createdAt: Date.now(), durationMs: Math.round(run.durationMs), counts }, at: Date.now(),
   };
 }
@@ -255,14 +386,34 @@ export function qaMessage(task: string, rule: Rule, note: string): string {
   ].filter((line): line is string => typeof line === "string").join("\n");
 }
 
-function devMessage(task: string, rule: Rule, note: string, verdict: StageVerdict): string {
+/** P6.3: the rule changed after the app implemented it; QA replaces the tests of the old behaviour. */
+export function changeQaMessage(task: string, before: Rule, rule: Rule, note: string, ruleTests: string[]): string {
   return [
-    `Задача ${task} — реализация правила.`,
+    `Задача ${task} — изменение правила ${rule.code}: версия ${before.version} → ${rule.version}.`,
+    "Было:",
+    ruleText(before),
+    "",
+    "Стало:",
+    ruleText(rule),
+    note ? `Комментарий владельца: ${note}` : null,
+    "",
+    ruleTests.length ? `Сейчас правило защищают тесты: ${ruleTests.join("; ")}.` : "Тестов, которые сейчас защищают это правило, панель не нашла.",
+    "Что сделать: в своей рабочей копии приведи тесты этого правила к новой версии — измени или удали те, что проверяют старое поведение, добавь проверки нового (разрешённый и запрещённый примеры, границы).",
+    `Имя каждого нового теста начинается с «${rule.code} ». Хотя бы один тест правила должен падать на текущем коде, потому что код ещё делает по-старому.`,
+    "Тесты других правил и общий код тестов (импорты, помощники, before/after) не меняй — панель сравнивает их побайтно; новые помощники добавлять можно. Код приложения не трогай.",
+    "Когда закончишь, кратко перечисли, какие тесты изменены, удалены и добавлены. Проверит панель.",
+  ].filter((line): line is string => typeof line === "string").join("\n");
+}
+
+function devMessage(task: string, rule: Rule, note: string, verdict: StageVerdict, previousVersion: number | null): string {
+  return [
+    previousVersion !== null ? `Задача ${task} — реализация изменения правила (версия ${previousVersion} → ${rule.version}).` : `Задача ${task} — реализация правила.`,
     ruleText(rule),
     note ? `Комментарий владельца: ${note}` : null,
     "",
     `QA добавил тесты, которые сейчас падают: ${verdict.ruleTests.filter(test => test.status === "failed").map(test => test.name).join("; ")}.`,
     "Что сделать: в своей рабочей копии измени код приложения так, чтобы прошли все тесты, включая эти.",
+    previousVersion !== null ? "Данные, которые уже есть в приложении, не переноси и не удаляй: миграцию данных владелец решает отдельно." : null,
     "Тесты не меняй, не удаляй и не добавляй; файлы приложения не удаляй. Когда закончишь, кратко опиши изменения. Проверит панель.",
   ].filter((line): line is string => typeof line === "string").join("\n");
 }
@@ -276,17 +427,25 @@ const REASON_TEXT: Record<string, string> = {
   no_changes: "изменений нет",
   removed_files: "удалены файлы",
   changed_code: "изменён код приложения — на этапе QA можно менять только *.test.mjs",
-  tests_missing: "нет тестов, имя которых начинается с кода правила",
+  tests_missing: "нет тестов этого правила (имя начинается с кода правила)",
   tests_not_failing: "ни один тест правила не падает на текущем коде",
   tests_flaky: "тест правила нестабилен",
   existing_failing: "другие тесты перестали проходить",
   changed_tests: "изменены тесты — на этапе разработки их менять нельзя",
   tests_failing: "не все тесты проходят",
   run_blocked: "прогон проверок не дал результата (сбой среды)",
+  protected_tests_changed: "изменены или удалены тесты других правил — их менять нельзя",
+  shared_test_code_changed: "изменён общий код тестов (импорты, помощники, before/after) — его менять нельзя, новый добавлять можно",
+  tests_unreadable: "файл тестов не разбирается как JavaScript-модуль",
 };
 
 function findingsMessage(task: string, rule: Rule, check: ProjectTaskCheckDto | null): string {
   if (!check || check.ok) return [`Напоминание по задаче ${task} (правило ${rule.code}).`, ruleText(rule)].join("\n");
   const failing = [...check.ruleTests, ...check.otherProblems].filter(test => test.status !== "passed").slice(0, 8).map(test => `- ${test.name}: ${test.status}${test.message ? ` — ${test.message.split("\n")[0]}` : ""}`);
-  return [`Задача ${task} (правило ${rule.code}): панель не приняла работу.`, ...check.reasons.map(reason => `- ${REASON_TEXT[reason] ?? reason}`), ...(failing.length ? ["Тесты:", ...failing] : []), "Исправь это в своей рабочей копии и кратко ответь, что изменено."].join("\n");
+  const touched = (check.testChanges ?? []).filter(change => !change.rule && change.change !== "added").slice(0, 8).map(change => `- ${change.name}: ${change.change === "removed" ? "удалён" : "изменён"}`);
+  return [
+    `Задача ${task} (правило ${rule.code}): панель не приняла работу.`, ...check.reasons.map(reason => `- ${REASON_TEXT[reason] ?? reason}`),
+    ...(failing.length ? ["Тесты:", ...failing] : []), ...(touched.length ? ["Верни как было:", ...touched] : []),
+    "Исправь это в своей рабочей копии и кратко ответь, что изменено.",
+  ].join("\n");
 }

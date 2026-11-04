@@ -12,7 +12,7 @@ import { AcceptanceError } from "../company/project-acceptance-service.js";
 import { AnswerProjectBuilderRequest, BuilderMutationRequest, ConfirmProjectBuilderRequest, PlanProjectBuilderRequest, ProjectPreviewRequest } from "@clawdesk/shared";
 import { ProjectBuilderError } from "../company/project-builder-service.js";
 import { ProjectChecksError } from "../company/project-checks-service.js";
-import { RunProjectChecksRequest, AssignExecutorsRequest, CreateProjectTaskRequest, ProjectTaskActionRequest, ReturnProjectTaskRequest } from "@clawdesk/shared";
+import { RunProjectChecksRequest, AssignExecutorsRequest, CreateProjectTaskRequest, ProjectTaskActionRequest, ReturnProjectTaskRequest, AcceptProjectTaskRequest } from "@clawdesk/shared";
 import { ProjectTaskError } from "../company/project-tasks-service.js";
 
 const Params = z.object({ id: z.string().min(1).max(128).regex(/^[a-zA-Z0-9_-]+$/) });
@@ -54,7 +54,9 @@ export function registerCompanyRoutes(app: FastifyInstance, company: CompanyServ
     scope.post("/api/company/projects/:id/executors", request => company.tasks.assignExecutors(Params.parse(request.params).id, AssignExecutorsRequest.parse(request.body)));
     scope.get("/api/company/projects/:id/tasks", request => company.tasks.list(Params.parse(request.params).id));
     scope.post("/api/company/projects/:id/tasks", async (request, reply) => reply.status(201).send(await company.tasks.create(Params.parse(request.params).id, CreateProjectTaskRequest.parse(request.body))));
-    for (const [action, run] of [["check", "checkStage"], ["resend", "resend"], ["accept", "accept"], ["cancel", "cancel"]] as const) {
+    scope.get("/api/company/projects/:id/rules/:ruleId/impact", request => { const { id, ruleId } = RuleParams.parse(request.params); return company.tasks.impact(id, ruleId, SuiteQuery.parse(request.query).version); });
+    scope.post("/api/company/projects/:id/tasks/:taskId/accept", request => { const { id, taskId } = TaskParams.parse(request.params); return company.tasks.accept(id, taskId, AcceptProjectTaskRequest.parse(request.body)); });
+    for (const [action, run] of [["check", "checkStage"], ["resend", "resend"], ["cancel", "cancel"], ["rollback", "rollback"]] as const) {
       scope.post(`/api/company/projects/:id/tasks/:taskId/${action}`, request => { const { id, taskId } = TaskParams.parse(request.params); return company.tasks[run](id, taskId, ProjectTaskActionRequest.parse(request.body)); });
     }
     scope.post("/api/company/projects/:id/tasks/:taskId/return", request => { const { id, taskId } = TaskParams.parse(request.params); return company.tasks.returnToDeveloper(id, taskId, ReturnProjectTaskRequest.parse(request.body)); });

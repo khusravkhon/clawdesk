@@ -19,7 +19,8 @@ export type RunProjectChecksRequest = z.infer<typeof RunProjectChecksRequest>;
 /**
  * A scenario's automated result, derived from its linked test and the latest run:
  * "unlinked" — the reference names no test known when the scenario was saved;
- * "changed" — the test's file differs from when it was linked (needs a new scenario revision);
+ * "changed" — the test itself (for links made before P6.3: its file) differs from when it was linked
+ *   (needs a new scenario revision);
  * "not_run" — no run yet, or the linked test is missing from the latest run;
  * "blocked" — the latest run produced no trustworthy result.
  */

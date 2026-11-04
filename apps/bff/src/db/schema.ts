@@ -170,6 +170,8 @@ export const projectCheckResults = sqliteTable("project_check_results", {
   status: text("status", { enum: ["passed", "failed", "flaky", "skipped"] }).notNull(),
   message: text("message").notNull().default(""),
   fileHash: text("file_hash"),
+  /** P6.3: hash of the test's own block (see project-test-units); null when it could not be found. */
+  testHash: text("test_hash"),
 }, (t) => [primaryKey({ columns: [t.runId, t.testId] })]);
 
 /** The test a scenario revision protects, with its file hash at the moment of linking. */
@@ -178,6 +180,8 @@ export const acceptanceTestLinks = sqliteTable("acceptance_test_links", {
   revision: integer("revision").notNull(),
   testId: text("test_id").notNull(),
   fileHash: text("file_hash").notNull(),
+  /** P6.3: the test's own block; when set, edits to other tests in the same file do not invalidate the link. */
+  testHash: text("test_hash"),
   runId: text("run_id").notNull(),
   createdAt: integer("created_at").notNull(),
 }, (t) => [primaryKey({ columns: [t.caseId, t.revision] }), foreignKey({ columns: [t.caseId, t.revision], foreignColumns: [acceptanceRevisions.caseId, acceptanceRevisions.revision] }).onDelete("cascade")]);
@@ -189,6 +193,8 @@ export const projectTasks = sqliteTable("project_tasks", {
   number: integer("number").notNull(),
   ruleId: text("rule_id").notNull().references(() => projectRules.id, { onDelete: "cascade" }),
   ruleVersion: integer("rule_version").notNull(),
+  /** P6.3: the rule version the app implemented when the task started; null for a new rule. */
+  previousVersion: integer("previous_version"),
   title: text("title").notNull(),
   note: text("note").notNull().default(""),
   status: text("status", { enum: ["qa", "dev", "review", "done", "cancelled"] }).notNull(),
@@ -199,6 +205,8 @@ export const projectTasks = sqliteTable("project_tasks", {
   devFiles: text("dev_files", { mode: "json" }).$type<Record<string, string> | null>(),
   lastCheck: text("last_check", { mode: "json" }).$type<import("@clawdesk/shared").ProjectTaskCheckDto | null>(),
   returnComment: text("return_comment").notNull().default(""),
+  /** P6.3: app/ was returned to baseFiles after the task had been accepted. */
+  rolledBackAt: integer("rolled_back_at"),
   createdAt: integer("created_at").notNull(),
   updatedAt: integer("updated_at").notNull(),
   requestId: text("request_id").notNull(),
@@ -207,7 +215,7 @@ export const projectTasks = sqliteTable("project_tasks", {
 export const projectTaskEvents = sqliteTable("project_task_events", {
   id: integer("id").primaryKey({ autoIncrement: true }),
   taskId: text("task_id").notNull().references(() => projectTasks.id, { onDelete: "cascade" }),
-  kind: text("kind", { enum: ["created", "sent", "qa_checked", "dev_checked", "accepted", "returned", "cancelled"] }).notNull(),
+  kind: text("kind", { enum: ["created", "sent", "qa_checked", "dev_checked", "accepted", "returned", "cancelled", "rolled_back"] }).notNull(),
   note: text("note").notNull().default(""),
   createdAt: integer("created_at").notNull(),
   requestId: text("request_id").notNull(),

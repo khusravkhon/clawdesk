@@ -87,6 +87,27 @@ describe("project checks", () => {
     expect(automated()).toEqual(["passed"]);
   });
 
+  it("runs exactly the app files it read and links a scenario to its own test, so edits to other tests keep it valid (P6.3)", async () => {
+    const source = (tb2: string, tb3: string) => `import { test } from "node:test";\ntest("TB-002 пустое название задачи отклоняется", () => { ${tb2} });\ntest("TB-003 b", () => { ${tb3} });\n`;
+    let files: Record<string, string> = { "server.mjs": "x", "checks.test.mjs": source("a()", "b()") };
+    const given: Record<string, string>[] = [];
+    const reading = new CompanyService({ db, space: { mode: () => mode } as SpaceService, gateway: {} as GatewayService, bridge: {
+      projectAppFiles: async () => ({ files: { ...files } }),
+      runProjectChecks: async (_: string, sent?: Record<string, string>) => { given.push(sent!); return completed([test(TB002, "passed", sent!["checks.test.mjs"]!), test("checks.test.mjs::TB-003 b", "passed", sent!["checks.test.mjs"]!)]); },
+    } as never });
+    await reading.checks.run(projectId, { requestId: randomUUID() });
+    expect(given).toEqual([files]);
+    reading.acceptance.create(projectId, ruleId, scenario(TB002));
+    const status = () => reading.acceptance.list(projectId, ruleId).cases[0]?.automated?.status;
+    expect(status()).toBe("passed");
+    files = { ...files, "checks.test.mjs": source("a()", "b(); c()") };
+    await reading.checks.run(projectId, { requestId: randomUUID() });
+    expect(status()).toBe("passed");
+    files = { ...files, "checks.test.mjs": source("return", "b(); c()") };
+    await reading.checks.run(projectId, { requestId: randomUUID() });
+    expect(status()).toBe("changed");
+  });
+
   it("scenarios without a test reference have no automated status", async () => {
     await runWith(completed([test(TB002)]));
     company.acceptance.create(projectId, ruleId, scenario(""));
@@ -97,7 +118,7 @@ describe("project checks", () => {
     company.acceptance.create(projectId, ruleId, scenario(TB002));
     close();
     const sqlite = new Database(path.join(root, "panel.sqlite"));
-    sqlite.exec("DROP TABLE project_task_events; DROP TABLE project_tasks; DELETE FROM __drizzle_migrations WHERE created_at = 1792348000000");
+    sqlite.exec("DROP TABLE project_task_events; DROP TABLE project_tasks; DELETE FROM __drizzle_migrations WHERE created_at >= 1792348000000");
     sqlite.exec("DROP TABLE acceptance_test_links; DROP TABLE project_check_results; DROP TABLE project_check_runs; DELETE FROM __drizzle_migrations WHERE created_at = 1792347000000");
     sqlite.close();
     ({ db, close } = openDb(path.join(root, "panel.sqlite")));

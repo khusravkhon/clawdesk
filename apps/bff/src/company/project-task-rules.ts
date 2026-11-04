@@ -1,14 +1,26 @@
-import type { ProjectChecksRunResult, ProjectCheckTestDto, ProjectFileChange, ProjectTaskReason } from "@clawdesk/shared";
+import type { ProjectChecksRunResult, ProjectCheckTestDto, ProjectFileChange, ProjectTaskReason, ProjectTaskWarning, ProjectTestChangeDto } from "@clawdesk/shared";
+import { compareTests, inRuleScope, isTestFile, type RuleScope } from "./project-test-units.js";
 
-// What the panel requires of each executor stage (P6.2). Pure functions: the service feeds them the
+// What the panel requires of each executor stage (P6.2, P6.3). Pure functions: the service feeds them the
 // files a stage started from, the files the executor left and the checks run on those files.
 
-export const isTestFile = (name: string) => /\.test\.mjs$/.test(name);
+export { isTestFile };
 const MAX_DIFF_CELLS = 4_000_000;
+const scopeOf = (scope: RuleScope | string): RuleScope => typeof scope === "string" ? { code: scope, linked: [], otherLinked: [] } : scope;
 
-/** Tests whose name starts with the rule's code (e.g. "BR-001 …"), the convention given to QA. */
-export function ruleTestsOf(tests: ProjectCheckTestDto[], ruleCode: string): ProjectCheckTestDto[] {
-  return tests.filter(test => test.name.startsWith(ruleCode) && !/[A-Za-z0-9]/.test(test.name.charAt(ruleCode.length)));
+/** Tests that belong to the rule: named with its code (the convention given to QA) or linked to its scenarios. */
+export function ruleTestsOf(tests: ProjectCheckTestDto[], scope: RuleScope | string): ProjectCheckTestDto[] {
+  const rule = scopeOf(scope);
+  return tests.filter(test => inRuleScope(rule, test.id, test.name));
+}
+
+/** Test-by-test changes, each marked whether it belongs to the rule, plus shared test code changes. */
+export function testChangesBetween(base: Record<string, string>, next: Record<string, string>, scope: RuleScope | string) {
+  const rule = scopeOf(scope);
+  const comparison = compareTests(base, next);
+  const tests: ProjectTestChangeDto[] = comparison.tests.map(change => ({ ...change, rule: inRuleScope(rule, change.id, change.name) }));
+  const warnings: ProjectTaskWarning[] = comparison.sharedAdded.length ? ["shared_test_code_added"] : [];
+  return { ...comparison, tests, warnings };
 }
 
 export function changesBetween(base: Record<string, string>, next: Record<string, string>): ProjectFileChange[] {
@@ -50,22 +62,29 @@ export function lineDiff(before: string, after: string): string | null {
   return lines.join("\n");
 }
 
-type StageInput = { base: Record<string, string>; next: Record<string, string>; ignored: string[]; run: ProjectChecksRunResult; ruleCode: string };
-export type StageVerdict = { ok: boolean; reasons: ProjectTaskReason[]; changes: ProjectFileChange[]; ruleTests: ProjectCheckTestDto[]; otherProblems: ProjectCheckTestDto[] };
+type StageInput = { base: Record<string, string>; next: Record<string, string>; ignored: string[]; run: ProjectChecksRunResult; scope: RuleScope | string };
+export type StageVerdict = { ok: boolean; reasons: ProjectTaskReason[]; changes: ProjectFileChange[]; ruleTests: ProjectCheckTestDto[]; otherProblems: ProjectCheckTestDto[]; testChanges: ProjectTestChangeDto[]; warnings: ProjectTaskWarning[] };
 
 /**
- * QA: only test files added or changed, nothing removed; tests named with the rule's code exist, and at
- * least one of them fails on the current code (an assertion failure in a completed run — a crash or a
- * blocked run is not "failing for the expected reason"); other tests still pass.
+ * QA: only test files added or changed, no other file removed; tests of the rule exist, and at least one
+ * of them fails on the current code (an assertion failure in a completed run — a crash or a blocked run
+ * is not "failing for the expected reason"); other tests still pass. Test by test (P6.3): QA may add,
+ * change or remove the rule's own tests — on a rule change that is how the old behaviour's tests are
+ * replaced — but every other test and the existing shared test code stay exactly as they were.
  */
-export function judgeQa({ base, next, ignored, run, ruleCode }: StageInput): StageVerdict {
+export function judgeQa({ base, next, ignored, run, scope: given }: StageInput): StageVerdict {
+  const scope = scopeOf(given);
   const changes = changesBetween(base, next);
+  const tests = testChangesBetween(base, next, scope);
   const reasons = new Set<ProjectTaskReason>();
   if (ignored.length) reasons.add("layout");
   if (!changes.length) reasons.add("no_changes");
   if (changes.some(change => change.change === "removed")) reasons.add("removed_files");
   if (changes.some(change => !isTestFile(change.name))) reasons.add("changed_code");
-  const ruleTests = run.status === "completed" ? ruleTestsOf(run.tests, ruleCode) : [];
+  if (tests.unreadable.length) reasons.add("tests_unreadable");
+  if (tests.tests.some(change => !change.rule && change.change !== "added")) reasons.add("protected_tests_changed");
+  if (tests.sharedChanged.length) reasons.add("shared_test_code_changed");
+  const ruleTests = run.status === "completed" ? ruleTestsOf(run.tests, scope) : [];
   const otherProblems = run.status === "completed" ? run.tests.filter(test => !ruleTests.includes(test) && test.status !== "passed" && test.status !== "skipped") : [];
   if (run.status !== "completed") reasons.add("run_blocked");
   else {
@@ -74,28 +93,29 @@ export function judgeQa({ base, next, ignored, run, ruleCode }: StageInput): Sta
     else if (!ruleTests.some(test => test.status === "failed")) reasons.add("tests_not_failing");
     if (otherProblems.length) reasons.add("existing_failing");
   }
-  return { ok: !reasons.size, reasons: [...reasons], changes, ruleTests, otherProblems };
+  return { ok: !reasons.size, reasons: [...reasons], changes, ruleTests, otherProblems, testChanges: tests.tests, warnings: tests.warnings };
 }
 
 /**
  * Developer: every test file exactly as QA left it (none changed, removed or added), no file removed,
  * something changed, and every test passes — a flaky or skipped rule test is not a pass.
  */
-export function judgeDev({ base, next, ignored, run, ruleCode }: StageInput): StageVerdict {
+export function judgeDev({ base, next, ignored, run, scope: given }: StageInput): StageVerdict {
+  const scope = scopeOf(given);
   const changes = changesBetween(base, next);
   const reasons = new Set<ProjectTaskReason>();
   if (ignored.length) reasons.add("layout");
   if (changes.some(change => isTestFile(change.name))) reasons.add("changed_tests");
   if (changes.some(change => change.change === "removed")) reasons.add("removed_files");
   if (!changes.length) reasons.add("no_changes");
-  const ruleTests = run.status === "completed" ? ruleTestsOf(run.tests, ruleCode) : [];
+  const ruleTests = run.status === "completed" ? ruleTestsOf(run.tests, scope) : [];
   const otherProblems = run.status === "completed" ? run.tests.filter(test => !ruleTests.includes(test) && test.status !== "passed" && test.status !== "skipped") : [];
   if (run.status !== "completed") reasons.add("run_blocked");
   else {
     if (!ruleTests.length) reasons.add("tests_missing");
     if (ruleTests.some(test => test.status !== "passed") || otherProblems.length) reasons.add("tests_failing");
   }
-  return { ok: !reasons.size, reasons: [...reasons], changes, ruleTests, otherProblems };
+  return { ok: !reasons.size, reasons: [...reasons], changes, ruleTests, otherProblems, testChanges: testChangesBetween(base, next, scope).tests, warnings: [] };
 }
 
 /** The files a developer stage starts from: the app plus QA's accepted test files. */
