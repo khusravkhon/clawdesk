@@ -52,6 +52,9 @@ import { cancelVideo, downloadVideo, framesOfVideo, studyVideo, videoProgress, V
 import { LocalMemory, MemoryError } from "./clawdesk-memory.mjs";
 import { StorageManager, StorageError } from "./clawdesk-storage.mjs";
 import { ProjectFolders, ProjectFolderError } from "./clawdesk-project-folders.mjs";
+import { ProjectBuilder } from "./clawdesk-project-builder.mjs";
+import { sharedFolderSource } from "./clawdesk-shared-folder.mjs";
+import { composeServiceContainer } from "./clawdesk-containers.mjs";
 
 const HOST = process.env.CLAWDESK_BRIDGE_HOST || "127.0.0.1";
 const PORT = Number(process.env.CLAWDESK_BRIDGE_PORT || 18790);
@@ -246,6 +249,7 @@ async function googleRemove(body) {
 
 const FILES_IN_GATEWAY = path.join(process.env.OPENCLAW_STATE_DIR || "/var/lib/clawdesk/openclaw", "workspace", "files");
 const projectFolders = new ProjectFolders({ stateDir: process.env.OPENCLAW_STATE_DIR || "/var/lib/clawdesk/openclaw" });
+const projectBuilder = new ProjectBuilder({ folders: projectFolders, stateDir: process.env.OPENCLAW_STATE_DIR || "/var/lib/clawdesk/openclaw" });
 function spaceMode() {
   let db;
   try {
@@ -269,18 +273,7 @@ let filesSource;
 
 async function filesHostSource() {
   if (filesSource) return filesSource;
-  const res = await new Promise((resolve) => {
-    const child = spawn("docker", ["inspect", process.env.HOSTNAME ?? "", "--format", "{{json .Mounts}}"], { stdio: ["ignore", "pipe", "pipe"] });
-    let out = "";
-    child.stdout.on("data", (c) => (out += c));
-    child.on("close", (code) => resolve(code === 0 ? out : null));
-    child.on("error", () => resolve(null));
-  });
-  const mount = res ? JSON.parse(res).find((m) => m.Destination === FILES_IN_GATEWAY) : null;
-  // Docker Desktop may report the Windows path ("C:/Users/…"); its daemon knows that folder as /run/desktop/mnt/host/c/….
-  const source = mount?.Source ?? null;
-  const win = source ? /^([A-Za-z]):[\\/](.*)$/.exec(source) : null;
-  filesSource = win ? `/run/desktop/mnt/host/${win[1].toLowerCase()}/${win[2].replace(/\\/g, "/")}` : source;
+  filesSource = await sharedFolderSource();
   return filesSource;
 }
 
@@ -330,11 +323,11 @@ function runDocker(args, timeoutMs = 20_000) {
 
 /** The FreeLLMAPI container of this Compose project (it runs in this container's network namespace). */
 async function freellmapiContainer() {
-  const self = process.env.HOSTNAME ?? "";
-  const project = (await runDocker(["inspect", self, "--format", '{{index .Config.Labels "com.docker.compose.project"}}'])).out.trim();
-  if (!project) return null;
-  const list = await runDocker(["ps", "--filter", `label=com.docker.compose.project=${project}`, "--filter", "label=com.docker.compose.service=freellmapi", "--format", "{{.Names}}"]);
-  return list.out.trim().split("\n")[0] || null;
+  return composeServiceContainer(async (args) => {
+    const result = await runDocker(args);
+    if (result.code !== 0) throw new BackupError("docker_failed", "Cannot identify this installation's containers", 502);
+    return result.out;
+  }, "freellmapi");
 }
 
 async function freellmapiReset(body) {
@@ -427,6 +420,22 @@ async function handle(req) {
   const url = new URL(req.url, "http://bridge");
   if (req.method === "GET" && url.pathname === "/health") return { status: 200, body: { ok: true } };
   if (!authorized(req)) return { status: 401, body: { error: "unauthorized", message: "missing or wrong token" } };
+  if (url.pathname.startsWith("/projects/builder")) {
+    if (spaceMode() !== "company") return { status: 409, body: { error: "company_only" } };
+    try {
+      if (req.method === "GET" && url.pathname === "/projects/builder") return { status: 200, body: await projectBuilder.status(url.searchParams.get("projectId")) };
+      if (req.method === "GET" && url.pathname === "/projects/builder/analyze") return { status: 200, body: await projectBuilder.analyze(url.searchParams.get("projectId")) };
+      if (req.method === "POST") {
+        const { projectId, ...body } = await readJson(req);
+        const operation = { "/projects/builder/prepare": "prepare", "/projects/builder/start": "start", "/projects/builder/stop": "stop", "/projects/builder/request": "request" }[url.pathname];
+        if (operation) return { status: 200, body: await projectBuilder[operation](projectId, body) };
+      }
+      return { status: 404, body: { error: "not_found" } };
+    } catch (error) {
+      const code = error instanceof ProjectFolderError ? error.code : "builder_unavailable";
+      return { status: error instanceof ProjectFolderError ? error.status : 503, body: { error: code, message: code } };
+    }
+  }
   if (url.pathname === "/projects/workspace") {
     if (spaceMode() !== "company") return { status: 409, body: { error: "company_only" } };
     try {

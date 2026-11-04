@@ -81,6 +81,18 @@ export const projectBriefs = sqliteTable("project_briefs", {
   updatedAt: integer("updated_at").notNull(),
 });
 
+export const projectBuilders = sqliteTable("project_builders", {
+  projectId: text("project_id").primaryKey().references(() => companyProjects.id, { onDelete: "cascade" }),
+  revision: integer("revision").notNull().default(0),
+  plan: text("plan", { mode: "json" }).$type<import("@clawdesk/shared").ProjectBuilderPlanDto | null>(),
+});
+
+export const projectBuilderRequests = sqliteTable("project_builder_requests", {
+  projectId: text("project_id").notNull().references(() => companyProjects.id, { onDelete: "cascade" }),
+  requestId: text("request_id").notNull(),
+  payload: text("payload").notNull(),
+}, (t) => [primaryKey({ columns: [t.projectId, t.requestId] })]);
+
 export const projectRules = sqliteTable("project_rules", {
   id: text("id").primaryKey(),
   projectId: text("project_id").notNull().references(() => companyProjects.id, { onDelete: "cascade" }),

@@ -27,6 +27,10 @@ COPY --chmod=0644 clawdesk-memory.mjs openclaw.version /usr/local/lib/
 COPY --chmod=0644 clawdesk-plugin-repair.mjs /usr/local/lib/
 COPY --chmod=0644 clawdesk-storage.mjs /usr/local/lib/
 COPY --chmod=0644 clawdesk-project-folders.mjs /usr/local/lib/
+COPY --chmod=0644 clawdesk-project-builder.mjs /usr/local/lib/
+COPY project-templates /usr/local/lib/project-templates
+COPY --chmod=0644 clawdesk-shared-folder.mjs /usr/local/lib/
+COPY --chmod=0644 clawdesk-containers.mjs /usr/local/lib/
 COPY --chmod=0755 gateway-start.sh /usr/local/bin/clawdesk-gateway-start
 # ClawDesk's own skills (Figma), loaded through skills.load.extraDirs when the owner connects them.
 COPY skills /usr/local/share/clawdesk/skills
@@ -35,6 +39,9 @@ COPY plugins /usr/local/share/clawdesk/plugins
 # Gateway is the first to mount a fresh volume, Docker gives the volume this ownership, and the
 # panel (node) must still be able to write its data there.
 USER root
+COPY --chmod=0644 clawdesk-startup-migration-fix.mjs /usr/local/lib/
+# Exclude failed maintenance stores from reconciliation; retain upstream deletion fences.
+RUN node /usr/local/lib/clawdesk-startup-migration-fix.mjs
 # Claude Code for OpenClaw's "Claude CLI" route: the only way Anthropic lets a Claude plan (Pro/Max)
 # drive other programs. Pinned; npm here skips install scripts, so the native binary is unpacked
 # by hand. Updates come with a new ClawDesk image, never by itself (DISABLE_AUTOUPDATER).

@@ -5,7 +5,8 @@ import { computed, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import { api, ApiError } from "../api/client";
 
-const props = defineProps<{ projectId: string; disabled: boolean }>();
+const props = defineProps<{ projectId: string; disabled: boolean; refreshToken?: number }>();
+const emit = defineEmits<{ changed: [] }>();
 const { t, te } = useI18n();
 type Field = keyof ProjectBriefFields;
 const pages: Field[][] = [["goal", "audience", "scenarios"], ["inScope", "outOfScope", "rules"], ["data", "integrations", "constraints"], ["openQuestions"]];
@@ -42,10 +43,12 @@ async function save(nextStep = step.value): Promise<void> {
   try {
     const result = await api.company.saveBrief(props.projectId, pending.value!);
     saved.value = result; fields.value = { ...result.fields }; step.value = result.step; error.value = null; pending.value = null;
+    emit("changed");
   } catch (e) { error.value = explain(e); }
   finally { saving.value = false; }
 }
 watch(() => props.projectId, () => { saved.value = null; editing.value = false; void load(); }, { immediate: true });
+watch([() => props.refreshToken, editing], () => { if (!editing.value && !saving.value) void load(); });
 </script>
 
 <template>

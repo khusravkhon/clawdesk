@@ -10,6 +10,7 @@ import { openDb } from "../db/client.js";
 import { BridgeClient } from "../gateway/bridge-client.js";
 import { createJuniorAgent, deleteJuniorAgent } from "../provision/create-agent.js";
 import { connectForScript, flagValue } from "./_cli.js";
+import { gatewayContainerId } from "./_docker.js";
 
 import fs from "node:fs";
 if (fs.existsSync(".env")) process.loadEnvFile(".env");
@@ -17,6 +18,7 @@ const config = loadConfig();
 const folder = flagValue("folder") ?? "Питание";
 const keep = process.argv.includes("--keep");
 const logger = pino({ level: "warn" });
+const containerId = gatewayContainerId(config.gateway.sharedToken);
 const { db, close } = openDb(config.dbPath);
 const { gateway, done } = await connectForScript();
 let agentId: string | null = null;
@@ -27,7 +29,7 @@ try {
   );
   agentId = res.agentId;
   console.log(`✓ created ${agentId} (sandbox: ${res.sandboxApplied})`);
-  const explain = execFileSync("docker", ["exec", "clawdesk-gateway-1", "node", "dist/index.js", "sandbox", "explain", "--agent", agentId], { encoding: "utf8" });
+  const explain = execFileSync("docker", ["exec", containerId, "node", "dist/index.js", "sandbox", "explain", "--agent", agentId], { encoding: "utf8" });
   console.log(explain.split("\n").filter((l) => /mount|bind|workspace|folders|runtime/i.test(l)).join("\n"));
 } finally {
   if (agentId && !keep) {

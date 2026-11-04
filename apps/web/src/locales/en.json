@@ -19,7 +19,8 @@
     "addTeam": "Link team",
     "selectTeam": "Select team",
     "noTeams": "No teams linked yet. You can prepare the project without them.",
-    "teamHint": "Only teams without another project are available. A department project requires the same department for its teams. Linking grants no file access.",
+    "teamHint": "A team without a department will join the project's department when linked. Teams from another department or project are unavailable. Linking grants no file access.",
+    "noAvailableTeams": "No eligible teams. Create a team or check its department and existing project assignment in the company structure.",
     "detach": "Unlink",
     "detachHint": "Unlink this team? Agents, repository and schedules will be preserved.",
     "scope": "A project can be prepared without GitHub or a team. Its status reflects your plans; folder availability and worker activity are shown separately.",
@@ -1630,5 +1631,102 @@
       "observed": "Observation or reason the check was blocked",
       "evidence": "Evidence: log, report or result description"
     }
+  },
+  "projectBuilder": {
+    "title": "Build an application",
+    "intro": "Continue from saved requirements: answers → our template → plan → your confirmation → local creation and launch.",
+    "guided": "The requirements guide asks the next missing question. Your answer is saved to the project brief.",
+    "answer": "Save answer and continue",
+    "answered": "The main answers are saved. Review the summary and choose a template.",
+    "templates": "Our templates",
+    "choose": "Choose a template",
+    "templateNames": {
+      "task-board-v1": "Task board"
+    },
+    "templateDescription": "A local task board with create, rename, delete and status changes. Data is saved in SQLite.",
+    "templateLimits": "This template supports a task board. Other features and business rules require separate implementation.",
+    "plan": "Show plan",
+    "replan": "Update plan",
+    "planTitle": "Plan: {name}",
+    "features": "What we will create",
+    "limits": "First version limitations",
+    "path": "Project folder",
+    "noFolder": "Choose a new local folder below",
+    "files": "Files to create",
+    "confirm": "I have reviewed the plan and agree to its scope and limitations.",
+    "approve": "Confirm plan",
+    "approved": "Plan confirmed",
+    "prepareHint": "The next button creates the selected template files in the local folder. You can then launch the application.",
+    "prepare": "Create template files",
+    "start": "Launch application",
+    "stop": "Stop application",
+    "preview": "Interactive preview",
+    "previewHint": "Interactive preview uses temporary data. Stopping or restarting the preview clears its tasks.",
+    "reloadPreview": "Reload preview",
+    "reload": "Refresh state",
+    "failed": "The action failed. Your answer remains in the input; retry the action or refresh the state.",
+    "runtimeFailed": "The application could not start. Check the local environment connection and retry.",
+    "existing": "An existing project is connected. Only folder inspection is available; template creation is disabled.",
+    "stale": "Requirements, rules or the folder changed. Update the plan and confirm it again.",
+    "blocked": "Some decisions are incomplete. Review requirements, rules and the project folder.",
+    "questions": {
+      "goal": "What application would you like to create, and what problem does it solve?",
+      "audience": "Who will use the application?",
+      "scenarios": "What should a user be able to do?",
+      "inScope": "Which features are required for the first version?",
+      "outOfScope": "What should be excluded from the first version?",
+      "rules": "Which business rules should apply?",
+      "data": "What data should be saved?",
+      "integrations": "Do you need external services? Write “none” if not.",
+      "constraints": "Are there any constraints or special conditions?"
+    },
+    "states": {
+      "empty": "Files not created yet",
+      "prepared": "Template files created",
+      "running": "Application running",
+      "stopped": "Application stopped",
+      "failed": "Action failed"
+    },
+    "blockers": {
+      "brief_incomplete": "Complete the missing requirements answers.",
+      "open_questions": "Resolve the open questions in the brief.",
+      "rules_unapproved": "Approve the latest business rule versions and resolve their questions.",
+      "workspace_required": "Create a new local project folder in the section below.",
+      "existing_project": "An existing project is connected; generation is disabled."
+    },
+    "errors": {
+      "builder_incomplete": "Complete requirements and rule approvals.",
+      "builder_plan_missing": "Create a plan first.",
+      "builder_plan_stale": "The plan is outdated. Update it and confirm again.",
+      "builder_approval_required": "Confirm the plan first.",
+      "builder_existing_project": "Template creation is unavailable for existing projects.",
+      "builder_workspace_required": "Choose a new local project folder.",
+      "revision_conflict": "Data changed. Refresh the state and retry; your answer remains in the input.",
+      "request_conflict": "The action changed. Refresh the state before retrying.",
+      "gateway_unavailable": "The local environment is unavailable. Restore the connection and retry.",
+      "builder_busy": "Another action is still running. Refresh the state shortly."
+    },
+    "featureItems": [
+      "Create, rename and delete tasks",
+      "Change task status",
+      "Save tasks in local SQLite",
+      "Local launch and interactive preview"
+    ],
+    "limitItems": [
+      "The first version supports a task board; other scenarios require separate implementation",
+      "No authentication, roles, external integrations or public hosting",
+      "Business rules are saved as requirements; the template does not establish their implementation",
+      "Preview data is temporary and is cleared when the preview stops or restarts",
+      "After files have been created, a new plan cannot overwrite the application; choose a separate new folder"
+    ],
+    "inspect": "Inspect existing project",
+    "analysisTitle": "Read-only project inspection",
+    "gitPresent": "A Git repository was found.",
+    "gitAbsent": "No Git repository was found.",
+    "dependencies": "Declared dependencies",
+    "noDependencies": "No supported dependency manifest was found.",
+    "projectFiles": "Project files",
+    "truncated": "The list is limited; this is not a complete architecture analysis.",
+    "noOpenQuestions": "No open questions recorded"
   }
 }

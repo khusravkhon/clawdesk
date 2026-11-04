@@ -6,6 +6,7 @@ import { useI18n } from "vue-i18n";
 import { api, ApiError } from "../api/client";
 
 const props = defineProps<{ projectId: string; disabled: boolean }>();
+const emit = defineEmits<{ changed: [] }>();
 const { t, te } = useI18n();
 const data = ref<ProjectWorkspaceDto | null>(null);
 const error = ref<string | null>(null);
@@ -32,6 +33,7 @@ async function prepare(): Promise<void> {
   try {
     data.value = await api.company.prepareWorkspace(props.projectId, { mode: mode.value, name: name.value, requestId: requestId.value });
     error.value = null; editing.value = false;
+    emit("changed");
   } catch (e) {
     error.value = explain(e);
     // A lost response may follow a successful preparation; read the actual binding before retrying.

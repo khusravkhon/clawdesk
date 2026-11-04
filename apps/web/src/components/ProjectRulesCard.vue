@@ -7,6 +7,7 @@ import { api, ApiError } from "../api/client";
 import ProjectAcceptanceDialog from "./ProjectAcceptanceDialog.vue";
 
 const props = defineProps<{ projectId: string; disabled: boolean }>();
+const emit = defineEmits<{ changed: [] }>();
 const { t, te } = useI18n();
 type Field = keyof BusinessRuleFields;
 const keys: Field[] = ["title", "statement", "source", "role", "preconditions", "expectedResult", "exceptions", "allowedExample", "deniedExample", "openQuestions"];
@@ -44,7 +45,7 @@ async function save(): Promise<void> {
   try {
     if (selected.value) await api.company.updateRule(props.projectId, selected.value.id, pending.value as UpdateBusinessRuleRequest);
     else await api.company.createRule(props.projectId, pending.value!);
-    editing.value = false; await load();
+    editing.value = false; emit("changed"); await load();
   } catch (e) { editorError.value = explain(e); }
   finally { saving.value = false; }
 }
@@ -52,7 +53,7 @@ async function approve(rule: BusinessRuleDto): Promise<void> {
   saving.value = true;
   const previous = pendingApproval.value;
   if (!previous || previous.id !== rule.id || previous.body.revision !== rule.revision || previous.body.version !== rule.version) pendingApproval.value = { id: rule.id, body: { requestId: crypto.randomUUID(), revision: rule.revision, version: rule.version, confirm: true } };
-  try { await api.company.approveRule(props.projectId, rule.id, pendingApproval.value!.body); pendingApproval.value = null; await load(); }
+  try { await api.company.approveRule(props.projectId, rule.id, pendingApproval.value!.body); pendingApproval.value = null; emit("changed"); await load(); }
   catch (e) { const failure = explain(e); await load(); error.value = failure; }
   finally { saving.value = false; }
 }
