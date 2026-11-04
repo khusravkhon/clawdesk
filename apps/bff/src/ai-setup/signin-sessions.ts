@@ -48,6 +48,13 @@ type WizardNext = {
 
 const KEEP_FINISHED_MS = 10 * 60_000;
 const MAX_IDLE_MS = 30 * 60_000;
+const BUSY_RETRIES = 4;
+
+/** OpenClaw's answer while another setup still holds its lock (details code SETUP_ADMISSION_BUSY). */
+export function isSetupBusy(error: unknown): boolean {
+  const details = (error as { details?: { code?: unknown } } | null)?.details;
+  return details?.code === "SETUP_ADMISSION_BUSY" || /setup is already in progress/i.test(String((error as Error | null)?.message ?? ""));
+}
 
 class SignInSession {
   state: SignInStateDto;
@@ -97,6 +104,7 @@ export class SignInSessionManager {
     /** Called after a sign-in changed the main agent's models (juniors follow them). */
     private readonly onMainModelsChanged: () => Promise<void> = async () => {},
     private readonly claude: ClaudeCodeLogin | null = null,
+    private readonly busyRetryMs = 1_500,
   ) {}
 
   /** A Claude plan can be offered only when this Gateway carries Claude Code. */
@@ -115,12 +123,30 @@ export class SignInSessionManager {
     if (backupOf) assertRoomForBackup(backupOf);
     const sessionId = crypto.randomUUID();
     if (authChoice === CLAUDE_PLAN_CHOICE) return this.#startClaudePlan(sessionId, agentId, backupOf);
-    await this.gateway.request("openclaw.setup.auth.start", { sessionId, agentId, authChoice });
+    // OpenClaw runs one setup at a time. "Try again" in the panel used to leave the previous sign-in of
+    // this agent waiting for its OAuth page, which blocked every new attempt; it is replaced instead.
+    for (const [id, previous] of this.#sessions) {
+      if (previous.state.agentId === agentId && ["running", "waiting_for_user"].includes(previous.state.status)) await this.cancel(id);
+    }
+    await this.#startInGateway({ sessionId, agentId, authChoice });
     const session = new SignInSession(sessionId, agentId, backupOf);
     this.#sessions.set(sessionId, session);
     this.logger.info({ sessionId, agentId, authChoice, asBackup }, "subscription sign-in started");
     void this.#drive(session);
     return session.state;
+  }
+
+  /** A cancelled setup frees OpenClaw's setup lock a moment later (about 1–2 s); wait for it briefly. */
+  async #startInGateway(params: { sessionId: string; agentId: string; authChoice: string }): Promise<void> {
+    for (let attempt = 0; ; attempt++) {
+      try {
+        await this.gateway.request("openclaw.setup.auth.start", params);
+        return;
+      } catch (error) {
+        if (attempt >= BUSY_RETRIES || !isSetupBusy(error)) throw error;
+        await new Promise((resolve) => setTimeout(resolve, this.busyRetryMs));
+      }
+    }
   }
 
   async #startClaudePlan(sessionId: string, agentId: string, backupOf: string[] | null): Promise<SignInStateDto> {
