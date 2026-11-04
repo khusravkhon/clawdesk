@@ -78,6 +78,23 @@ describe("main agent subscription sign-in through the setup wizard", () => {
     expect(followed).toBe(1);
   });
 
+  it("stops at the channel step when the sign-in has no live-test offer, and shows the link", async () => {
+    const { gateway, answers, calls } = fakeGateway();
+    STEPS.splice(11, 2);
+    try {
+      const manager = new SignInSessionManager(gateway, pino({ level: "silent" }), async () => {});
+      const started = await manager.start("main", "openai");
+      await until(() => manager.get(started.sessionId).status === "waiting_for_user");
+      expect(manager.get(started.sessionId).url).toBe("https://auth.openai.com/oauth/authorize?x=1");
+      await manager.answer(started.sessionId, { stepId: manager.get(started.sessionId).prompt!.stepId, value: "code" });
+      await until(() => manager.get(started.sessionId).status === "done");
+      expect(answers.at(-1)?.step).toBe("Default model set to openai/gpt-5.6-sol");
+      expect(calls).toContain("wizard.cancel");
+    } finally {
+      STEPS.splice(11, 0, { type: "select", message: "Default model", options: ["__keep__", "__manual__"] }, { type: "confirm", message: "Test AI access now with a live completion?" });
+    }
+  });
+
   it("fails clearly when the wizard does not offer the chosen sign-in", async () => {
     const { gateway } = fakeGateway();
     const manager = new SignInSessionManager(gateway, pino({ level: "silent" }), async () => {});

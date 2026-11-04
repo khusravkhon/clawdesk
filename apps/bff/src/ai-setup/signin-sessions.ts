@@ -181,6 +181,8 @@ export class SignInSessionManager {
       return undefined;
     }
     if (!shared.method && step.type === "select" && has(shared.authChoice)) { shared.method = true; return shared.authChoice; }
+    // Channels come after auth and model are saved (a sign-in may skip the live-test offer): stop there.
+    if (shared.method && /channel/i.test(text)) return FINISH;
     if (step.type === "select" && has("__keep__")) return "__keep__";
     if (step.type === "confirm" && /test/i.test(text)) { shared.testDeclined = true; return false; }
     return undefined;
@@ -337,7 +339,8 @@ export class SignInSessionManager {
         if (step.type === "note") {
           session.state = {
             ...session.state,
-            url: step.externalUrl ?? session.state.url,
+            // The setup wizard puts the sign-in link only in the note text.
+            url: step.externalUrl ?? /https:\/\/\S+/.exec(step.message ?? "")?.[0] ?? session.state.url,
             deviceCode: step.deviceCode ? { code: step.deviceCode.code, expiresInMinutes: step.deviceCode.expiresInMinutes ?? null } : session.state.deviceCode,
             note: step.message ?? session.state.note,
           };
