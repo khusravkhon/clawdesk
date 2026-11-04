@@ -87,19 +87,23 @@ export class ProjectFolders {
     }, true));
   }
 
-  /** Serialize access with folder registration and keep the selected directory pinned. */
+  /**
+   * Serialize access with folder registration and keep the selected directory pinned.
+   * The root is created like in status(): on a fresh installation it does not exist until the first
+   * folder, and a missing root must read as "no folder yet", not as an unavailable builder.
+   */
   withWorkspace(projectId, run) {
     if (typeof projectId !== "string" || !ID.test(projectId)) throw new ProjectFolderError("invalid_workspace", 400);
     return this.#run(() => withDirectoryWithin(this.stateDir, "company-projects", (root) =>
       withDirectoryWithin(this.stateDir, "", async (state) => {
         const binding = (await this.#registry(state)).bindings.find((item) => item.projectId === projectId);
         if (!binding) throw new ProjectFolderError("workspace_required");
-          return withChildDirectoryWithin(root, binding.name, async (directory) => {
+        return withChildDirectoryWithin(root, binding.name, async (directory) => {
           const stat = await fs.stat(directory, { bigint: true });
           if (`${stat.dev}:${stat.ino}` !== binding.identity) throw new ProjectFolderError("workspace_changed");
           return run({ directory, ...binding, path: path.join(this.stateDir, "company-projects", binding.name) });
         });
-      })));
+      }), true));
   }
 
   prepare({ projectId, name, mode, requestId }) {

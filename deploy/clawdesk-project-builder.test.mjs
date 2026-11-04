@@ -63,6 +63,13 @@ async function fixture(t, options = {}) {
     return { stateDir, root, directory: path.join(root, "Fixture"), create, builder: create(), ...runtime };
 }
 
+test("a fresh installation without any project folder reports workspace_required", linux, async t => {
+    const stateDir = await fs.mkdtemp(path.join(os.tmpdir(), "clawdesk-builder-"));
+    t.after(() => fs.rm(stateDir, { recursive: true, force: true }));
+    const builder = new ProjectBuilder({ folders: new ProjectFolders({ stateDir }), stateDir, command: runner(stateDir).command, identity: { stateDir, token: "fixture-token" } });
+    await assert.rejects(builder.status("project-a"), { code: "workspace_required" });
+});
+
 test("prepares exactly the template files and repeats safely after restart", linux, async t => {
     const f = await fixture(t);
     assert.equal((await f.builder.status("project-a")).state, "empty");
