@@ -28,6 +28,7 @@ COPY --chmod=0644 clawdesk-plugin-repair.mjs /usr/local/lib/
 COPY --chmod=0644 clawdesk-storage.mjs /usr/local/lib/
 COPY --chmod=0644 clawdesk-project-folders.mjs /usr/local/lib/
 COPY --chmod=0644 clawdesk-project-builder.mjs /usr/local/lib/
+COPY --chmod=0644 clawdesk-project-checks.mjs /usr/local/lib/
 COPY project-templates /usr/local/lib/project-templates
 COPY --chmod=0644 clawdesk-shared-folder.mjs /usr/local/lib/
 COPY --chmod=0644 clawdesk-containers.mjs /usr/local/lib/

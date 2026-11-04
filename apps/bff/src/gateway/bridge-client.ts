@@ -202,6 +202,11 @@ export class BridgeClient {
     return this.#call("POST", "/projects/builder/start", { projectId, ...request });
   }
 
+  /** The project's own checks in a throwaway container; a run takes up to two minutes. */
+  runProjectChecks(projectId: string): Promise<import("@clawdesk/shared").ProjectChecksRunResult> {
+    return this.#call("POST", "/projects/builder/checks", { projectId }, 180_000);
+  }
+
   stopProjectPreview(projectId: string): Promise<import("@clawdesk/shared").ProjectBuilderRuntimeDto> {
     return this.#call("POST", "/projects/builder/stop", { projectId });
   }

@@ -151,6 +151,37 @@ export const acceptanceChecks = sqliteTable("acceptance_checks", {
   requestPayload: text("request_payload").notNull(),
 }, (t) => [uniqueIndex("acceptance_check_request_uq").on(t.caseId, t.requestId), index("acceptance_checks_case_idx").on(t.caseId, t.revision, t.id), foreignKey({ columns: [t.caseId, t.revision], foreignColumns: [acceptanceRevisions.caseId, acceptanceRevisions.revision] })]);
 
+export const projectCheckRuns = sqliteTable("project_check_runs", {
+  id: text("id").primaryKey(),
+  projectId: text("project_id").notNull().references(() => companyProjects.id, { onDelete: "cascade" }),
+  status: text("status", { enum: ["completed", "blocked"] }).notNull(),
+  reason: text("reason", { enum: ["runner_failed", "timeout", "no_tests"] }),
+  filesFingerprint: text("files_fingerprint").notNull(),
+  durationMs: integer("duration_ms").notNull(),
+  createdAt: integer("created_at").notNull(),
+  requestId: text("request_id").notNull(),
+}, (t) => [uniqueIndex("project_check_run_request_uq").on(t.projectId, t.requestId), index("project_check_runs_project_idx").on(t.projectId, t.createdAt)]);
+
+export const projectCheckResults = sqliteTable("project_check_results", {
+  runId: text("run_id").notNull().references(() => projectCheckRuns.id, { onDelete: "cascade" }),
+  testId: text("test_id").notNull(),
+  file: text("file").notNull(),
+  name: text("name").notNull(),
+  status: text("status", { enum: ["passed", "failed", "flaky", "skipped"] }).notNull(),
+  message: text("message").notNull().default(""),
+  fileHash: text("file_hash"),
+}, (t) => [primaryKey({ columns: [t.runId, t.testId] })]);
+
+/** The test a scenario revision protects, with its file hash at the moment of linking. */
+export const acceptanceTestLinks = sqliteTable("acceptance_test_links", {
+  caseId: text("case_id").notNull(),
+  revision: integer("revision").notNull(),
+  testId: text("test_id").notNull(),
+  fileHash: text("file_hash").notNull(),
+  runId: text("run_id").notNull(),
+  createdAt: integer("created_at").notNull(),
+}, (t) => [primaryKey({ columns: [t.caseId, t.revision] }), foreignKey({ columns: [t.caseId, t.revision], foreignColumns: [acceptanceRevisions.caseId, acceptanceRevisions.revision] }).onDelete("cascade")]);
+
 export const teams = sqliteTable("teams", {
   id: text("id").primaryKey(),
   name: text("name").notNull(),

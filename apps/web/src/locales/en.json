@@ -1594,7 +1594,7 @@
   },
   "projectAcceptance": {
     "title": "Acceptance scenarios",
-    "scope": "Scenarios belong to the selected rule version. Plan checks and record manual observations here. No automated tests run; a manual result does not establish application readiness.",
+    "scope": "Scenarios belong to the selected rule version. Plan checks and record manual observations here. A scenario can be linked to a project test; its result from “Project checks” is shown as the automated check. Neither a manual nor an automated result establishes readiness of the whole application.",
     "ruleVersion": "Business rule version",
     "oldVersion": "These scenarios belong to an older rule version and are read-only. Prepare scenarios separately for the current version; old results are not carried over.",
     "approveFirst": "You can prepare scenarios now. Approve the current rule version before recording results.",
@@ -1602,7 +1602,7 @@
     "empty": "No scenarios for this rule version yet.",
     "edit": "Edit scenario",
     "record": "Record manual check",
-    "notRun": "No checks for this scenario version",
+    "notRun": "No manual check of this version",
     "manualOwner": "Manual record by panel owner",
     "editHint": "Editing creates a new scenario version. Earlier checks stay in history and do not apply to the new version.",
     "manualHint": "Specify the environment and application build/commit, actual observation and evidence. For a blocked check, explain the reason. This record runs no test and verifies no link.",
@@ -1624,12 +1624,33 @@
       "given": "Initial conditions",
       "action": "Action to perform",
       "expected": "Expected result",
-      "testRef": "Related test or check (not executed)"
+      "testRef": "Automated check (project test)"
     },
     "check": {
       "context": "Environment and application build/commit",
       "observed": "Observation or reason the check was blocked",
       "evidence": "Evidence: log, report or result description"
+    },
+    "pickTest": "Pick a test from the latest run",
+    "noTestsYet": "No tests yet",
+    "noTestsHint": "The list appears after the first run in “Project checks”. A typed reference is kept as text but is not checked automatically.",
+    "automatedLabel": "Automated",
+    "automated": {
+      "passed": "passed",
+      "failed": "behaviour failure",
+      "flaky": "flaky",
+      "skipped": "skipped",
+      "unlinked": "not linked",
+      "changed": "test changed",
+      "not_run": "not run",
+      "blocked": "environment blocked"
+    },
+    "automatedHint": {
+      "failed": "Latest run: the test failed — the behaviour does not match the rule.",
+      "flaky": "The test passes only sometimes. That is not a pass: the instability needs fixing.",
+      "changed": "The test file changed after it was linked. Until the scenario is saved again (a new revision) the result does not count.",
+      "unlinked": "The reference did not match a test of the latest run when the scenario was saved. Pick a test from the list and save the scenario.",
+      "blocked": "The latest run produced no trustworthy result (environment failure, timeout or no tests)."
     }
   },
   "projectBuilder": {
@@ -1728,5 +1749,37 @@
     "projectFiles": "Project files",
     "truncated": "The list is limited; this is not a complete architecture analysis.",
     "noOpenQuestions": "No open questions recorded"
+  },
+  "projectChecks": {
+    "title": "Project checks",
+    "intro": "Runs the generated app's tests in a separate container without network, on a copy of the current files. Each test is shown on its own; linked acceptance scenarios get its result.",
+    "run": "Run checks",
+    "running": "Checks are running, this can take up to two minutes…",
+    "empty": "Checks have not been run yet.",
+    "duration": "{seconds} s",
+    "run_completed": "Run completed",
+    "run_blocked": "Environment blocked",
+    "history": "Previous runs",
+    "failed": "Could not run the checks.",
+    "limits": "A test that fails and then passes on the retry is marked flaky. Tests run in the same sandbox as the app's code: the result relies on that code not forging the checks' output. Available for apps created by the builder.",
+    "status": {
+      "passed": "passed",
+      "failed": "failed",
+      "flaky": "flaky",
+      "skipped": "skipped"
+    },
+    "reasons": {
+      "runner_failed": "The check environment did not start or crashed. There is no result — this is not a pass.",
+      "timeout": "The checks ran out of time. There is no result.",
+      "no_tests": "No tests found. Projects created before checks existed have no checks.test.mjs."
+    },
+    "errors": {
+      "checks_unsupported": "Checks are available only for an app created by the builder in a new folder.",
+      "checks_too_large": "The project files are too large for an isolated run (up to 80 KB).",
+      "checks_no_files": "The app files have not been created yet.",
+      "checks_busy": "Checks of this project are already running.",
+      "workspace_required": "Choose a working folder and create the app files first.",
+      "preview_unavailable": "Could not start the check container. Check the local environment."
+    }
   }
 }

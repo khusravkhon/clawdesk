@@ -5,9 +5,11 @@ import { spawn } from "node:child_process";
 import { ProjectFolderError } from "./clawdesk-project-folders.mjs";
 import { withDirectoryWithin, withChildDirectoryWithin } from "./clawdesk-file-sync.mjs";
 import { resetGateway } from "./clawdesk-backup.mjs";
+import { CHECKS_BOOTSTRAP, CHECK_ARGUMENT_LIMIT, CHECK_PAYLOAD_LIMIT, filesFingerprint, parseCheckOutput, selectCheckFiles } from "./clawdesk-project-checks.mjs";
 const hash = value => createHash("sha256").update(value).digest("hex");
-export const PROJECT_TEMPLATE_FILES = ["server.mjs", "index.html", "package.json", "README.md", "PROJECT-REQUIREMENTS.json", "LICENSE", ".clawdesk-build.json"];
-const FILES = PROJECT_TEMPLATE_FILES;
+export const PROJECT_TEMPLATE_FILES = ["server.mjs", "index.html", "checks.test.mjs", "package.json", "README.md", "PROJECT-REQUIREMENTS.json", "LICENSE", ".clawdesk-build.json"];
+/** Files a build record covers: projects created before a template version keep their own list. */
+const recordFiles = record => Object.keys(record?.hashes ?? {});
 export class ProjectBuilderError extends ProjectFolderError {
 }
 const fail = (code, status = 409) => {
@@ -25,14 +27,14 @@ async function readFile(directory, name, limit = 262144) {
         await handle.close();
     }
 }
-export function dockerCommand(args) {
+export function dockerCommand(args, { timeoutMs = 20000 } = {}) {
     return new Promise((resolve, reject) => {
         const child = spawn("/usr/local/libexec/docker", args, { stdio: ["ignore", "pipe", "pipe"] });
         let out = "", failed = false;
         const timer = setTimeout(() => {
             failed = true;
             child.kill("SIGKILL");
-        }, 20000);
+        }, timeoutMs);
         child.stdout.on("data", chunk => {
             out += chunk;
             if (Buffer.byteLength(out) > 1048576) {
@@ -95,9 +97,10 @@ export class ProjectBuilder {
             fail("builder_files_changed");
         await withChildDirectoryWithin(workspace.directory, "app", async (app) => {
             const entries = await fs.readdir(app);
-            if (entries.length !== FILES.length || FILES.some(file => !entries.includes(file)))
+            const files = recordFiles(record);
+            if (entries.length !== files.length || files.some(file => !entries.includes(file)))
                 fail("builder_files_changed");
-            for (const file of FILES)
+            for (const file of files)
                 if (hash(await readFile(app, file)) !== record.hashes[file])
                     fail("builder_files_changed");
         });
@@ -115,22 +118,23 @@ export class ProjectBuilder {
             await fs.mkdir(`${workspace.directory}/${record.staging}`, { mode: 448 });
         await withChildDirectoryWithin(workspace.directory, record.staging, async stage => {
             const names = await fs.readdir(stage);
-            if (names.some(name => !FILES.includes(name)))
+            const expected = recordFiles(record);
+            if (names.some(name => !expected.includes(name)))
                 fail("builder_files_changed");
-            for (const file of FILES) {
+            for (const file of expected) {
                 if (hash(files[file]) !== record.hashes[file])
                     fail("builder_files_changed");
                 if (names.includes(file) && hash(await readFile(stage, file)) !== record.hashes[file])
                     fail("builder_files_changed");
             }
-            for (const file of FILES)
+            for (const file of expected)
                 if (!names.includes(file))
                     await fs.writeFile(`${stage}/${file}`, files[file], { flag: "wx", mode: 420 });
         });
         await fs.rename(`${workspace.directory}/${record.staging}`, `${workspace.directory}/app`);
     }
     #dto(record, state = "prepared") {
-        return { state, planId: record?.planId ?? null, files: record ? FILES.map(file => `app/${file}`) : [], previewUrl: null, error: null };
+        return { state, planId: record?.planId ?? null, files: recordFiles(record).map(file => `app/${file}`), previewUrl: null, error: null };
     }
     async #gateway() {
         try {
@@ -196,13 +200,13 @@ export class ProjectBuilder {
             if (!previous && (await fs.readdir(workspace.directory)).length)
                 fail("builder_workspace_not_empty");
             const files = {};
-            for (const file of ["server.mjs", "index.html"])
+            for (const file of ["server.mjs", "index.html", "checks.test.mjs"])
                 files[file] = await fs.readFile(new URL(`./project-templates/task-board-v1/${file}`, import.meta.url), "utf8");
-            files["package.json"] = JSON.stringify({ name: "clawdesk-task-board", version: "1.0.0", private: true, type: "module", engines: { node: ">=22.13.0" }, scripts: { start: "node server.mjs" }, license: "MIT" }, null, 2) + "\n";
-            files["README.md"] = "# " + request.projectName.replace(/[\r\n]/g, " ") + "\n\nTask board template v1: create, list, rename, complete and delete tasks. Node.js >=22.13.0, built-in HTTP and SQLite, no external packages.\n\nRun locally: node server.mjs. Open http://127.0.0.1:3000. The default database is app/tasks.sqlite; DATA_FILE optionally selects another writable SQLite path and PORT changes the local port.\n\nPreview data is ephemeral and is removed when the preview stops. PROJECT-REQUIREMENTS.json preserves the conversation and rules as requirements; custom business rules are not automatically implemented by this template.\n";
+            files["package.json"] = JSON.stringify({ name: "clawdesk-task-board", version: "1.0.0", private: true, type: "module", engines: { node: ">=22.13.0" }, scripts: { start: "node server.mjs", test: "node --test" }, license: "MIT" }, null, 2) + "\n";
+            files["README.md"] = "# " + request.projectName.replace(/[\r\n]/g, " ") + "\n\nTask board template v1: create, list, rename, complete and delete tasks. Node.js >=22.13.0, built-in HTTP and SQLite, no external packages.\n\nRun locally: node server.mjs. Checks: node --test (checks.test.mjs; each test name starts with a permanent ID such as TB-002, which the panel links to acceptance scenarios). Open http://127.0.0.1:3000. The default database is app/tasks.sqlite; DATA_FILE optionally selects another writable SQLite path and PORT changes the local port.\n\nPreview data is ephemeral and is removed when the preview stops. PROJECT-REQUIREMENTS.json preserves the conversation and rules as requirements; custom business rules are not automatically implemented by this template.\n";
             files["PROJECT-REQUIREMENTS.json"] = JSON.stringify({ projectName: request.projectName, brief: request.brief, rules: request.rules }, null, 2) + "\n";
             files.LICENSE = "MIT License\n\nCopyright (c) 2026 ClawDesk contributors\n\nPermission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files (the \"Software\"), to deal in the Software without restriction, including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to the following conditions:\n\nThe above copyright notice and this permission notice shall be included in all copies or substantial portions of the Software.\n\nTHE SOFTWARE IS PROVIDED \"AS IS\", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.\n";
-            files[".clawdesk-build.json"] = JSON.stringify({ templateId: request.templateId, templateVersion: 1, planId: request.planId, runtime: "Node.js >=22.13.0", license: "MIT" }, null, 2) + "\n";
+            files[".clawdesk-build.json"] = JSON.stringify({ templateId: request.templateId, templateVersion: 2, planId: request.planId, runtime: "Node.js >=22.13.0", license: "MIT" }, null, 2) + "\n";
             const staging = `.clawdesk-stage-${randomUUID()}`;
             const record = { identity: workspace.identity, planId: request.planId, templateId: request.templateId, fingerprint, staging, hashes: Object.fromEntries(Object.entries(files).map(([file, value]) => [file, hash(value)])) };
             if (!previous)
@@ -280,6 +284,70 @@ export class ProjectBuilder {
             const client = `const r=JSON.parse(process.argv[1]);const response=await fetch('http://127.0.0.1:3000'+r.path,{method:r.method,headers:{'content-type':'application/json'},body:r.body===undefined?undefined:JSON.stringify(r.body),signal:AbortSignal.timeout(5000)});const chunks=[];let size=0;for await(const chunk of response.body){size+=chunk.byteLength;if(size>262144)throw Error('too large');chunks.push(chunk);}const body=Buffer.concat(chunks).toString('utf8');console.log(JSON.stringify({status:response.status,contentType:response.headers.get('content-type'),body}));`;
             return JSON.parse(await this.command(["exec", preview.Id, "node", "--input-type=module", "-e", client, JSON.stringify(request)]));
         });
+    }
+    /**
+     * Runs the project's own checks (node --test) in a throwaway container: no network, read-only root,
+     * a copy of the current files (not the template's: changed code is what checks are for). Only projects
+     * created by the builder qualify. Files are read under the folder lock; the run itself is outside it.
+     */
+    async checks(id) {
+        const files = await this.#with(id, async (workspace, state) => {
+            if (workspace.mode !== "new" || !(await this.#record(state, id)))
+                fail("checks_unsupported");
+            try {
+                return await withChildDirectoryWithin(workspace.directory, "app", async (app) => {
+                    const files = {};
+                    let size = 0;
+                    for (const name of selectCheckFiles(await fs.readdir(app, { withFileTypes: true }))) {
+                        const data = await readFile(app, name, CHECK_PAYLOAD_LIMIT).catch(error => {
+                            throw error instanceof ProjectBuilderError ? new ProjectBuilderError("checks_too_large", 413) : error;
+                        });
+                        size += Buffer.byteLength(data);
+                        if (size > CHECK_PAYLOAD_LIMIT)
+                            fail("checks_too_large", 413);
+                        files[name] = data;
+                    }
+                    return files;
+                });
+            }
+            catch (error) {
+                if (error.code === "ENOENT")
+                    fail("checks_no_files");
+                throw error;
+            }
+        });
+        const payload = Buffer.from(JSON.stringify(files)).toString("base64");
+        if (payload.length > CHECK_ARGUMENT_LIMIT)
+            fail("checks_too_large", 413);
+        const gateway = await this.#gateway();
+        if (!/^(sha256:)?[a-f0-9]{64}$/.test(gateway.Image))
+            fail("preview_image_unavailable");
+        const install = gateway.Config.Labels["com.docker.compose.project"];
+        const name = `clawdesk-checks-${hash(install).slice(0, 12)}-${this.#key(id)}`;
+        await this.#removeChecks(name, install);
+        const nonce = randomUUID().replace(/-/g, "");
+        const started = Date.now();
+        let stdout;
+        try {
+            stdout = await this.command(["run", "--rm", "--pull=never", "--name", name, "--label", `clawdesk.checks.install=${install}`, "--label", `clawdesk.checks.project=${this.#key(id)}`, "--network", "none", "--read-only", "--cap-drop", "ALL", "--security-opt", "no-new-privileges", "--pids-limit", "128", "--memory", "256m", "--cpus", "1", "--user", "1000:1000", "--tmpfs", "/project:rw,noexec,nosuid,size=4194304,uid=1000,gid=1000", "--tmpfs", "/runner:rw,noexec,nosuid,size=1048576,uid=1000,gid=1000", "--tmpfs", "/tmp:rw,noexec,nosuid,size=33554432", "--workdir", "/project", "--entrypoint", "node", gateway.Image, "--input-type=module", "-e", CHECKS_BOOTSTRAP, payload, nonce], { timeoutMs: 120000 });
+        }
+        catch {
+            await this.#removeChecks(name, install).catch(() => { });
+            return { status: "blocked", reason: "runner_failed", tests: [], durationMs: Date.now() - started, filesFingerprint: filesFingerprint(files) };
+        }
+        return { ...parseCheckOutput(stdout, nonce, files), durationMs: Date.now() - started, filesFingerprint: filesFingerprint(files) };
+    }
+    /** A leftover checks container of this installation and project (e.g. after a timeout), and only that. */
+    async #removeChecks(name, install) {
+        const ids = (await this.command(["ps", "-aq", "--filter", `name=^/${name}$`])).trim();
+        if (!ids)
+            return;
+        if (!/^[a-f0-9]{12,64}$/.test(ids))
+            fail("preview_identity_changed");
+        const item = JSON.parse(await this.command(["inspect", ids]))[0];
+        if (item?.Name !== `/${name}` || item?.Config?.Labels?.["clawdesk.checks.install"] !== install)
+            fail("preview_identity_changed");
+        await this.command(["rm", "-f", item.Id]);
     }
     analyze(id) {
         return this.#with(id, async (workspace) => {

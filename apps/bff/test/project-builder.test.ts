@@ -182,6 +182,8 @@ describe("project builder guided workflow", () => {
     complete(); const before = company.projectBrief(id);
     close();
     const sqlite = new Database(path.join(root, "panel.sqlite"));
+    // The schema before 0016 is also before every later migration (0017 project checks).
+    sqlite.exec("DROP TABLE acceptance_test_links; DROP TABLE project_check_results; DROP TABLE project_check_runs; DELETE FROM __drizzle_migrations WHERE created_at = 1792347000000");
     sqlite.exec("DROP TABLE project_builder_requests; DROP TABLE project_builders; DELETE FROM __drizzle_migrations WHERE created_at = 1792346000000");
     sqlite.close();
     ({ db, close } = openDb(path.join(root, "panel.sqlite"))); company = service();

@@ -10,6 +10,7 @@ import ProjectWorkspaceCard from "../components/ProjectWorkspaceCard.vue";
 import ProjectBriefCard from "../components/ProjectBriefCard.vue";
 import ProjectRulesCard from "../components/ProjectRulesCard.vue";
 import ProjectBuilderCard from "../components/ProjectBuilderCard.vue";
+import ProjectChecksCard from "../components/ProjectChecksCard.vue";
 
 const { t, te } = useI18n();
 const route = useRoute();
@@ -130,6 +131,7 @@ onMounted(async () => {
           <n-button :disabled="saving" @click="edit(project)">{{ t('projects.edit') }}</n-button>
         </n-card>
         <project-builder-card :key="`builder-${project.id}`" :project-id="project.id" :disabled="!canAdd || saving" :refresh-token="builderRefreshToken" @changed="briefRefreshToken++" />
+        <project-checks-card :key="`checks-${project.id}`" :project-id="project.id" :disabled="!canAdd || saving" :refresh-token="builderRefreshToken" />
         <project-brief-card :key="`brief-${project.id}`" :project-id="project.id" :disabled="!canAdd || saving" :refresh-token="briefRefreshToken" @changed="builderRefreshToken++" />
         <project-rules-card :key="`rules-${project.id}`" :project-id="project.id" :disabled="!canAdd || saving" @changed="builderRefreshToken++" />
         <project-workspace-card :key="project.id" :project-id="project.id" :disabled="!canAdd || saving" @changed="builderRefreshToken++" />

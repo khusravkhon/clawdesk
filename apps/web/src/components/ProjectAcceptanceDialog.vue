@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import type { AcceptanceCaseDto, AcceptanceFields, AcceptanceHistoryDto, AcceptanceSuiteDto, BusinessRuleDto, CreateAcceptanceRequest, RecordAcceptanceCheckRequest, UpdateAcceptanceRequest } from "@clawdesk/shared";
+import type { AcceptanceCaseDto, AcceptanceFields, AcceptanceHistoryDto, AcceptanceSuiteDto, AutomatedCheckStatus, BusinessRuleDto, CreateAcceptanceRequest, ProjectCheckTestDto, RecordAcceptanceCheckRequest, UpdateAcceptanceRequest } from "@clawdesk/shared";
 import { NAlert, NButton, NCheckbox, NEmpty, NFormItem, NInput, NModal, NPopconfirm, NSelect, NSpace, NTag } from "naive-ui";
 import { computed, reactive, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
@@ -23,6 +23,13 @@ const validCase = computed(() => fields.title.trim() && fields.action.trim() && 
 const validCheck = computed(() => check.outcome && check.context.trim() && check.observed.trim() && (check.outcome === "blocked" || check.evidence.trim()) && check.confirm);
 const dirty = computed(() => JSON.stringify(editor.value === "case" ? fields : check) !== initial.value);
 const options = (items: string[], key: string) => items.map(value => ({ value, label: t(`projectAcceptance.${key}.${value}`) }));
+/** Tests of the latest run: a scenario links to one by picking it (a typed reference stays free text). */
+const tests = ref<ProjectCheckTestDto[]>([]);
+const testOptions = computed(() => [...tests.value.map(item => ({ value: item.id, label: `${item.name} (${item.file})` })), ...(fields.testRef && !tests.value.some(item => item.id === fields.testRef) ? [{ value: fields.testRef, label: fields.testRef }] : [])]);
+const automatedType = (status: AutomatedCheckStatus) => status === "passed" ? "success" : status === "failed" ? "error" : status === "skipped" || status === "unlinked" ? "default" : "warning";
+async function loadTests(): Promise<void> {
+  try { tests.value = (await api.company.projectChecks(props.projectId)).latest?.tests ?? []; } catch { tests.value = []; }
+}
 const explain = (e: unknown) => e instanceof ApiError && te(`company.errors.${e.body.error}`) ? t(`company.errors.${e.body.error}`) : t("company.errors.failed");
 
 async function load(version?: number): Promise<void> {
@@ -66,7 +73,7 @@ async function showHistory(item: AcceptanceCaseDto): Promise<void> {
   catch (e) { error.value = explain(e); }
   finally { saving.value = false; }
 }
-watch(() => props.rule.id, () => { suite.value = null; void load(); }, { immediate: true });
+watch(() => props.rule.id, () => { suite.value = null; void load(); void loadTests(); }, { immediate: true });
 </script>
 
 <template>
@@ -82,7 +89,8 @@ watch(() => props.rule.id, () => { suite.value = null; void load(); }, { immedia
       <n-empty v-if="!suite.cases.length" :description="t('projectAcceptance.empty')" />
       <section v-for="item in suite.cases" :key="item.id" class="acceptance-row">
         <h3>{{ item.code }} · {{ item.fields.title }}</h3>
-        <n-space><n-tag size="small">{{ t('projectRules.version', { version: item.revision }) }}</n-tag><n-tag size="small">{{ t(`projectAcceptance.kinds.${item.fields.kind}`) }}</n-tag><n-tag size="small">{{ t(item.latestCheck ? `projectAcceptance.outcomes.${item.latestCheck.outcome}` : 'projectAcceptance.notRun') }}</n-tag></n-space>
+        <n-space><n-tag size="small">{{ t('projectRules.version', { version: item.revision }) }}</n-tag><n-tag size="small">{{ t(`projectAcceptance.kinds.${item.fields.kind}`) }}</n-tag><n-tag size="small">{{ t(item.latestCheck ? `projectAcceptance.outcomes.${item.latestCheck.outcome}` : 'projectAcceptance.notRun') }}</n-tag><n-tag v-if="item.automated" size="small" :type="automatedType(item.automated.status)">{{ t('projectAcceptance.automatedLabel') }}: {{ t(`projectAcceptance.automated.${item.automated.status}`) }}</n-tag></n-space>
+        <p v-if="item.automated && ['failed', 'flaky', 'changed', 'unlinked', 'blocked'].includes(item.automated.status)" class="acceptance-text">{{ t(`projectAcceptance.automatedHint.${item.automated.status}`) }}<template v-if="item.automated.message && item.automated.status !== 'blocked'"><br>{{ item.automated.message }}</template></p>
         <p v-if="item.fields.given" class="acceptance-text"><strong>{{ t('projectAcceptance.fields.given') }}:</strong> {{ item.fields.given }}</p>
         <p class="acceptance-text"><strong>{{ t('projectAcceptance.fields.action') }}:</strong> {{ item.fields.action }}</p>
         <p class="acceptance-text"><strong>{{ t('projectAcceptance.fields.expected') }}:</strong> {{ item.fields.expected }}</p>
@@ -105,7 +113,9 @@ watch(() => props.rule.id, () => { suite.value = null; void load(); }, { immedia
       <template v-if="editor === 'case'">
         <p>{{ t('projectAcceptance.editHint') }}</p>
         <n-form-item :label="t('projectAcceptance.kind')"><n-select v-model:value="fields.kind" :aria-label="t('projectAcceptance.kind')" :options="options(['allowed','denied','boundary'], 'kinds')" :disabled="saving" /></n-form-item>
-        <n-form-item v-for="key in fieldKeys" :key="key" :label="t(`projectAcceptance.fields.${key}`)"><n-input v-model:value="fields[key]" :aria-label="t(`projectAcceptance.fields.${key}`)" :type="key === 'title' ? 'text' : 'textarea'" :maxlength="key === 'title' ? 160 : key === 'testRef' ? 1000 : 4000" :disabled="saving" :autosize="{ minRows: 2, maxRows: 5 }" /></n-form-item>
+        <n-form-item v-for="key in fieldKeys.filter(value => value !== 'testRef')" :key="key" :label="t(`projectAcceptance.fields.${key}`)"><n-input v-model:value="fields[key]" :aria-label="t(`projectAcceptance.fields.${key}`)" :type="key === 'title' ? 'text' : 'textarea'" :maxlength="key === 'title' ? 160 : 4000" :disabled="saving" :autosize="{ minRows: 2, maxRows: 5 }" /></n-form-item>
+        <n-form-item :label="t('projectAcceptance.fields.testRef')"><n-select v-model:value="fields.testRef" :aria-label="t('projectAcceptance.fields.testRef')" :options="testOptions" filterable tag clearable :placeholder="t(tests.length ? 'projectAcceptance.pickTest' : 'projectAcceptance.noTestsYet')" :disabled="saving" @update:value="fields.testRef = $event ?? ''" /></n-form-item>
+        <p v-if="!tests.length">{{ t('projectAcceptance.noTestsHint') }}</p>
       </template>
       <template v-else>
         <p>{{ selected?.code }} · {{ selected?.fields.title }} · {{ t('projectRules.version', { version: selected?.revision }) }}</p>

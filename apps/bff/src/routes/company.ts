@@ -11,6 +11,8 @@ import { CreateAcceptanceRequest, RecordAcceptanceCheckRequest, UpdateAcceptance
 import { AcceptanceError } from "../company/project-acceptance-service.js";
 import { AnswerProjectBuilderRequest, BuilderMutationRequest, ConfirmProjectBuilderRequest, PlanProjectBuilderRequest, ProjectPreviewRequest } from "@clawdesk/shared";
 import { ProjectBuilderError } from "../company/project-builder-service.js";
+import { ProjectChecksError } from "../company/project-checks-service.js";
+import { RunProjectChecksRequest } from "@clawdesk/shared";
 
 const Params = z.object({ id: z.string().min(1).max(128).regex(/^[a-zA-Z0-9_-]+$/) });
 const RuleParams = Params.extend({ ruleId: z.uuid() });
@@ -22,11 +24,11 @@ export function registerCompanyRoutes(app: FastifyInstance, company: CompanyServ
     scope.setErrorHandler((error, _request, reply) => {
       if (error instanceof ZodError) return reply.status(400).send({ error: "invalid_request", message: "request validation failed" });
       if (error instanceof BridgeError) {
-        const known = new Set(["invalid_workspace", "workspace_unavailable", "workspace_already_linked", "workspace_in_use", "workspace_limit", "workspace_exists", "workspace_not_directory", "company_only", "builder_files_changed", "builder_existing_readonly", "invalid_builder_request", "builder_plan_changed", "builder_workspace_not_empty", "preview_identity_changed", "preview_image_unavailable", "preview_unavailable", "preview_not_running", "invalid_preview_request", "existing_workspace_required", "workspace_required", "workspace_changed"]);
+        const known = new Set(["invalid_workspace", "workspace_unavailable", "workspace_already_linked", "workspace_in_use", "workspace_limit", "workspace_exists", "workspace_not_directory", "company_only", "builder_files_changed", "builder_existing_readonly", "invalid_builder_request", "builder_plan_changed", "builder_workspace_not_empty", "preview_identity_changed", "preview_image_unavailable", "preview_unavailable", "preview_not_running", "invalid_preview_request", "existing_workspace_required", "workspace_required", "workspace_changed", "checks_unsupported", "checks_too_large", "checks_no_files"]);
         const code = known.has(error.code) ? error.code : "workspace_unavailable";
         return reply.status(code === "invalid_workspace" ? 400 : code === "workspace_unavailable" ? 503 : 409).send({ error: code, message: code });
       }
-      if (!(error instanceof CompanyError) && !(error instanceof ProjectRuleError) && !(error instanceof AcceptanceError) && !(error instanceof ProjectBuilderError)) throw error;
+      if (!(error instanceof CompanyError) && !(error instanceof ProjectRuleError) && !(error instanceof AcceptanceError) && !(error instanceof ProjectBuilderError) && !(error instanceof ProjectChecksError)) throw error;
       const status = error.code === "company_only" || error.code.endsWith("_missing") ? 404 : error.code === "gateway_unavailable" ? 503 : 409;
       return reply.status(status).send({ error: error.code, message: error.code });
     });
@@ -46,6 +48,8 @@ export function registerCompanyRoutes(app: FastifyInstance, company: CompanyServ
     });
     scope.post("/api/company/projects", async (request, reply) => reply.status(201).send(company.createProject(CreateProjectRequest.parse(request.body))));
     scope.get("/api/company/projects/:id/brief", (request) => company.projectBrief(Params.parse(request.params).id));
+    scope.get("/api/company/projects/:id/checks", request => company.checks.list(Params.parse(request.params).id));
+    scope.post("/api/company/projects/:id/checks/run", request => company.checks.run(Params.parse(request.params).id, RunProjectChecksRequest.parse(request.body)));
     scope.get("/api/company/projects/:id/builder", request => company.builder.get(Params.parse(request.params).id));
     scope.get("/api/company/projects/:id/builder/analysis", request => company.builder.analyze(Params.parse(request.params).id));
     scope.post("/api/company/projects/:id/builder/answer", request => company.builder.answer(Params.parse(request.params).id, AnswerProjectBuilderRequest.parse(request.body)));

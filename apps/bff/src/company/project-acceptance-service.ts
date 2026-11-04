@@ -3,14 +3,15 @@ import type { AcceptanceCaseDto, AcceptanceCheckDto, AcceptanceHistoryDto, Accep
 import { and, asc, desc, eq, max } from "drizzle-orm";
 import type { Db } from "../db/client.js";
 import { acceptanceCases, acceptanceChecks, acceptanceRevisions, projectRules, projectRuleVersions } from "../db/schema.js";
+import { linkScenarioTest, scenarioAutomatedStatus } from "./project-checks-service.js";
 
 export class AcceptanceError extends Error {
   constructor(readonly code: "rule_missing" | "rule_version_missing" | "acceptance_missing" | "revision_conflict" | "request_conflict" | "acceptance_unchanged" | "rule_not_approved") { super(code); }
 }
 const checkDto = (row: typeof acceptanceChecks.$inferSelect): AcceptanceCheckDto => ({ id: row.id, revision: row.revision, outcome: row.outcome, context: row.context, observed: row.observed, evidence: row.evidence, source: row.source, checkedBy: row.checkedBy, createdAt: row.createdAt });
-const caseDto = (row: typeof acceptanceCases.$inferSelect, version: typeof acceptanceRevisions.$inferSelect, check: typeof acceptanceChecks.$inferSelect | null): AcceptanceCaseDto => ({ id: row.id, code: `AC-${String(row.number).padStart(3, "0")}`, ruleVersion: row.ruleVersion, revision: row.revision, fields: version.fields, createdAt: version.createdAt, latestCheck: check ? checkDto(check) : null });
+const caseDto = (row: typeof acceptanceCases.$inferSelect, version: typeof acceptanceRevisions.$inferSelect, check: typeof acceptanceChecks.$inferSelect | null, automated: AcceptanceCaseDto["automated"]): AcceptanceCaseDto => ({ id: row.id, code: `AC-${String(row.number).padStart(3, "0")}`, ruleVersion: row.ruleVersion, revision: row.revision, fields: version.fields, createdAt: version.createdAt, latestCheck: check ? checkDto(check) : null, automated });
 
-/** Evidence is an owner's manual record tied to exact versions, never an automated test result. */
+/** Manual evidence is the owner's record tied to exact versions; the automated result comes from linked checks (project-checks-service). */
 export class ProjectAcceptanceService {
   constructor(private readonly deps: { db: Db; checkProject: (id: string, writing: boolean) => unknown }) {}
 
@@ -28,11 +29,11 @@ export class ProjectAcceptanceService {
     return row;
   }
 
-  #current(row: typeof acceptanceCases.$inferSelect): AcceptanceCaseDto {
+  #current(projectId: string, row: typeof acceptanceCases.$inferSelect): AcceptanceCaseDto {
     const version = this.deps.db.select().from(acceptanceRevisions).where(and(eq(acceptanceRevisions.caseId, row.id), eq(acceptanceRevisions.revision, row.revision))).get();
     if (!version) throw new AcceptanceError("acceptance_missing");
     const check = this.deps.db.select().from(acceptanceChecks).where(and(eq(acceptanceChecks.caseId, row.id), eq(acceptanceChecks.revision, row.revision))).orderBy(desc(acceptanceChecks.id)).get();
-    return caseDto(row, version, check ?? null);
+    return caseDto(row, version, check ?? null, scenarioAutomatedStatus(this.deps.db, projectId, row.id, row.revision, version.fields.testRef));
   }
 
   list(projectId: string, ruleId: string, version?: number): AcceptanceSuiteDto {
@@ -47,7 +48,7 @@ export class ProjectAcceptanceService {
       .leftJoin(acceptanceChecks, eq(acceptanceChecks.id, latest.id))
       .where(and(eq(acceptanceCases.ruleId, ruleId), eq(acceptanceCases.ruleVersion, selectedVersion))).orderBy(asc(acceptanceCases.number)).all();
     const versions = this.deps.db.select({ version: projectRuleVersions.version }).from(projectRuleVersions).where(eq(projectRuleVersions.ruleId, ruleId)).orderBy(desc(projectRuleVersions.version)).all().map(row => row.version);
-    return { currentVersion: rule.currentVersion, selectedVersion, versions, approved: selected.approvedAt !== null, statement: selected.fields.statement, cases: rows.map(row => caseDto(row.row, row.fields, row.check)) };
+    return { currentVersion: rule.currentVersion, selectedVersion, versions, approved: selected.approvedAt !== null, statement: selected.fields.statement, cases: rows.map(row => caseDto(row.row, row.fields, row.check, scenarioAutomatedStatus(this.deps.db, projectId, row.row.id, row.row.revision, row.fields.fields.testRef))) };
   }
 
   create(projectId: string, ruleId: string, request: CreateAcceptanceRequest): AcceptanceCaseDto {
@@ -57,13 +58,14 @@ export class ProjectAcceptanceService {
       const previous = tx.select().from(acceptanceCases).where(and(eq(acceptanceCases.ruleId, ruleId), eq(acceptanceCases.requestId, request.requestId))).get();
       if (previous) {
         if (previous.requestPayload !== payload) throw new AcceptanceError("request_conflict");
-        return this.#current(previous);
+        return this.#current(projectId, previous);
       }
       const last = tx.select().from(acceptanceCases).where(eq(acceptanceCases.ruleId, ruleId)).orderBy(desc(acceptanceCases.number)).get();
       const id = randomUUID();
       tx.insert(acceptanceCases).values({ id, ruleId, ruleVersion: request.ruleVersion, number: (last?.number ?? 0) + 1, requestId: request.requestId, requestPayload: payload }).run();
       tx.insert(acceptanceRevisions).values({ caseId: id, revision: 1, fields: request.fields, createdAt: Date.now(), requestId: request.requestId, requestPayload: payload }).run();
-      return this.#current(this.#case(ruleId, id));
+      linkScenarioTest(tx, projectId, id, 1, request.fields.testRef);
+      return this.#current(projectId, this.#case(ruleId, id));
     });
   }
 
@@ -77,13 +79,14 @@ export class ProjectAcceptanceService {
       if (previous) {
         if (previous.requestPayload !== payload) throw new AcceptanceError("request_conflict");
         if (row.revision !== previous.revision) throw new AcceptanceError("revision_conflict");
-        return this.#current(row);
+        return this.#current(projectId, row);
       }
       if (row.revision !== request.revision) throw new AcceptanceError("revision_conflict");
-      if (JSON.stringify(this.#current(row).fields) === JSON.stringify(request.fields)) throw new AcceptanceError("acceptance_unchanged");
+      if (JSON.stringify(this.#current(projectId, row).fields) === JSON.stringify(request.fields)) throw new AcceptanceError("acceptance_unchanged");
       tx.insert(acceptanceRevisions).values({ caseId: id, revision: row.revision + 1, fields: request.fields, createdAt: Date.now(), requestId: request.requestId, requestPayload: payload }).run();
       tx.update(acceptanceCases).set({ revision: row.revision + 1 }).where(eq(acceptanceCases.id, id)).run();
-      return this.#current(this.#case(ruleId, id));
+      linkScenarioTest(tx, projectId, id, row.revision + 1, request.fields.testRef);
+      return this.#current(projectId, this.#case(ruleId, id));
     });
   }
 

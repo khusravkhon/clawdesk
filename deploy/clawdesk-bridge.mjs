@@ -427,7 +427,7 @@ async function handle(req) {
       if (req.method === "GET" && url.pathname === "/projects/builder/analyze") return { status: 200, body: await projectBuilder.analyze(url.searchParams.get("projectId")) };
       if (req.method === "POST") {
         const { projectId, ...body } = await readJson(req);
-        const operation = { "/projects/builder/prepare": "prepare", "/projects/builder/start": "start", "/projects/builder/stop": "stop", "/projects/builder/request": "request" }[url.pathname];
+        const operation = { "/projects/builder/prepare": "prepare", "/projects/builder/start": "start", "/projects/builder/stop": "stop", "/projects/builder/request": "request", "/projects/builder/checks": "checks" }[url.pathname];
         if (operation) return { status: 200, body: await projectBuilder[operation](projectId, body) };
       }
       return { status: 404, body: { error: "not_found" } };

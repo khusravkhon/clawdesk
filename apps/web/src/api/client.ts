@@ -1,4 +1,7 @@
 import type {
+  ProjectChecksDto,
+  ProjectCheckRunDto,
+  RunProjectChecksRequest,
   ProjectBuilderDto,
   ProjectWorkspaceAnalysisDto,
   BuilderMutationRequest,
@@ -346,6 +349,8 @@ export const api = {
     figmaDisconnect: () => post<SourcesDto>("/api/sources/figma/disconnect"),
   },
   company: {
+    projectChecks: (id: string) => request<ProjectChecksDto>(`/api/company/projects/${encodeURIComponent(id)}/checks`),
+    runProjectChecks: (id: string, body: RunProjectChecksRequest) => post<ProjectCheckRunDto>(`/api/company/projects/${encodeURIComponent(id)}/checks/run`, body),
     builder: (id: string) => request<ProjectBuilderDto>(`/api/company/projects/${encodeURIComponent(id)}/builder`),
     analyzeBuilder: (id: string) => request<ProjectWorkspaceAnalysisDto>(`/api/company/projects/${encodeURIComponent(id)}/builder/analysis`),
     answerBuilder: (id: string, body: AnswerProjectBuilderRequest) => post<ProjectBuilderDto>(`/api/company/projects/${encodeURIComponent(id)}/builder/answer`, body),

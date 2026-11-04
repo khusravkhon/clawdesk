@@ -33,7 +33,7 @@ const template: ProjectBuilderDto["templates"][number] = {
   features: ["Создание, переименование и удаление задач", "Переключение состояния задачи", "Сохранение задач в локальной SQLite", "Локальный запуск и интерактивный просмотр"],
   limitations: ["Первая версия — только доска задач: другие сценарии требуют отдельной разработки", "Без авторизации, ролей, внешних интеграций и публичного размещения", "Записанные бизнес-правила сохраняются как требования; их реализация не считается доказанной шаблоном", "Данные в изолированном просмотре временные: остановка удаляет задачи; для постоянного хранения запускайте созданное приложение отдельно", "После создания файлов новый план не перезаписывает приложение: нужна отдельная новая папка"],
 };
-const files = ["server.mjs", "index.html", "package.json", "README.md", "PROJECT-REQUIREMENTS.json", "LICENSE", ".clawdesk-build.json"].map(file => `app/${file}`);
+const files = ["server.mjs", "index.html", "checks.test.mjs", "package.json", "README.md", "PROJECT-REQUIREMENTS.json", "LICENSE", ".clawdesk-build.json"].map(file => `app/${file}`);
 const emptyRuntime = (): ProjectBuilderRuntimeDto => ({ state: "empty", planId: null, files: [], previewUrl: null, error: null });
 
 export class ProjectBuilderService {

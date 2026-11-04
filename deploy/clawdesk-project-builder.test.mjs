@@ -28,6 +28,19 @@ function runner(stateDir, options = {}) {
             return args.includes("label=com.docker.compose.service=gateway") ? gatewayId : preview ? previewId : "";
         if (args[0] === "inspect")
             return JSON.stringify(args[1] === gatewayId ? options.ambiguous ? [gateway, gateway] : [gateway] : [preview]);
+        if (args[0] === "run" && !args.includes("-d")) {
+            // A checks run: execute the real bootstrap here, with the container directories in a temp dir.
+            const at = args.indexOf("-e");
+            const dirs = await fs.mkdtemp(path.join(os.tmpdir(), "clawdesk-checks-run-"));
+            await fs.mkdir(path.join(dirs, "project")); await fs.mkdir(path.join(dirs, "runner"));
+            const child = spawn(process.execPath, ["--input-type=module", "-e", args[at + 1], args[at + 2], args[at + 3]], { env: { ...process.env, NODE_TEST_CONTEXT: "child-v8", CLAWDESK_CHECKS_ROOT: path.join(dirs, "project"), CLAWDESK_CHECKS_RUNNER: path.join(dirs, "runner") }, stdio: ["ignore", "pipe", "ignore"] });
+            let out = "";
+            child.stdout.on("data", chunk => out += chunk);
+            await new Promise(resolve => child.once("close", resolve));
+            await fs.rm(dirs, { recursive: true, force: true });
+            if (options.runnerDown) throw Error("docker_failed");
+            return out;
+        }
         if (args[0] === "run") {
             const labels = Object.fromEntries(args.flatMap((value, index) => value === "--label" ? [args[index + 1].split("=")] : []));
             preview = { Id: previewId, Name: "/" + args[args.indexOf("--name") + 1], Config: { Labels: labels }, State: { Running: true } };
@@ -153,6 +166,43 @@ test("existing workspaces are analyzed without executing or writing project file
     assert.deepEqual(await fs.readdir(f.directory), ["package.json"]);
     assert.equal(await fs.readFile(path.join(f.directory, "package.json"), "utf8"), manifest);
     assert.equal(f.calls.length, 0);
+});
+
+test("checks run the project's current files in a hardened throwaway container", linux, async t => {
+    const f = await fixture(t);
+    await assert.rejects(f.builder.checks("project-a"), { code: "checks_unsupported" });
+    await f.builder.prepare("project-a", request);
+    const server = path.join(f.directory, "app", "server.mjs");
+    await fs.writeFile(path.join(f.directory, "app", "tasks.sqlite"), "local data, never copied");
+    let run = await f.builder.checks("project-a");
+    assert.equal(run.status, "completed");
+    assert.equal(run.tests.length, 6);
+    assert.ok(run.tests.every(item => item.status === "passed" && /^[a-f0-9]{64}$/.test(item.fileHash)));
+    const args = f.calls.find(call => call[0] === "run");
+    for (const flag of [["--network", "none"], ["--read-only"], ["--cap-drop", "ALL"], ["--user", "1000:1000"], ["--pull=never"], ["--rm"]])
+        assert.ok(flag.every(value => args.includes(value)) && (flag.length === 1 || args[args.indexOf(flag[0]) + 1] === flag[1]), flag.join(" "));
+    assert.equal(JSON.parse(Buffer.from(args[args.indexOf("-e") + 2], "base64"))["tasks.sqlite"], undefined);
+    // A developer edits the code: checks run the edited file even though it no longer matches the template.
+    await fs.chmod(server, 0o644);
+    const source = await fs.readFile(server, "utf8");
+    const rule = "|| !body.title.trim() || body.title.trim().length > 200)\n                return send(res, 400, { error: \"invalid_title\" });\n            if (db.prepare(\"SELECT COUNT";
+    assert.ok(source.includes(rule), "template changed: update this test");
+    await fs.writeFile(server, source.replace(rule, rule.replace("|| !body.title.trim() ", "")));
+    run = await f.builder.checks("project-a");
+    assert.deepEqual(run.tests.filter(item => item.status !== "passed").map(item => item.name.slice(0, 6)), ["TB-002"]);
+});
+
+test("checks refuse existing folders, oversized projects, and report a failed runner as blocked", linux, async t => {
+    const existing = await fixture(t, { existing: true });
+    await assert.rejects(existing.builder.checks("project-a"), { code: "checks_unsupported" });
+    const f = await fixture(t);
+    await f.builder.prepare("project-a", request);
+    await fs.writeFile(path.join(f.directory, "app", "big.json"), "x".repeat(90_000));
+    await assert.rejects(f.builder.checks("project-a"), { code: "checks_too_large" });
+    await fs.rm(path.join(f.directory, "app", "big.json"));
+    const down = await fixture(t, { runnerDown: true });
+    await down.builder.prepare("project-a", request);
+    assert.deepEqual((await down.builder.checks("project-a")).status, "blocked");
 });
 
 test("preview is hardened, probes readiness, and uses only its identified container", linux, async t => {
