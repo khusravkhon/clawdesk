@@ -15,9 +15,13 @@ describe("templates", () => {
       "company/marketing",
       "company/operations",
       "company/pm",
+      "company/project-developer",
+      "company/project-qa",
+      "company/project-reviewer",
       "company/reviewer",
       "company/sales",
       "company/support",
+      "company/team-lead",
       "personal/accountant",
       "personal/custom",
       "personal/dietitian",
@@ -42,8 +46,16 @@ describe("templates", () => {
     }
   });
 
+  it("offers a team lead that starts without sources, schedules or extra access", () => {
+    const lead = listTemplates().find((t) => t.id === "team-lead")!;
+    expect(lead).toMatchObject({ mode: "company", role: "specialist", sandbox: true, canAskMain: true, sources: [], cronPresets: [] });
+    const files = renderTemplateFiles(lead, { teamPurpose: "Магазин" });
+    expect(files["SOUL.md"]).toContain("Магазин");
+    expect(files["AGENTS.md"]).toContain("доступ выдаёт владелец");
+  });
+
   it("offers business specialists without team-only fields or connected service assumptions", () => {
-    const specialists = listTemplates().filter((t) => t.mode === "company" && t.role === "specialist" && !["custom", "department-head"].includes(t.id));
+    const specialists = listTemplates().filter((t) => t.mode === "company" && t.role === "specialist" && !["custom", "department-head", "team-lead"].includes(t.id));
     expect(specialists.map((t) => t.id).sort()).toEqual(["analyst", "hr", "marketing", "operations", "sales", "support"]);
     for (const template of specialists) {
       expect(template.fields.some((f) => f.key === "agentName" && f.default)).toBe(true);

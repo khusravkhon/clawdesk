@@ -30,6 +30,10 @@ import { registerReminderRoutes } from "./routes/reminders.js";
 import type { Db } from "./db/client.js";
 import { GatewayUnavailableError, type GatewayService } from "./gateway/gateway-service.js";
 import { registerAgentRoutes } from "./routes/agents.js";
+import { registerAgentCharterRoutes } from "./routes/agent-charter.js";
+import { oneShot } from "./chat/one-shot.js";
+import { registerCapabilityRoutes } from "./routes/capabilities.js";
+import type { AgentCharterService } from "./company/agent-charter-service.js";
 import { registerAiRoutes } from "./routes/ai.js";
 import { registerApprovalRoutes } from "./routes/approvals.js";
 import { registerAssistantRoutes } from "./routes/assistant.js";
@@ -52,6 +56,13 @@ import { registerSystemRoutes } from "./routes/system.js";
 import { registerStorageRoutes } from "./routes/storage.js";
 import { registerSpaceRoutes } from "./routes/space.js";
 import { registerTeamRoutes } from "./routes/teams.js";
+import { registerWorkRequestRoutes } from "./routes/work-requests.js";
+import { registerWorkItemRoutes } from "./routes/work-items.js";
+import { registerActivityRoutes } from "./routes/activity.js";
+import type { ActivityService } from "./company/activity-service.js";
+import type { WorkItemsService } from "./company/work-items-service.js";
+import type { WorkRequestsService } from "./company/work-requests-service.js";
+import type { AccessService } from "./company/access-service.js";
 import { registerAuditRoutes } from "./routes/audit.js";
 import { registerUsageRoutes } from "./routes/usage.js";
 import { UsageService } from "./dashboard/usage-service.js";
@@ -89,6 +100,17 @@ export type AppDeps = {
   reminders?: ReminderService;
   space: SpaceService;
   teams: TeamService;
+  /** Stage 6 requests up the company structure; absent in tests that do not need them. */
+  requests?: WorkRequestsService;
+  /** Stage 5: agents' access to shared folders and MCP servers. */
+  access?: AccessService;
+  /** Stage 6, part 2: company tasks. */
+  workItems?: WorkItemsService;
+  /** Stage 4: agents' charters (responsibilities and limits) with versions. */
+  charters?: AgentCharterService;
+  /** Stage 9: agents' activity for the work list and the office, and a way to hear about changes. */
+  activity?: ActivityService;
+  onActivity?: (listener: () => void) => () => void;
   audit: AuditService;
   webDist: string | undefined;
   /** Fastify trustProxy: client address and HTTPS come from the proxy's headers (Caddy). */
@@ -145,7 +167,12 @@ export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
   registerSystemRoutes(app, deps);
   registerSpaceRoutes(app, deps);
   registerTeamRoutes(app, deps);
-  registerCompanyRoutes(app, new CompanyService(deps));
+  registerWorkRequestRoutes(app, deps);
+  registerWorkItemRoutes(app, deps);
+  registerActivityRoutes(app, deps);
+  if (deps.charters) registerAgentCharterRoutes(app, deps.charters);
+  registerCapabilityRoutes(app, deps);
+  registerCompanyRoutes(app, new CompanyService({ ...deps, model: oneShot(deps.gateway) }));
   registerAuditRoutes(app, deps);
   registerUsageRoutes(app, { usage: new UsageService(deps) });
 

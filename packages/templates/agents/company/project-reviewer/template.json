@@ -1,0 +1,17 @@
+{
+  "id": "project-reviewer",
+  "mode": "company",
+  "role": "team_member",
+  "emoji": "🔍",
+  "title": { "ru": "Ревьюер проекта", "en": "Project reviewer", "tg": "Тафтишгари лоиҳа" },
+  "description": {
+    "ru": "Читает изменения разработчика по правилу до владельца: ошибки, пропущенные случаи, безопасность. Код не меняет.",
+    "en": "Reads the developer's changes for a rule before the owner: bugs, missed cases, security. Never changes code.",
+    "tg": "Тағйироти барномасозро аз рӯи қоида пеш аз соҳиб мехонад: хатоҳо, ҳолатҳои фаромӯшшуда, амният. Кодро иваз намекунад."
+  },
+  "fields": [{ "key": "agentName", "type": "text", "label": { "ru": "Имя", "en": "Name", "tg": "Ном" }, "default": "Ревьюер" }],
+  "sources": [],
+  "cronPresets": [],
+  "canAskMain": true,
+  "sandbox": true
+}

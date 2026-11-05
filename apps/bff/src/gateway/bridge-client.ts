@@ -190,6 +190,59 @@ export class BridgeClient {
     return this.#call("GET", `/projects/workspace?projectId=${encodeURIComponent(projectId)}`);
   }
 
+  builderStatus(projectId: string): Promise<import("@clawdesk/shared").ProjectBuilderRuntimeDto> {
+    return this.#call("GET", `/projects/builder?projectId=${encodeURIComponent(projectId)}`);
+  }
+
+  prepareProjectApp(projectId: string, request: { planId: string; templateId: string; projectName: string; brief: import("@clawdesk/shared").ProjectBriefFields; rules: import("@clawdesk/shared").BusinessRuleDto[] }): Promise<import("@clawdesk/shared").ProjectBuilderRuntimeDto> {
+    return this.#call("POST", "/projects/builder/prepare", { projectId, ...request });
+  }
+
+  startProjectPreview(projectId: string, request: { planId: string }): Promise<import("@clawdesk/shared").ProjectBuilderRuntimeDto> {
+    return this.#call("POST", "/projects/builder/start", { projectId, ...request });
+  }
+
+  /** The project's own checks in a throwaway container (on given files, e.g. a work copy); up to two minutes. */
+  runProjectChecks(projectId: string, files?: Record<string, string>): Promise<import("@clawdesk/shared").ProjectChecksRunResult> {
+    return this.#call("POST", "/projects/builder/checks", { projectId, ...(files ? { files } : {}) }, 180_000);
+  }
+
+  /** The app's current flat files (P6.2 baseline and review). */
+  projectAppFiles(projectId: string): Promise<{ files: Record<string, string> }> {
+    return this.#call("GET", `/projects/builder/files?projectId=${encodeURIComponent(projectId)}`);
+  }
+
+  /** Writes accepted work into app/ if it still matches `baseline` (name → sha256). */
+  applyProjectWork(projectId: string, files: Record<string, string>, baseline: Record<string, string>): Promise<{ files: string[]; applied: true }> {
+    return this.#call("POST", "/projects/builder/apply", { projectId, files, baseline });
+  }
+
+  /** An executor's work copy: its path (created if missing), refilled for a stage, or read back. */
+  /** The executor agent's work copy: the folder "project" in its own workspace (/workspace/project in its sandbox). */
+  ensureProjectWork(agentId: string): Promise<{ path: string }> {
+    return this.#call("POST", "/projects/work/ensure", { agentId });
+  }
+
+  prepareProjectWork(agentId: string, files: Record<string, string>): Promise<{ path: string; files: string[] }> {
+    return this.#call("POST", "/projects/work/prepare", { agentId, files });
+  }
+
+  snapshotProjectWork(agentId: string): Promise<{ files: Record<string, string>; ignored: string[]; hashes: Record<string, string> }> {
+    return this.#call("POST", "/projects/work/snapshot", { agentId });
+  }
+
+  stopProjectPreview(projectId: string): Promise<import("@clawdesk/shared").ProjectBuilderRuntimeDto> {
+    return this.#call("POST", "/projects/builder/stop", { projectId });
+  }
+
+  projectPreviewRequest(projectId: string, request: { method: "GET" | "POST" | "PATCH" | "DELETE"; path: string; body?: unknown }): Promise<{ status: number; contentType: string; body: string }> {
+    return this.#call("POST", "/projects/builder/request", { projectId, ...request });
+  }
+
+  analyzeProjectWorkspace(projectId: string): Promise<{ files: string[]; dependencies: string[]; hasGit: boolean; truncated: boolean }> {
+    return this.#call("GET", `/projects/builder/analyze?projectId=${encodeURIComponent(projectId)}`);
+  }
+
   prepareProjectWorkspace(projectId: string, request: import("@clawdesk/shared").PrepareProjectWorkspaceRequest): Promise<import("@clawdesk/shared").ProjectWorkspaceDto> {
     return this.#call("POST", "/projects/workspace", { projectId, ...request });
   }
@@ -199,31 +252,123 @@ export class BridgeClient {
     return this.#call("POST", "/files/folder", { name });
   }
 
-  /** Exchanges files with the junior's managed workspace, without a host bind in its sandbox. */
-  ensureAgentFolder(agentId: string, name: string): Promise<{ hostPath: string; gatewayPath: string }> {
-    return this.#call("POST", "/files/agent-folder", { agentId, name }, 120_000);
+  /**
+   * Exchanges files with the junior's managed workspace, without a host bind in its sandbox. `dir` puts the
+   * copy at a fixed workspace folder (a team's "docs"); `readOnly` only mirrors the shared folder into it.
+   */
+  ensureAgentFolder(agentId: string, name: string, options: { dir?: "docs"; readOnly?: boolean } = {}): Promise<{ hostPath: string; gatewayPath: string }> {
+    return this.#call("POST", "/files/agent-folder", { agentId, name, ...options }, 120_000);
+  }
+
+  /** Stops synchronizing a folder for an agent and deletes the agent's copy (stage 5 revocation). */
+  removeAgentFolder(agentId: string, name: string, options: { dir?: "docs" } = {}): Promise<{ removed: boolean }> {
+    return this.#call("POST", "/files/agent-folder/remove", { agentId, name, ...options }, 60_000);
+  }
+
+  /** Folder names in the shared files folder. */
+  sharedFolders(): Promise<{ folders: string[] }> {
+    return this.#call("GET", "/files/folders");
+  }
+
+  /** P9: a load check of the project's app (app and load client in separate containers). */
+  projectLoad(projectId: string, request: { concurrency: number; durationMs: number }): Promise<{ conditions: import("@clawdesk/shared").LoadConditionsDto; result: import("@clawdesk/shared").LoadResultDto | null; error: string | null }> {
+    return this.#call("POST", "/projects/builder/load", { projectId, ...request }, request.durationMs + 120_000);
+  }
+
+  /** P0: versions of OpenClaw and of the tools the container has (null when missing). */
+  capabilities(): Promise<{ openclaw: string | null; docker: string | null; git: string | null; gog: string | null }> {
+    return this.#call("GET", "/capabilities", undefined, 20_000);
+  }
+
+  /** P8: a project's files for a transfer package (base64 with hashes), and a package's files into a new folder. */
+  projectTransferRead(projectId: string): Promise<{ files: { path: string; size: number; sha256: string; data: string }[]; excluded: { path: string; reason: string }[]; mode: string }> {
+    return this.#call("POST", "/projects/transfer/read", { projectId }, 120_000);
+  }
+  projectTransferWrite(projectId: string, files: { path: string; size: number; sha256: string; data: string }[]): Promise<{ written: number; bytes: number }> {
+    return this.#call("POST", "/projects/transfer/write", { projectId, files }, 180_000);
+  }
+
+  /** Stage 7: one Google Doc as a read-only copy in the agent's workspace (google/<id>.md), exported with the owner's account. */
+  googleDocCopy(agentId: string, docId: string, account: string): Promise<{ docId: string; title: string; revision: string | null; copiedAt: number; sha: string; path: string }> {
+    return this.#call("POST", "/google/doc/copy", { agentId, docId, account }, 120_000);
+  }
+  googleDocRemove(agentId: string, docId: string): Promise<{ removed: true }> {
+    return this.#call("POST", "/google/doc/remove", { agentId, docId });
+  }
+  googleDocList(agentId: string): Promise<{ copies: { docId: string; sha: string }[] }> {
+    return this.#call("POST", "/google/doc/list", { agentId });
   }
 
   async folderSyncStatus(): Promise<FolderSyncStatusesDto> {
     return FolderSyncStatusesDto.parse(await this.#call("GET", "/files/sync-status", undefined, 5_000));
   }
 
-  /** Clones a team's repository (a read-only copy and the developer's branch); the token stays aside. */
-  teamClone(teamId: string, repoUrl: string, token: string): Promise<{ defaultBranch: string; branch: string; repoPath: string; devPath: string }> {
+  /** Clones a team's repository for the panel; the token stays aside. Members get copies with teamMember. */
+  teamClone(teamId: string, repoUrl: string, token: string): Promise<{ defaultBranch: string; branch: string }> {
     return this.#call("POST", "/teams/clone", { teamId, repoUrl, token }, 10 * 60_000);
   }
 
-  teamStatus(teamId: string): Promise<TeamRepoStatusDto> {
-    return this.#call("GET", `/teams/status?teamId=${encodeURIComponent(teamId)}`);
+  /** A member's copy at <its workspace>/repo (/workspace/repo in its sandbox): the developer's branch, or a read copy. */
+  teamMember(teamId: string, agentId: string, role: "pm" | "developer" | "reviewer"): Promise<{ path: string; moved: boolean }> {
+    return this.#call("POST", "/teams/member", { teamId, agentId, role }, 10 * 60_000);
   }
 
-  teamFetch(teamId: string): Promise<TeamRepoStatusDto> {
-    return this.#call("POST", "/teams/fetch", { teamId }, 5 * 60_000);
+  teamStatus(teamId: string, developer?: string): Promise<TeamRepoStatusDto> {
+    return this.#call("GET", `/teams/status?teamId=${encodeURIComponent(teamId)}${developer ? `&developer=${encodeURIComponent(developer)}` : ""}`);
   }
 
-  /** Pushes the developer's branch and opens (or finds) its pull request. */
-  teamPush(teamId: string, repoUrl: string, title: string, body: string): Promise<PullRequestDto> {
-    return this.#call("POST", "/teams/push", { teamId, repoUrl, title, body }, 5 * 60_000);
+  /** New commits from GitHub; read copies of PM and reviewer are refreshed. */
+  teamFetch(teamId: string, members: { agentId: string; role: "pm" | "developer" | "reviewer" }[]): Promise<TeamRepoStatusDto> {
+    return this.#call("POST", "/teams/fetch", { teamId, members }, 5 * 60_000);
+  }
+
+  /** Pushes the developer's branch (read into the panel's clone) and opens (or finds) its pull request. */
+  teamPush(teamId: string, repoUrl: string, developer: string | undefined, title: string, body: string): Promise<PullRequestDto> {
+    return this.#call("POST", "/teams/push", { teamId, repoUrl, developer, title, body }, 5 * 60_000);
+  }
+
+  /** P7: the project's GitHub connection (the token is never returned). */
+  projectGitHub(projectId: string): Promise<import("@clawdesk/shared").ProjectGitHubDto> {
+    return this.#call("GET", `/projects/github/status?projectId=${encodeURIComponent(projectId)}`, undefined, 60_000);
+  }
+
+  projectGitHubPlan(projectId: string): Promise<import("@clawdesk/shared").ProjectGitHubPlanDto> {
+    return this.#call("GET", `/projects/github/plan?projectId=${encodeURIComponent(projectId)}`, undefined, 60_000);
+  }
+
+  projectGitHubChanges(projectId: string): Promise<import("@clawdesk/shared").ProjectGitHubChangesDto> {
+    return this.#call("GET", `/projects/github/changes?projectId=${encodeURIComponent(projectId)}`, undefined, 60_000);
+  }
+
+  /** Creates (or continues with this project's) repository and pushes exactly the confirmed plan. */
+  createProjectRepo(projectId: string, body: { token?: string; owner: string; name: string; visibility: "private" | "public"; planHash: string; requestId: string }): Promise<import("@clawdesk/shared").ProjectGitHubDto> {
+    return this.#call("POST", "/projects/github/create", { projectId, ...body }, 10 * 60_000);
+  }
+
+  connectProjectRepo(projectId: string, body: { token?: string; requestId: string }): Promise<import("@clawdesk/shared").ProjectGitHubDto> {
+    return this.#call("POST", "/projects/github/connect", { projectId, ...body }, 60_000);
+  }
+
+  importProjectRepo(projectId: string, body: { token?: string; url: string; folder: string; requestId: string }): Promise<import("@clawdesk/shared").ProjectGitHubDto> {
+    return this.#call("POST", "/projects/github/import", { projectId, ...body }, 15 * 60_000);
+  }
+
+  projectPullRequest(projectId: string, body: { title: string; body: string; changesHash: string; requestId: string }): Promise<import("@clawdesk/shared").ProjectPullRequestDto> {
+    return this.#call("POST", "/projects/github/pull-request", { projectId, ...body }, 10 * 60_000);
+  }
+
+  disconnectProjectGitHub(projectId: string): Promise<{ ok: true }> {
+    return this.#call("POST", "/projects/github/disconnect", { projectId });
+  }
+
+  /** Entries the clawdesk-requests plugin filed (oldest first), and names of unreadable ones. */
+  requestsSpool(): Promise<{ entries: Record<string, unknown>[]; rejected: string[] }> {
+    return this.#call("GET", "/requests/spool");
+  }
+
+  /** Removes spool entries the panel has stored. */
+  requestsAck(ids: string[]): Promise<{ removed: number }> {
+    return this.#call("POST", "/requests/ack", { ids });
   }
 
   teamRemove(teamId: string): Promise<{ ok: true }> {

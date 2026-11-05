@@ -5,6 +5,8 @@ import type { GatewayService } from "../gateway/gateway-service.js";
 import { buildCatalog, providerPluginId, type DetectResult, type PluginEntry } from "./catalog.js";
 import { findFlashModels, storeKeyWithModelViaWizard } from "./gemini-free-tier.js";
 import type { Db } from "../db/client.js";
+import { and, eq, inArray } from "drizzle-orm";
+import { agents } from "../db/schema.js";
 import { assertRoomForBackup, choicesFor, keepAsBackup, ModelChainError, readCatalog, readChain, syncFollowers, toOptions, validateChain, writeChain } from "./model-chain.js";
 
 type ActivateResult = { ok: boolean; status?: string; modelRef?: string; latencyMs?: number; error?: string };
@@ -54,6 +56,18 @@ export class AiSetupService {
       this.claudePlanAvailable(),
     ]);
     return buildCatalog(agentId, detect, plugins.plugins, { claudePlan });
+  }
+
+  /**
+   * A junior that got its own key or subscription after it was created stops following the main agent's
+   * models (otherwise the next sync would put them back): its stored model is cleared, as for an agent
+   * created with its own AI. Returns false for the main agent or an unknown one.
+   */
+  markOwnAi(agentId: string): boolean {
+    if (agentId === "main") return false;
+    const result = this.db.update(agents).set({ model: null }).where(and(eq(agents.id, agentId), inArray(agents.role, ["specialist", "team_member"]))).run();
+    if (result.changes) this.logger.info({ agentId }, "junior uses its own AI now");
+    return result.changes > 0;
   }
 
   /** Cheap check for routing (first-run window): does this agent have any model credential? */
@@ -148,6 +162,16 @@ export class AiSetupService {
       // Leave nothing half-configured behind.
       await this.gateway.request("models.authLogout", { provider: "google", agentId: "main" }).catch(() => undefined);
       await this.gateway.request("agents.update", { agentId: "main", model: null }).catch(() => undefined);
+      // The wizard writes the default model, the Google profile entry and the model list; logout and
+      // agents.update leave those in place.
+      // The wizard's own config write restarts the Gateway; a patch sent meanwhile is refused, so wait and retry once.
+      const undo = () => patchConfig(this.gateway, (config) => wizardLeftovers(config as WizardConfig, candidates), { note: "clawdesk: undo gemini key" });
+      await undo()
+        .catch(async () => {
+          await this.gateway.waitUntilConnected(60_000);
+          await undo();
+        })
+        .catch((error: Error) => this.logger.warn({ err: error }, "could not undo the Gemini setup wizard"));
       if (!verify) return null;
     }
     return {
@@ -215,6 +239,27 @@ const GEMINI_ALIASES = ["gemini-flash-latest", "gemini-flash-lite-latest"];
 
 export function geminiFallbacks(primary: string, rest: string[]): string[] {
   return [...new Set([...rest, ...GEMINI_ALIASES].map((id) => `google/${id}`))].filter((ref) => ref !== primary);
+}
+
+type WizardConfig = { agents?: { defaults?: { model?: { primary?: string } | string; models?: Record<string, unknown> } }; auth?: { profiles?: Record<string, { provider?: string }> } };
+
+/**
+ * Merge patch that removes what the setup wizard wrote for a Gemini key that then failed verification:
+ * the default model if it is one of the tried Flash models, their model-list entries and the Google
+ * profile entry. Anything else is left alone; null when there is nothing to remove.
+ */
+export function wizardLeftovers(config: WizardConfig, candidates: string[]): Record<string, unknown> | null {
+  const tried = new Set(candidates.map((id) => `google/${id}`));
+  const defaults = config.agents?.defaults;
+  const primary = typeof defaults?.model === "string" ? defaults.model : defaults?.model?.primary;
+  const defaultsPatch: Record<string, unknown> = {};
+  if (primary && tried.has(primary)) defaultsPatch.model = null;
+  const models = Object.keys(defaults?.models ?? {}).filter((ref) => tried.has(ref));
+  if (models.length) defaultsPatch.models = Object.fromEntries(models.map((ref) => [ref, null]));
+  const patch: Record<string, unknown> = {};
+  if (Object.keys(defaultsPatch).length) patch.agents = { defaults: defaultsPatch };
+  if (config.auth?.profiles?.["google:default"]?.provider === "google") patch.auth = { profiles: { "google:default": null } };
+  return Object.keys(patch).length ? patch : null;
 }
 
 function readReviewToken(error: unknown): string | null {

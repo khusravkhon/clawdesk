@@ -31,6 +31,7 @@ describe("project teams (screen 11)", () => {
   });
 
   function setup(opts: { github?: number; push?: boolean; failOn?: string; mode?: "company" | "personal" } = {}) {
+    const gatewayConfig = { current: {} as Record<string, unknown> };
     const space = new SpaceService({ db, logger: pino({ level: "silent" }) });
     space.create(CreateSpaceRequest.parse({ mode: opts.mode ?? "company", name: "Acme", locale: "ru", timezone: "UTC" }));
     const calls: { method: string; params: Record<string, unknown> }[] = [];
@@ -43,7 +44,7 @@ describe("project teams (screen 11)", () => {
           if (opts.failOn && String(params.name).endsWith(opts.failOn)) throw new Error("boom");
           return { agentId: params.name };
         }
-        if (method === "config.get") return { hash: "h", config: {} };
+        if (method === "config.get") return { hash: "h", config: gatewayConfig.current };
         if (method === "cron.add") return { id: `job-${++n}` };
         if (method === "cron.list") return { jobs: [] };
         if (method === "agents.delete") return {};
@@ -54,7 +55,15 @@ describe("project teams (screen 11)", () => {
     const bridge = {
       teamClone: async (teamId: string) => {
         bridgeCalls.push(`clone:${teamId}`);
-        return { defaultBranch: "main", branch: `agent/${teamId}`, repoPath: `${STATE}/teams/${teamId}/repo`, devPath: `${STATE}/teams/${teamId}/dev` };
+        return { defaultBranch: "main", branch: `agent/${teamId}` };
+      },
+      teamMember: async (teamId: string, agentId: string, role: string) => {
+        bridgeCalls.push(`member:${teamId}:${agentId}:${role}`);
+        return { path: `${STATE}/workspace/${agentId}/repo`, moved: role === "developer" };
+      },
+      ensureAgentFolder: async (agentId: string, name: string, options: { dir?: string; readOnly?: boolean }) => {
+        bridgeCalls.push(`docs:${agentId}:${name}:${options.dir}:${options.readOnly ? "ro" : "rw"}`);
+        return { hostPath: `/var/lib/clawdesk/files/${name}`, gatewayPath: `${STATE}/workspace/${agentId}/docs` };
       },
       ensureFolder: async (name: string) => ({ hostPath: `/var/lib/clawdesk/files/${name}`, gatewayPath: `${STATE}/workspace/files/${name}` }),
       teamRemove: async (teamId: string) => {
@@ -66,7 +75,7 @@ describe("project teams (screen 11)", () => {
     const telegram = { linkGroup: async (chatId: string, topics: unknown) => linked.push({ chatId, topics }), unlinkGroup: async () => undefined } as unknown as TelegramService;
     const fetchImpl = (async () => new Response(JSON.stringify({ permissions: { push: opts.push ?? true } }), { status: opts.github ?? 200 })) as typeof fetch;
     const service = new TeamService({ gateway, db, logger: pino({ level: "silent" }), bridge, space, telegram, sandboxEnabled: true, fetchImpl });
-    return { service, calls, bridgeCalls, linked };
+    return { service, calls, bridgeCalls, linked, gatewayConfig };
   }
 
   const request = (roles = ["pm", "developer", "reviewer"]) =>
@@ -87,15 +96,15 @@ describe("project teams (screen 11)", () => {
       ["developer", "shop-app-developer"],
       ["reviewer", "shop-app-reviewer"],
     ]);
-    expect(bridgeCalls).toEqual(["clone:shop-app"]);
-    expect(patchFor(calls, "shop-app-developer").sandbox.docker.binds).toEqual([
-      `${STATE}/teams/shop-app/dev:/workspace/repo:rw`,
-      "/var/lib/clawdesk/files/Shop App:/workspace/docs:ro",
+    // No sandbox binds (OpenClaw 2026.8 refuses sources outside the workspace and targets in /workspace):
+    // each member gets its copy and the docs folder in its own workspace, docs writable for the PM only.
+    expect(bridgeCalls).toEqual([
+      "clone:shop-app",
+      "member:shop-app:shop-app-pm:pm", "docs:shop-app-pm:Shop App:docs:rw",
+      "member:shop-app:shop-app-developer:developer", "docs:shop-app-developer:Shop App:docs:ro",
+      "member:shop-app:shop-app-reviewer:reviewer", "docs:shop-app-reviewer:Shop App:docs:ro",
     ]);
-    expect(patchFor(calls, "shop-app-pm").sandbox.docker.binds).toEqual([
-      `${STATE}/teams/shop-app/repo:/workspace/repo:ro`,
-      "/var/lib/clawdesk/files/Shop App:/workspace/docs:rw",
-    ]);
+    for (const id of ["shop-app-pm", "shop-app-developer", "shop-app-reviewer"]) expect(patchFor(calls, id).sandbox.docker).toBeUndefined();
     const devAgentsMd = calls.find((c) => c.method === "agents.files.set" && c.params.agentId === "shop-app-developer" && c.params.name === "AGENTS.md")!.params.content as string;
     expect(devAgentsMd).toContain("ветка `agent/shop-app`");
     expect(devAgentsMd).not.toContain("{{");
@@ -109,7 +118,7 @@ describe("project teams (screen 11)", () => {
     const { service, calls, bridgeCalls } = setup({ failOn: "-developer" });
     await expect(service.create(request())).rejects.toThrow();
     expect(calls.filter((c) => c.method === "agents.delete").map((c) => c.params.agentId)).toContain("shop-app-pm");
-    expect(bridgeCalls).toEqual(["clone:shop-app", "remove:shop-app"]);
+    expect(bridgeCalls).toEqual(["clone:shop-app", "member:shop-app:shop-app-pm:pm", "docs:shop-app-pm:Shop App:docs:rw", "remove:shop-app"]);
     expect(db.select().from(teamsTable).all()).toEqual([]);
     expect(db.select().from(agents).all()).toEqual([]);
   });
@@ -147,6 +156,26 @@ describe("project teams (screen 11)", () => {
     const update = calls.find((c) => c.method === "cron.update")!;
     expect(update.params.patch).toEqual({ delivery: { mode: "announce", channel: "telegram", to: "-1002234567890", threadId: "12", bestEffort: true } });
     await expect(service.linkTelegram("shop-app", [{ role: "pm", link: "https://t.me/c/1/2" }, { role: "developer", link: "https://t.me/c/22345678/3" }])).rejects.toThrow();
+  });
+
+  it("moves members of an older team off the binds OpenClaw now refuses, keeping their other binds", async () => {
+    const { service, calls, bridgeCalls, gatewayConfig } = setup();
+    await service.create(request(["pm", "developer"]));
+    bridgeCalls.length = 0;
+    calls.length = 0;
+    gatewayConfig.current = { agents: { entries: {
+      "shop-app-pm": { sandbox: { docker: { binds: [`${STATE}/teams/shop-app/repo:/workspace/repo:ro`, "/var/lib/clawdesk/files/Shop App:/workspace/docs:rw", "/srv/extra:/extra:ro"] } } },
+      "shop-app-developer": { sandbox: { docker: { binds: [`${STATE}/teams/shop-app/dev:/workspace/repo:rw`, "/var/lib/clawdesk/files/Shop App:/workspace/docs:ro"] } } },
+    } } };
+    await service.repairWorkspaces();
+    expect(bridgeCalls).toEqual(["member:shop-app:shop-app-pm:pm", "docs:shop-app-pm:Shop App:docs:rw", "member:shop-app:shop-app-developer:developer", "docs:shop-app-developer:Shop App:docs:ro"]);
+    expect(patchFor(calls, "shop-app-pm").sandbox.docker.binds).toEqual(["/srv/extra:/extra:ro"]);
+    expect(patchFor(calls, "shop-app-developer").sandbox.docker.binds).toEqual([]);
+    // Members already moved are left alone.
+    gatewayConfig.current = { agents: { entries: { "shop-app-pm": { sandbox: { docker: { binds: ["/srv/extra:/extra:ro"] } } }, "shop-app-developer": {} } } };
+    bridgeCalls.length = 0;
+    await service.repairWorkspaces();
+    expect(bridgeCalls).toEqual([]);
   });
 
   it("reads topic links the way Telegram copies them", () => {

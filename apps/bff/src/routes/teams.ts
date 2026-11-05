@@ -1,4 +1,4 @@
-import { CreateTeamRequest, LinkTeamTelegramRequest, type ApiErrorDto } from "@clawdesk/shared";
+import { CreateTeamRequest, LinkTeamTelegramRequest, TeamOwnerRequestsRequest, type ApiErrorDto } from "@clawdesk/shared";
 import type { FastifyInstance, FastifyReply } from "fastify";
 import { z } from "zod";
 import { BridgeError } from "../gateway/bridge-client.js";
@@ -29,6 +29,10 @@ export function registerTeamRoutes(app: FastifyInstance, deps: { teams: TeamServ
   app.post("/api/teams/:teamId/telegram", async (request, reply) =>
     withTeamErrors(reply, () => teams.linkTelegram(Params.parse(request.params).teamId, LinkTeamTelegramRequest.parse(request.body).topics)),
   );
+  app.put("/api/teams/:teamId/owner-requests", async (request, reply) => withTeamErrors(reply, async () => {
+    teams.setOwnerRequests(Params.parse(request.params).teamId, TeamOwnerRequestsRequest.parse(request.body).mode);
+    return { ok: true };
+  }));
   app.delete("/api/teams/:teamId", async (request, reply) =>
     withTeamErrors(reply, async () => {
       await teams.remove(Params.parse(request.params).teamId);

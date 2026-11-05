@@ -111,6 +111,25 @@ describe("company organization", () => {
     expect(db.select().from(teams).get()?.departmentId).toBeNull();
   });
 
+  it("makes a team member or a standalone agent the team lead, with revision checks", async () => {
+    db.insert(teams).values({ id: "other-team", name: "Other team" }).run();
+    db.insert(agents).values({ id: "stranger", role: "team_member", teamId: "other-team", displayName: "Stranger" }).run();
+    company.assignTeamLead("existing-team", { agentId: "dev", revision: 0 });
+    let team = (await company.list()).teams.find(item => item.id === "existing-team")!;
+    expect(team).toMatchObject({ leadAgentId: "dev", leadName: "Developer", revision: 1, members: [{ id: "dev", name: "Developer" }] });
+    expect(() => company.assignTeamLead("existing-team", { agentId: "boss", revision: 0 })).toThrow("revision_conflict");
+    expect(() => company.assignTeamLead("existing-team", { agentId: "stranger", revision: 1 })).toThrow("lead_not_eligible");
+    expect(() => company.assignTeamLead("existing-team", { agentId: "main", revision: 1 })).toThrow("agent_invalid");
+    expect(() => company.assignTeamLead("nope", { agentId: null, revision: 0 })).toThrow("team_missing");
+    company.assignTeamLead("existing-team", { agentId: "boss", revision: 1 });
+    // The lead was deleted: the team shows no lead.
+    db.delete(agents).where(eq(agents.id, "boss")).run();
+    team = (await company.list()).teams.find(item => item.id === "existing-team")!;
+    expect(team).toMatchObject({ leadAgentId: null, leadName: null });
+    company.assignTeamLead("existing-team", { agentId: null, revision: 2 });
+    expect(db.select().from(teams).where(eq(teams.id, "existing-team")).get()?.leadAgentId).toBeNull();
+  });
+
   it("keeps organization readable offline without inventing manager availability", async () => {
     const { id } = await company.create(create({ managerAgentId: "boss" }));
     online = false;
@@ -328,15 +347,40 @@ describe("company organization", () => {
     const marketing = await company.create(create({ name: "Marketing" }));
     const first = company.createProject(CreateProjectRequest.parse({ requestId: randomUUID(), name: "Mobile", departmentId: itDepartment.id }));
     const other = company.createProject(CreateProjectRequest.parse({ requestId: randomUUID(), name: "Website" }));
-    expect(() => company.assignTeamProject("existing-team", { projectId: first.id, revision: 0 })).toThrow("project_department_mismatch");
-    company.assignTeam("existing-team", { departmentId: itDepartment.id, revision: 0 });
-    company.assignTeamProject("existing-team", { projectId: first.id, revision: 1 });
-    expect(() => company.assignTeamProject("existing-team", { projectId: other.id, revision: 2 })).toThrow("team_project_assigned");
-    expect(() => company.assignTeam("existing-team", { departmentId: marketing.id, revision: 2 })).toThrow("project_department_mismatch");
+    company.assignTeam("existing-team", { departmentId: marketing.id, revision: 0 });
+    expect(() => company.assignTeamProject("existing-team", { projectId: first.id, revision: 1 })).toThrow("project_department_mismatch");
+    expect(db.select().from(teams).get()).toMatchObject({ departmentId: marketing.id, projectId: null, organizationRevision: 1 });
+    company.assignTeam("existing-team", { departmentId: itDepartment.id, revision: 1 });
+    company.assignTeamProject("existing-team", { projectId: first.id, revision: 2 });
+    expect(() => company.assignTeamProject("existing-team", { projectId: other.id, revision: 3 })).toThrow("team_project_assigned");
+    expect(() => company.assignTeam("existing-team", { departmentId: marketing.id, revision: 3 })).toThrow("project_department_mismatch");
     expect(() => company.updateProject(first.id, UpdateProjectRequest.parse({ name: "Mobile", departmentId: marketing.id, revision: 0 }))).toThrow("project_department_mismatch");
-    company.assignTeamProject("existing-team", { projectId: null, revision: 2 });
-    company.assignTeam("existing-team", { departmentId: marketing.id, revision: 3 });
+    company.assignTeamProject("existing-team", { projectId: null, revision: 3 });
+    company.assignTeam("existing-team", { departmentId: marketing.id, revision: 4 });
     expect(db.select().from(teams).get()).toMatchObject({ departmentId: marketing.id, projectId: null });
+  });
+
+  it("links a newly created team directly and atomically joins the project's department", async () => {
+    const department = await company.create(create());
+    const project = company.createProject(CreateProjectRequest.parse({ requestId: randomUUID(), name: "Mobile", departmentId: department.id }));
+    const before = db.select().from(teams).get()!;
+    company.assignTeamProject("existing-team", { projectId: project.id, revision: 0 });
+    expect(db.select().from(teams).get()).toEqual({ ...before, departmentId: department.id, projectId: project.id, organizationRevision: 1 });
+    expect(() => company.assignTeamProject("existing-team", { projectId: null, revision: 0 })).toThrow("revision_conflict");
+    company.assignTeamProject("existing-team", { projectId: null, revision: 1 });
+    expect(db.select().from(teams).get()).toMatchObject({ departmentId: department.id, projectId: null, organizationRevision: 2 });
+  });
+
+  it("does not join a department when the target project or department is archived", async () => {
+    const department = await company.create(create());
+    const project = company.createProject(CreateProjectRequest.parse({ requestId: randomUUID(), name: "Mobile", departmentId: department.id }));
+    const before = db.select().from(teams).get();
+    await company.update(department.id, update({ archived: true }));
+    expect(() => company.assignTeamProject("existing-team", { projectId: project.id, revision: 0 })).toThrow("department_archived");
+    expect(db.select().from(teams).get()).toEqual(before);
+    const archived = company.createProject(CreateProjectRequest.parse({ requestId: randomUUID(), name: "Archived", status: "archived" }));
+    expect(() => company.assignTeamProject("existing-team", { projectId: archived.id, revision: 0 })).toThrow("project_archived");
+    expect(db.select().from(teams).get()).toEqual(before);
   });
 
   it("rejects archived department projects and all project writes in personal mode", async () => {

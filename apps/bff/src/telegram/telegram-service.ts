@@ -446,6 +446,29 @@ export class TelegramService {
     await this.gateway.request("send", { channel: "telegram", accountId, to: owner.peerId, message: text, idempotencyKey: crypto.randomUUID() });
   }
 
+  /** The owner's numeric Telegram user ID (their approved DM with the bot), or null. */
+  ownerUserId(accountId = "default"): string | null {
+    return this.#owner(accountId)?.peerId ?? null;
+  }
+
+  /**
+   * A message to the owner with inline buttons (stage 8). Each button's data is claimed by the
+   * clawdesk-requests plugin's interactive handler, so a press reaches the panel, never a model.
+   */
+  async sendToOwnerWithButtons(text: string, buttons: { label: string; data: string; style?: "success" | "danger" | "primary" }[], idempotencyKey: string, accountId = "default"): Promise<void> {
+    const owner = this.#owner(accountId);
+    if (!owner?.peerId) throw new TelegramError("no_owner", "approve yourself in the bot first");
+    await this.gateway.request("send", { channel: "telegram", accountId, to: owner.peerId, message: text, idempotencyKey, ...presentation(buttons) });
+  }
+
+  /**
+   * Stage 8: a message into a topic of a team's group (the bot is in it). Buttons work as in the owner's chat:
+   * the panel acts only on the owner's numeric userId, so another member pressing them changes nothing.
+   */
+  async sendToTopicWithButtons(chatId: string, topicId: string, text: string, buttons: { label: string; data: string; style?: "success" | "danger" | "primary" }[], idempotencyKey: string, accountId = "default"): Promise<void> {
+    await this.gateway.request("send", { channel: "telegram", accountId, to: chatId, threadId: topicId, message: text, idempotencyKey, ...presentation(buttons) });
+  }
+
   /** Delivery target for cron jobs, or null when no owner is approved yet. */
   ownerDelivery(): ReturnType<typeof telegramDelivery> | null {
     const owner = this.#owner();
@@ -565,4 +588,8 @@ export class TelegramService {
 
 export function telegramDelivery(ownerId: string) {
   return { mode: "announce" as const, channel: "telegram", to: ownerId, bestEffort: true };
+}
+
+function presentation(buttons: { label: string; data: string; style?: "success" | "danger" | "primary" }[]) {
+  return buttons.length ? { presentation: { blocks: [{ type: "buttons", buttons: buttons.map((button) => ({ label: button.label, action: { type: "callback", value: button.data }, ...(button.style ? { style: button.style } : {}) })) }] } } : {};
 }

@@ -1,0 +1,17 @@
+{
+  "id": "project-developer",
+  "mode": "company",
+  "role": "team_member",
+  "emoji": "🛠️",
+  "title": { "ru": "Разработчик проекта", "en": "Project developer", "tg": "Барномасози лоиҳа" },
+  "description": {
+    "ru": "Реализует правило так, чтобы прошли тесты QA. Тесты не меняет; результат принимает владелец.",
+    "en": "Implements a rule so that QA's tests pass. Never changes tests; the owner accepts the result.",
+    "tg": "Қоидаро тавре амалӣ мекунад, ки тестҳои QA гузаранд. Тестҳоро иваз намекунад; натиҷаро соҳиб қабул мекунад."
+  },
+  "fields": [{ "key": "agentName", "type": "text", "label": { "ru": "Имя", "en": "Name", "tg": "Ном" }, "default": "Разработчик" }],
+  "sources": [],
+  "cronPresets": [],
+  "canAskMain": true,
+  "sandbox": true
+}

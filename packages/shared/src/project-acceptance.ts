@@ -23,6 +23,7 @@ export const RecordAcceptanceCheckRequest = z.object({
 }).refine(value => value.outcome === "blocked" || value.evidence.length > 0, { message: "Evidence is required for performed checks", path: ["evidence"] });
 export type RecordAcceptanceCheckRequest = z.infer<typeof RecordAcceptanceCheckRequest>;
 export type AcceptanceCheckDto = { id: number; revision: number; outcome: "passed" | "failed" | "blocked"; context: string; observed: string; evidence: string; source: "manual"; checkedBy: "owner"; createdAt: number };
-export type AcceptanceCaseDto = { id: string; code: string; ruleVersion: number; revision: number; fields: AcceptanceFields; createdAt: number; latestCheck: AcceptanceCheckDto | null };
+/** automated: the linked test's result in the latest run, or null when the scenario names no test. */
+export type AcceptanceCaseDto = { id: string; code: string; ruleVersion: number; revision: number; fields: AcceptanceFields; createdAt: number; latestCheck: AcceptanceCheckDto | null; automated: import("./project-checks.js").AutomatedCheckDto | null };
 export type AcceptanceSuiteDto = { currentVersion: number; selectedVersion: number; versions: number[]; approved: boolean; statement: string; cases: AcceptanceCaseDto[] };
 export type AcceptanceHistoryDto = { revisions: { revision: number; fields: AcceptanceFields; createdAt: number; checks: AcceptanceCheckDto[] }[] };

@@ -5,8 +5,10 @@ import { computed, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import { api, ApiError } from "../api/client";
 import ProjectAcceptanceDialog from "./ProjectAcceptanceDialog.vue";
+import ProjectRuleAudit from "./ProjectRuleAudit.vue";
 
 const props = defineProps<{ projectId: string; disabled: boolean }>();
+const emit = defineEmits<{ changed: [] }>();
 const { t, te } = useI18n();
 type Field = keyof BusinessRuleFields;
 const keys: Field[] = ["title", "statement", "source", "role", "preconditions", "expectedResult", "exceptions", "allowedExample", "deniedExample", "openQuestions"];
@@ -35,6 +37,11 @@ function open(rule: BusinessRuleDto | null): void {
   fields.value = rule ? { ...rule.fields } : blank();
   initial.value = JSON.stringify(fields.value); pending.value = null; editorError.value = null; editing.value = true;
 }
+/** From a conflict or a search result: the rule's editor (a new version), or its view when editing is off. */
+function openById(id: string): void {
+  const rule = rules.value.find(item => item.id === id);
+  if (rule) props.disabled ? void showHistory(rule) : open(rule);
+}
 async function save(): Promise<void> {
   if (!valid.value || saving.value || props.disabled) return;
   saving.value = true;
@@ -44,7 +51,7 @@ async function save(): Promise<void> {
   try {
     if (selected.value) await api.company.updateRule(props.projectId, selected.value.id, pending.value as UpdateBusinessRuleRequest);
     else await api.company.createRule(props.projectId, pending.value!);
-    editing.value = false; await load();
+    editing.value = false; emit("changed"); await load();
   } catch (e) { editorError.value = explain(e); }
   finally { saving.value = false; }
 }
@@ -52,7 +59,7 @@ async function approve(rule: BusinessRuleDto): Promise<void> {
   saving.value = true;
   const previous = pendingApproval.value;
   if (!previous || previous.id !== rule.id || previous.body.revision !== rule.revision || previous.body.version !== rule.version) pendingApproval.value = { id: rule.id, body: { requestId: crypto.randomUUID(), revision: rule.revision, version: rule.version, confirm: true } };
-  try { await api.company.approveRule(props.projectId, rule.id, pendingApproval.value!.body); pendingApproval.value = null; await load(); }
+  try { await api.company.approveRule(props.projectId, rule.id, pendingApproval.value!.body); pendingApproval.value = null; emit("changed"); await load(); }
   catch (e) { const failure = explain(e); await load(); error.value = failure; }
   finally { saving.value = false; }
 }
@@ -83,6 +90,7 @@ watch(() => props.projectId, () => { rules.value = []; loaded.value = false; edi
     <p>{{ t('projectRules.scope') }}</p>
     <n-alert v-if="error" type="error">{{ error }}</n-alert>
     <n-empty v-if="loaded && !rules.length" :description="t('projectRules.empty')" />
+    <ProjectRuleAudit v-if="loaded && rules.length" :project-id="projectId" :disabled="disabled" :rules="rules" @open="openById" />
     <section v-for="rule in rules" :key="rule.id" class="rule-row">
       <strong>{{ rule.code }} · {{ rule.fields.title }}</strong>
       <n-space class="rule-status"><n-tag size="small">{{ t('projectRules.version', { version: rule.version }) }}</n-tag><n-tag size="small" :type="rule.approvedAt !== null ? 'success' : 'warning'">{{ t(rule.approvedAt !== null ? 'projectRules.approved' : 'projectRules.draft') }}</n-tag><n-tag size="small">{{ t('projectRules.untested') }}</n-tag></n-space>

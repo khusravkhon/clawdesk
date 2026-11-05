@@ -17,6 +17,25 @@ describe("serialized config mutations", () => {
     expect(order).toEqual(["config.get", "config.patch", "config.get", "config.patch"]);
   });
 
+  it("treats OpenClaw's 'persisted, recovery restart required' as success once the Gateway is back with the change", async () => {
+    let hash = "1", generation = 1, waited = 0;
+    const recovery = new Error("config.patch persisted and updated the active Gateway, but a recovery restart is required; wait for the Gateway to restart, then run config.get to confirm the active revision");
+    const gateway = {
+      get generation() { return generation; },
+      waitForReconnect: async (since: number) => { waited++; expect(since).toBe(1); generation = 2; },
+      request: async (method: string) => {
+        if (method === "config.get") return { hash, config: {} };
+        hash = "2";
+        throw recovery;
+      },
+    } as unknown as GatewayService;
+    expect(await patchConfig(gateway, { models: { providers: { x: {} } } })).toEqual({ models: { providers: { x: {} } } });
+    expect(waited).toBe(1);
+    // Back, but the config did not change: the error stands.
+    const unchanged = { ...gateway, waitForReconnect: async () => undefined, request: async (method: string) => { if (method === "config.get") return { hash: "same", config: {} }; throw recovery; } } as unknown as GatewayService;
+    await expect(patchConfig(unchanged, { a: 1 })).rejects.toThrow("recovery restart is required");
+  });
+
   it("recomputes a removal and replacePaths after a stale hash", async () => {
     let reads = 0, writes = 0;
     const gateway = { request: async (method: string, params: { raw?: string; replacePaths?: string[] }) => {

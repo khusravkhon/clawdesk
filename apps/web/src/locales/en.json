@@ -19,7 +19,8 @@
     "addTeam": "Link team",
     "selectTeam": "Select team",
     "noTeams": "No teams linked yet. You can prepare the project without them.",
-    "teamHint": "Only teams without another project are available. A department project requires the same department for its teams. Linking grants no file access.",
+    "teamHint": "A team without a department will join the project's department when linked. Teams from another department or project are unavailable. Linking grants no file access.",
+    "noAvailableTeams": "No eligible teams. Create a team or check its department and existing project assignment in the company structure.",
     "detach": "Unlink",
     "detachHint": "Unlink this team? Agents, repository and schedules will be preserved.",
     "scope": "A project can be prepared without GitHub or a team. Its status reflects your plans; folder availability and worker activity are shown separately.",
@@ -119,7 +120,40 @@
       "acceptance_missing": "Scenario not found for this rule.",
       "rule_version_missing": "Rule version not found.",
       "acceptance_unchanged": "Scenario unchanged; no new version was created.",
-      "rule_not_approved": "Approve the current rule version first."
+      "rule_not_approved": "Approve the current rule version first.",
+      "lead_not_eligible": "The team lead must be a member of this team or a standalone agent.",
+      "team_busy": "A team is being created — wait.",
+      "invalid_template": "This role cannot be in a team."
+    },
+    "standaloneAgent": "standalone agent",
+    "noLead": "No team lead",
+    "teamLead": "Team lead of {name}",
+    "createTeam": "Create a team",
+    "teamHint": "A team without a GitHub repository (e.g. marketing or support). Its members are new agents from specialist templates, on the main agent's AI and sandboxed. Folder and document access is granted separately.",
+    "teamName": "Team name",
+    "teamContext": "What the team does",
+    "teamContextExample": "For example: we promote the bakery on social media and answer reviews",
+    "teamProject": "Project (optional)",
+    "noProject": "No project",
+    "teamMembers": "Members",
+    "teamRole": "Role",
+    "memberName": "Name (optional)",
+    "memberPurpose": "Responsible for (optional)",
+    "teamLeadPick": "team lead",
+    "removeMember": "Remove",
+    "addMember": "Add a member",
+    "createTeamSubmit": "Create the team ({count})",
+    "teamCost": "Each member is a separate agent: it spends model tokens when it works.",
+    "teamCreated": "Team \"{name}\" created",
+    "teamRoles": {
+      "team-lead": "Team lead",
+      "marketing": "Marketing",
+      "analyst": "Analyst",
+      "sales": "Sales",
+      "support": "Support",
+      "hr": "HR",
+      "operations": "Operations",
+      "custom": "Custom agent"
     }
   },
   "storage": {
@@ -1045,6 +1079,13 @@
       "no_owner": "Connect the Telegram bot and approve yourself in it first.",
       "telegram_links": "The links must be topics of one group: {detail}",
       "git_failed": "Git: {detail}"
+    },
+    "ownerRequests": {
+      "label": "Members' requests to the owner",
+      "direct": "To the owner's chat with the bot",
+      "topic": "To the member's topic in the team's group",
+      "hint_direct": "The default: only you see the details.",
+      "hint_topic": "The message goes to the agent's topic mentioning the owner, without details (everyone in the group sees it). Buttons work only for the owner. Without a topic for the agent — to your own chat."
     }
   },
   "audit": {
@@ -1593,7 +1634,7 @@
   },
   "projectAcceptance": {
     "title": "Acceptance scenarios",
-    "scope": "Scenarios belong to the selected rule version. Plan checks and record manual observations here. No automated tests run; a manual result does not establish application readiness.",
+    "scope": "Scenarios belong to the selected rule version. Plan checks and record manual observations here. A scenario can be linked to a project test; its result from “Project checks” is shown as the automated check. Neither a manual nor an automated result establishes readiness of the whole application.",
     "ruleVersion": "Business rule version",
     "oldVersion": "These scenarios belong to an older rule version and are read-only. Prepare scenarios separately for the current version; old results are not carried over.",
     "approveFirst": "You can prepare scenarios now. Approve the current rule version before recording results.",
@@ -1601,7 +1642,7 @@
     "empty": "No scenarios for this rule version yet.",
     "edit": "Edit scenario",
     "record": "Record manual check",
-    "notRun": "No checks for this scenario version",
+    "notRun": "No manual check of this version",
     "manualOwner": "Manual record by panel owner",
     "editHint": "Editing creates a new scenario version. Earlier checks stay in history and do not apply to the new version.",
     "manualHint": "Specify the environment and application build/commit, actual observation and evidence. For a blocked check, explain the reason. This record runs no test and verifies no link.",
@@ -1623,12 +1664,1108 @@
       "given": "Initial conditions",
       "action": "Action to perform",
       "expected": "Expected result",
-      "testRef": "Related test or check (not executed)"
+      "testRef": "Automated check (project test)"
     },
     "check": {
       "context": "Environment and application build/commit",
       "observed": "Observation or reason the check was blocked",
       "evidence": "Evidence: log, report or result description"
+    },
+    "pickTest": "Pick a test from the latest run",
+    "noTestsYet": "No tests yet",
+    "noTestsHint": "The list appears after the first run in “Project checks”. A typed reference is kept as text but is not checked automatically.",
+    "automatedLabel": "Automated",
+    "automated": {
+      "passed": "passed",
+      "failed": "behaviour failure",
+      "flaky": "flaky",
+      "skipped": "skipped",
+      "unlinked": "not linked",
+      "changed": "test changed",
+      "not_run": "not run",
+      "blocked": "environment blocked"
+    },
+    "automatedHint": {
+      "failed": "Latest run: the test failed — the behaviour does not match the rule.",
+      "flaky": "The test passes only sometimes. That is not a pass: the instability needs fixing.",
+      "changed": "The test changed after it was linked (for older links: its file). Until the scenario is saved again (a new revision), the result does not count.",
+      "unlinked": "The reference did not match a test of the latest run when the scenario was saved. Pick a test from the list and save the scenario.",
+      "blocked": "The latest run produced no trustworthy result (environment failure, timeout or no tests)."
+    }
+  },
+  "projectBuilder": {
+    "title": "Build an application",
+    "intro": "Continue from saved requirements: answers → our template → plan → your confirmation → local creation and launch.",
+    "guided": "The requirements guide asks the next missing question. Your answer is saved to the project brief.",
+    "answer": "Save answer and continue",
+    "answered": "The main answers are saved. Review the summary and choose a template.",
+    "templates": "Our templates",
+    "choose": "Choose a template",
+    "templateNames": {
+      "task-board-v1": "Task board"
+    },
+    "templateDescription": "A local task board with create, rename, delete and status changes. Data is saved in SQLite.",
+    "templateLimits": "This template supports a task board. Other features and business rules require separate implementation.",
+    "plan": "Show plan",
+    "replan": "Update plan",
+    "planTitle": "Plan: {name}",
+    "features": "What we will create",
+    "limits": "First version limitations",
+    "path": "Project folder",
+    "noFolder": "Choose a new local folder below",
+    "files": "Files to create",
+    "confirm": "I have reviewed the plan and agree to its scope and limitations.",
+    "approve": "Confirm plan",
+    "approved": "Plan confirmed",
+    "prepareHint": "The next button creates the selected template files in the local folder. You can then launch the application.",
+    "prepare": "Create template files",
+    "start": "Launch application",
+    "stop": "Stop application",
+    "preview": "Interactive preview",
+    "previewHint": "Interactive preview uses temporary data. Stopping or restarting the preview clears its tasks.",
+    "reloadPreview": "Reload preview",
+    "reload": "Refresh state",
+    "failed": "The action failed. Your answer remains in the input; retry the action or refresh the state.",
+    "runtimeFailed": "The application could not start. Check the local environment connection and retry.",
+    "existing": "An existing project is connected. Only folder inspection is available; template creation is disabled.",
+    "stale": "Requirements, rules or the folder changed. Update the plan and confirm it again.",
+    "blocked": "Some decisions are incomplete. Review requirements, rules and the project folder.",
+    "questions": {
+      "goal": "What application would you like to create, and what problem does it solve?",
+      "audience": "Who will use the application?",
+      "scenarios": "What should a user be able to do?",
+      "inScope": "Which features are required for the first version?",
+      "outOfScope": "What should be excluded from the first version?",
+      "rules": "Which business rules should apply?",
+      "data": "What data should be saved?",
+      "integrations": "Do you need external services? Write “none” if not.",
+      "constraints": "Are there any constraints or special conditions?"
+    },
+    "states": {
+      "empty": "Files not created yet",
+      "prepared": "Template files created",
+      "running": "Application running",
+      "stopped": "Application stopped",
+      "failed": "Action failed"
+    },
+    "blockers": {
+      "brief_incomplete": "Complete the missing requirements answers.",
+      "open_questions": "Resolve the open questions in the brief.",
+      "rules_unapproved": "Approve the latest business rule versions and resolve their questions.",
+      "workspace_required": "Create a new local project folder in the section below.",
+      "existing_project": "An existing project is connected; generation is disabled."
+    },
+    "errors": {
+      "builder_incomplete": "Complete requirements and rule approvals.",
+      "builder_plan_missing": "Create a plan first.",
+      "builder_plan_stale": "The plan is outdated. Update it and confirm again.",
+      "builder_approval_required": "Confirm the plan first.",
+      "builder_existing_project": "Template creation is unavailable for existing projects.",
+      "builder_workspace_required": "Choose a new local project folder.",
+      "revision_conflict": "Data changed. Refresh the state and retry; your answer remains in the input.",
+      "request_conflict": "The action changed. Refresh the state before retrying.",
+      "gateway_unavailable": "The local environment is unavailable. Restore the connection and retry.",
+      "builder_busy": "Another action is still running. Refresh the state shortly.",
+      "foundation_gaps_unacknowledged": "Confirm that the missing needs will not be in the first version."
+    },
+    "featureItems": [
+      "Create, rename and delete tasks",
+      "Change task status",
+      "Save tasks in local SQLite",
+      "Local launch and interactive preview"
+    ],
+    "limitItems": [
+      "The first version supports a task board; other scenarios require separate implementation",
+      "No authentication, roles, external integrations or public hosting",
+      "Business rules are saved as requirements; the template does not establish their implementation",
+      "Preview data is temporary and is cleared when the preview stops or restarts",
+      "After files have been created, a new plan cannot overwrite the application; choose a separate new folder"
+    ],
+    "inspect": "Inspect existing project",
+    "analysisTitle": "Read-only project inspection",
+    "gitPresent": "A Git repository was found.",
+    "gitAbsent": "No Git repository was found.",
+    "dependencies": "Declared dependencies",
+    "noDependencies": "No supported dependency manifest was found.",
+    "projectFiles": "Project files",
+    "truncated": "The list is limited; this is not a complete architecture analysis.",
+    "noOpenQuestions": "No open questions recorded"
+  },
+  "projectChecks": {
+    "title": "Project checks",
+    "intro": "Runs the generated app's tests in a separate container without network, on a copy of the current files. Each test is shown on its own; linked acceptance scenarios get its result.",
+    "run": "Run checks",
+    "running": "Checks are running, this can take up to two minutes…",
+    "empty": "Checks have not been run yet.",
+    "duration": "{seconds} s",
+    "run_completed": "Run completed",
+    "run_blocked": "Environment blocked",
+    "history": "Previous runs",
+    "failed": "Could not run the checks.",
+    "limits": "A test that fails and then passes on the retry is marked flaky. When the tests take the app's address from CLAWDESK_APP_URL, the app runs in a separate container for each test file and the tests see only its network. Available for apps created by the builder.",
+    "status": {
+      "passed": "passed",
+      "failed": "failed",
+      "flaky": "flaky",
+      "skipped": "skipped"
+    },
+    "reasons": {
+      "runner_failed": "The check environment did not start or crashed. There is no result — this is not a pass.",
+      "timeout": "The checks ran out of time. There is no result.",
+      "no_tests": "No tests found. Projects created before checks existed have no checks.test.mjs."
+    },
+    "errors": {
+      "checks_unsupported": "Checks are available only for an app created by the builder in a new folder.",
+      "checks_too_large": "The project files are too large for an isolated run (up to 80 KB).",
+      "checks_no_files": "The app files have not been created yet.",
+      "checks_busy": "Checks of this project are already running.",
+      "workspace_required": "Choose a working folder and create the app files first.",
+      "preview_unavailable": "Could not start the check container. Check the local environment."
+    },
+    "isolation": {
+      "separate": "The app ran in its own container and the tests in another, without the app's code: the code could not forge the result.",
+      "shared": "The tests started the app themselves, so its code ran next to the checks and could in theory forge the result. To run them apart, the tests must take the app's address from CLAWDESK_APP_URL, as in the template."
+    }
+  },
+  "projectTasks": {
+    "title": "Rule tasks",
+    "intro": "The project's executors implement an approved rule through checks: QA writes tests that fail on the current code, the developer makes them pass without touching the tests, and you review the changes and accept them into the app. If the rule is already implemented and you approved a new version, the task becomes a change: QA rewrites this rule's tests, other rules' tests stay as they were. Each works in its own copy; the app itself changes only when you accept.",
+    "executors": "Executors",
+    "noExecutors": "No executors yet. Three agents will be created — QA, developer and reviewer — with the main agent's model. Each gets access only to its own copy of the app.",
+    "assign": "Assign executors",
+    "executorsHint": "An agent's answer appears in its chat. When it is done, come back here and press the check button.",
+    "roles": {
+      "qa": "QA",
+      "developer": "developer",
+      "reviewer": "reviewer"
+    },
+    "newTask": "New task",
+    "noApprovedRules": "No approved rules. Approve a rule in “Business rules”.",
+    "rule": "Rule",
+    "note": "Note for the executors",
+    "create": "Start task",
+    "steps": {
+      "qa": "QA tests",
+      "dev": "Development",
+      "review": "Review",
+      "done": "Accepted"
+    },
+    "now": {
+      "qa": "{name} is writing tests for the rule. When the agent answers in its chat, press “Check QA's work”.",
+      "dev": "{name} is implementing the rule. When the agent answers in its chat, press “Check the developer's work”.",
+      "review": "The work passed the checks. Look at the changes and the reviewer's verdict, then accept them into the app or return them to the developer with a comment.",
+      "done": "Accepted.",
+      "cancelled": "Cancelled."
+    },
+    "returned": "Returned with a comment",
+    "checkOk": {
+      "qa": "QA's tests accepted: a rule test fails on the current code; the code and other rules' tests are unchanged.",
+      "dev": "The developer's work passed: every test passes and no test changed."
+    },
+    "checkRefused": "The panel did not accept the work",
+    "ignored": "Not counted (not regular files)",
+    "changes": "Changes against the app",
+    "change": {
+      "added": "added",
+      "modified": "modified",
+      "removed": "removed"
+    },
+    "diffTooLarge": "The file is too large to show its changes.",
+    "returnComment": "Comment, if you return it to the developer",
+    "check": {
+      "qa": "Check QA's work",
+      "dev": "Check the developer's work"
+    },
+    "sendFindings": "Send the findings to the agent",
+    "remind": "Send the assignment again",
+    "accept": "Accept into the app",
+    "acceptConfirm": "The changes will be written into the app. Continue?",
+    "return": "Return to the developer",
+    "cancel": "Cancel task",
+    "cancelConfirm": "The task will be closed without changing the app. Continue?",
+    "empty": "No tasks yet.",
+    "history": "Past tasks",
+    "status": {
+      "qa": "QA tests",
+      "dev": "development",
+      "review": "review",
+      "done": "accepted",
+      "cancelled": "cancelled",
+      "rolled_back": "rolled back"
+    },
+    "failed": "Could not complete the action.",
+    "limits": "Accepting the work is your decision: the reviewer's verdict is advice, but accepting over \"changes requested\" takes a separate tick. Finishing a stage is confirmed with a button — the panel does not guess that an agent is done. The app and the tests run in separate containers when the tests take the app's address from CLAWDESK_APP_URL (as in the template); in older projects the tests start the app themselves, in one isolation with its code, and the card warns about it. The developer may not change tests, and QA may not change other rules' tests or the existing shared test code. A test belongs to a rule if its name starts with the rule's code or it is linked to one of its scenarios. Only the latest accepted task can be rolled back, and only while the app has not changed since. A project has one task at a time.",
+    "reasons": {
+      "layout": "The work copy has subfolders or links — files must stay flat.",
+      "no_changes": "Nothing changed.",
+      "removed_files": "App files were removed.",
+      "changed_code": "App code changed — at the QA stage only *.test.mjs files may change.",
+      "tests_missing": "No tests of this rule: a test's name must start with the rule's code, or the test must be linked to one of its scenarios.",
+      "tests_not_failing": "No rule test fails on the current code, so none proves the rule is not met yet.",
+      "tests_flaky": "A rule test is flaky.",
+      "existing_failing": "Other tests stopped passing.",
+      "changed_tests": "Tests were changed, removed or added — tests must not change at the development stage.",
+      "tests_failing": "Not every test passes (a flaky or skipped rule test is not a pass either).",
+      "run_blocked": "The check run produced no result (environment failure or timeout).",
+      "protected_tests_changed": "Tests of other rules were changed or removed — they must stay as they are.",
+      "shared_test_code_changed": "Existing shared test code (imports, helpers, before/after) was changed — it affects every test. Adding new shared code is fine, changing existing code is not.",
+      "tests_unreadable": "A test file does not parse as a JavaScript module — the panel cannot compare it test by test.",
+      "tests_not_separate": "the tests start the app themselves — the panel could no longer run it apart from the tests. Tests must take the app's address from CLAWDESK_APP_URL, like checks.test.mjs"
+    },
+    "errors": {
+      "executors_required": "Assign the project's executors first.",
+      "rule_missing": "Rule not found.",
+      "rule_not_approved": "Approve this rule version first.",
+      "task_active": "The project already has an unfinished task.",
+      "task_missing": "Task not found.",
+      "task_closed": "The task is at another stage — refresh the card.",
+      "revision_conflict": "The task changed — refresh the card and try again.",
+      "request_conflict": "A repeated request with different content.",
+      "task_busy": "An action on this project is already running.",
+      "gateway_unavailable": "No connection to the Gateway.",
+      "work_app_changed": "The app changed after the task started (or after it was accepted) — this cannot be done on top of the new files.",
+      "work_missing": "The executor's work copy was not found.",
+      "work_layout": "The work copy is damaged.",
+      "rule_outdated": "The rule has a newer version. A task can be started and accepted only on the current version.",
+      "data_confirmation_required": "Confirm that the app's existing data fits the new rule version.",
+      "rollback_unavailable": "Only the latest accepted task can be rolled back, and only when the project has no unfinished task.",
+      "review_not_requested": "The reviewer has not been asked about these changes yet.",
+      "review_not_written": "The reviewer has not written REVIEW.md yet. Wait for its answer in the chat.",
+      "review_changes_requested": "The reviewer asks for changes. Return the task to the developer or tick that you accept despite the review.",
+      "rule_conflict": "The rule has an open contradiction with another rule. Resolve it under Business rules, then start the task."
+    },
+    "createChange": "Start a change task",
+    "changeTag": "change: version {from} → {to}",
+    "outdated": "The rule changed again after this task started. This work cannot be accepted: cancel the task and start a new one on the current version.",
+    "impact": {
+      "title": "Changing rule {code}: version {from} → {to}",
+      "intro": "The app now works by the version implemented by task {task}. The previous version stays in the rule's history.",
+      "before": "before",
+      "after": "after",
+      "sameText": "The field texts did not change.",
+      "tests": "Tests that protect the rule now",
+      "noTests": "The latest checks run has no tests of this rule. Run the project checks to see them here.",
+      "scenarios": "Scenarios of version {version}",
+      "noScenarios": "The previous version has no scenarios.",
+      "files": "Task {task} changed the files: {files}.",
+      "newScenarios": "Scenarios for the new version: {count}. Scenarios of the previous version are not carried over — add them in “Acceptance scenarios”.",
+      "data": "The panel changes code only. It does not migrate data the app already has: if that data does not fit the new rule, decide it separately. You will be asked to confirm this when accepting the work.",
+      "implemented": "This version is already implemented by task {task}.",
+      "newRule": "The rule is not implemented in the app yet — this is a new task."
+    },
+    "testChanges": "Test changes",
+    "testChange": {
+      "added": "added",
+      "modified": "modified",
+      "removed": "removed"
+    },
+    "ruleTest": "this rule's test",
+    "otherTest": "another rule's test",
+    "warnings": {
+      "shared_test_code_added": "Shared code (a helper, import or before/after hook) was added to a test file. It affects every test in the file — look at it in the changes."
+    },
+    "confirmData": "I checked that the data the app already has fits the new rule version (the panel does not migrate data).",
+    "rollback": "Restore the previous version",
+    "rollbackConfirm": "The app returns to the files it had before task {task}. The app's data does not change. Continue?",
+    "noReviewer": "This project has no reviewer yet. It reads the developer's changes before you and writes a review; QA and the developer stay as they are.",
+    "addReviewer": "Add a reviewer",
+    "reviewer": {
+      "title": "Reviewer's verdict ({name})",
+      "notAsked": "The reviewer has not been asked about these changes yet.",
+      "waiting": "{name} is reading the changes. When the agent answers in the chat, press \"Get the reviewer's verdict\".",
+      "verdict": {
+        "approve": "The reviewer approved the changes",
+        "changes": "The reviewer asks for changes",
+        "unclear": "Verdict not recognised — read the review"
+      },
+      "changedFiles": "The reviewer changed files in its copy: {files}. These edits never reach the app.",
+      "collect": "Get the reviewer's verdict",
+      "ask": "Ask the reviewer",
+      "askAgain": "Ask again",
+      "useComment": "Use the remarks as the comment",
+      "override": "I accept despite the reviewer's verdict"
+    }
+  },
+  "requests": {
+    "title": "Requests",
+    "scope": "Company agents' requests up the structure: department manager → main agent → owner (missing and stopped levels are skipped). Agents answer in their chats; here you see the route and history and answer what reached you. You can also answer earlier, at any level. An answer is information or a decision; it grants no access.",
+    "filter": "Which requests to show",
+    "filters": {
+      "mine": "Waiting for me",
+      "active": "All open",
+      "all": "All"
+    },
+    "empty": {
+      "mine": "Nothing has reached you.",
+      "active": "No open requests.",
+      "all": "No requests yet."
+    },
+    "status": {
+      "open": "open",
+      "clarify": "waiting for clarification",
+      "answered": "answered",
+      "denied": "denied",
+      "expired": "expired",
+      "cancelled": "closed"
+    },
+    "kind": {
+      "question": "Needs information",
+      "decision": "Needs a decision",
+      "access": "Needs access"
+    },
+    "from": "From",
+    "deadline": "Deadline",
+    "task": "Task",
+    "route": "Route",
+    "answeredBy": "Answer: {name}",
+    "deniedBy": "Denied: {name}",
+    "owner": "owner",
+    "panel": "panel",
+    "history": "History",
+    "event": {
+      "created": "created",
+      "routed": "passed to",
+      "skipped": "level skipped",
+      "escalated": "passed up",
+      "clarify": "clarification asked",
+      "reply": "clarification received",
+      "answered": "answered",
+      "denied": "denied",
+      "expired": "expired",
+      "cancelled": "closed by the owner",
+      "refused": "refused",
+      "granted": "access granted",
+      "notified": "owner told"
+    },
+    "delivery": {
+      "pending": "message to the agent not delivered yet",
+      "failed": "message to the agent not delivered"
+    },
+    "answerPlaceholder": "Answer, reason for denial or a question to the requester",
+    "notYours": "The request is with: {name}. If you answer, it closes with your answer.",
+    "actions": {
+      "answer": "Answer",
+      "clarify": "Ask the requester",
+      "deny": "Deny",
+      "cancel": "Close without answer",
+      "grant": "Grant access"
+    },
+    "limits": "First version limits: no team lead level yet; at most four transitions; one open request of a kind per subject and up to five open per agent; one day to answer, after which the work stays blocked. Requests do not grant access to documents or services yet. Telegram messages come in a later stage.",
+    "failed": "The action failed.",
+    "errors": {
+      "request_missing": "Request not found.",
+      "request_closed": "The request is already closed — refresh the page.",
+      "revision_conflict": "The request changed — refresh the page and try again.",
+      "request_conflict": "A repeated request with different content.",
+      "company_only": "Requests are available in company mode only.",
+      "invalid_request": "Enter the answer text.",
+      "not_access": "This is not an access request.",
+      "not_applied": "The access did not hold when checked; the request stays open.",
+      "resource_missing": "The requested folder or server does not exist.",
+      "google_not_connected": "Google is not connected. Connect it in Sources → Google (Docs read access), or put the spec as a file into the shared folder and grant the folder.",
+      "gdoc_not_found": "Document not found: deleted, moved or a wrong link. This is not a refusal — check the link.",
+      "gdoc_no_access": "The connected Google account cannot open this document. Share it with that account in Google.",
+      "gdoc_too_large": "The document is too large for a copy (over 400 KB of text).",
+      "read_only_resource": "A Google Doc is granted read-only.",
+      "google_unavailable": "Google is unavailable right now — try again later."
+    },
+    "resource": "Resource",
+    "grantConfirm": "Grant {resource} to “{name}”? The panel applies the access, checks it, and only then closes the request.",
+    "channel": {
+      "agent": "to the agent",
+      "telegram": "Telegram"
+    }
+  },
+  "access": {
+    "title": "Access",
+    "scope": "What each company agent can actually reach: shared folders and team docs (a copy in its sandbox), MCP servers, the team's repository and work copy. The state is read where access is enforced; a grant or revocation counts only once the panel has checked the result. Revoking a folder deletes its copy from the agent's sandbox.",
+    "grantTitle": "Grant access",
+    "agent": "Agent",
+    "resource": "Resource",
+    "levelLabel": "Access level",
+    "grant": "Grant and check",
+    "mcpAll": "An MCP server is granted whole: all its tools, with no read/write split.",
+    "granted": "Access granted and checked.",
+    "revoked": "Access revoked and checked.",
+    "sandboxed": "sandboxed",
+    "notSandboxed": "no sandbox",
+    "mainNote": "The main agent runs without a sandbox and sees the whole shared folder. Only its MCP servers are managed here.",
+    "notSandboxedNote": "An agent without a sandbox sees more of the Gateway's files than shown here: folder limits do not apply to it.",
+    "none": "No separate access.",
+    "kind": {
+      "folder": "folder",
+      "team-docs": "team docs",
+      "mcp": "MCP",
+      "team-repo": "team repository",
+      "project-copy": "project copy",
+      "gdoc": "Google Doc"
+    },
+    "level": {
+      "read": "read",
+      "write": "read and write"
+    },
+    "state": {
+      "partial": "partly synchronized",
+      "error": "synchronization error"
+    },
+    "revoke": "Revoke",
+    "revokeFolder": "Folder “{name}” stops synchronizing and its copy is deleted from the sandbox of “{agent}”. The shared folder does not change. Continue?",
+    "revokeMcp": "The tools of server “{name}” become unavailable to “{agent}”. Continue?",
+    "viaTeam": "changed through the team",
+    "history": "Grants and revocations",
+    "by": "granted by: {by}",
+    "revokedAt": "revoked {at}",
+    "limits": "Only the owner grants and revokes access (no delegation to managers); folders only from the shared folder; an MCP server as a whole; a Google Doc as a read-only copy refreshed with a button. Agents' memory is not yet separated by team. An agent without a sandbox is not bound by these rules.",
+    "failed": "Could not change access.",
+    "errors": {
+      "agent_missing": "Agent not found.",
+      "resource_missing": "No such folder or server (or no access to take away).",
+      "not_applied": "The change did not hold when checked — access not counted. Refresh the page and check the state.",
+      "main_folders": "The main agent sees the whole shared folder; there is nothing to grant.",
+      "company_only": "Access is managed in company mode.",
+      "invalid_request": "Invalid resource.",
+      "google_not_connected": "Google is not connected. Connect it in Sources → Google (Docs read access), or put the spec as a file into the shared folder and grant the folder.",
+      "gdoc_not_found": "Document not found: deleted, moved or a wrong link. This is not a refusal — check the link.",
+      "gdoc_no_access": "The connected Google account cannot open this document. Share it with that account in Google.",
+      "gdoc_too_large": "The document is too large for a copy (over 400 KB of text).",
+      "read_only_resource": "A Google Doc is granted read-only.",
+      "google_unavailable": "Google is unavailable right now — try again later."
+    },
+    "gdocOption": "Google Doc (by link)",
+    "gdocLink": "Google Docs link",
+    "gdocHint": "The agent gets a read-only copy in google/ of its workspace. The panel makes it with your Google connection; the agent itself gets no Google access and sees no other documents.",
+    "gdocVersion": "version {version}, copied {at}",
+    "refresh": "Refresh copy",
+    "refreshed": "Copy refreshed",
+    "refreshedChanged": "The document changed: the copy was replaced and the agent told.",
+    "refreshedSame": "The document has not changed.",
+    "revokeGdoc": "The copy of \"{name}\" will be deleted from {agent}'s workspace. The document in Google does not change. Continue?"
+  },
+  "workItems": {
+    "title": "Company tasks",
+    "scope": "You set a task: what to do, acceptance criteria, executor, deadline. An executor has one task in work; the rest wait in its queue and start by themselves when it is free. The agent gets the task in its chat and reports the result with a tool; done without a result does not count, and you accept it. If the agent lacks something, it files a request for the task — the task waits for the answer and continues when it comes. A team member's task is accepted by the team lead (if one is set) or by you.",
+    "new": "New task",
+    "fields": {
+      "title": "Title",
+      "description": "What to do",
+      "criteria": "Acceptance criteria",
+      "executor": "Executor",
+      "deadline": "Deadline"
+    },
+    "startNow": "Start now (queued if the executor is busy)",
+    "createStart": "Create and start",
+    "createDraft": "Save draft",
+    "filter": "Which tasks to show",
+    "filters": {
+      "active": "In progress",
+      "review": "Awaiting acceptance",
+      "all": "All"
+    },
+    "empty": "No tasks.",
+    "status": {
+      "draft": "draft",
+      "queued": "queued",
+      "running": "in work",
+      "blocked": "blocked",
+      "review": "awaiting acceptance",
+      "done": "accepted",
+      "failed": "failed",
+      "cancelled": "cancelled"
+    },
+    "position": "#{n} in queue",
+    "overdue": "overdue",
+    "blocked": "Waiting for",
+    "result": "Executor's result",
+    "failedResult": "Why it failed",
+    "history": "History",
+    "event": {
+      "created": "created",
+      "queued": "queued",
+      "started": "started",
+      "reported": "result handed in",
+      "blocked": "blocked",
+      "unblocked": "continued",
+      "accepted": "accepted",
+      "returned": "returned",
+      "failed": "failed",
+      "cancelled": "cancelled",
+      "refused": "refused"
+    },
+    "comment": "Comment (required when returning)",
+    "actions": {
+      "start": "Start",
+      "retry": "Start again",
+      "accept": "Accept",
+      "return": "Return with comment",
+      "resume": "Continue without answer",
+      "cancel": "Cancel"
+    },
+    "cancelConfirm": "The task will be cancelled; if it is in work, the executor is told to stop. Continue?",
+    "limits": "First version: the owner sets tasks; a task starts by itself only from the queue when the executor is free; up to 10 queued per executor; no token or cost limits per task yet; you do the acceptance.",
+    "failed": "The action failed.",
+    "errors": {
+      "company_only": "Tasks are available in company mode.",
+      "item_missing": "Task not found.",
+      "executor_missing": "Executor not found.",
+      "revision_conflict": "The task changed — refresh the page.",
+      "request_conflict": "A repeated request with different content.",
+      "wrong_state": "The task is already in another state — refresh the page.",
+      "queue_full": "The executor already has 10 tasks queued.",
+      "invalid_request": "Fill in the task fields."
+    }
+  },
+  "projectGitHub": {
+    "title": "GitHub",
+    "intro": "Optional: local work and checks need no GitHub. You can create a new repository and push the project there, then send later changes as pull requests. The token stays on the server and is never shown again; agents never get it.",
+    "token": "GitHub token",
+    "tokenSaved": "Token saved.",
+    "tokenHint": "The token must be allowed to create repositories (classic: repo; fine-grained: Administration and Contents — Read and write). For an organization, with access to it.",
+    "owner": "Owner or organization",
+    "name": "Repository name",
+    "visibility": "Visibility",
+    "private": "private",
+    "public": "public",
+    "showPlan": "Show what will be pushed",
+    "planFiles": "Files to push: {n}",
+    "gitignore": "created: leaves out secrets, databases and dependencies",
+    "excluded": "Will not be pushed",
+    "reason": {
+      "link": "link",
+      "generated": "dependencies or build",
+      "secret_or_local": "secret or local data",
+      "too_large": "over 5 MB",
+      "looks_like_secret": "content looks like a secret"
+    },
+    "confirm": "I checked the list: create {repo} ({visibility}) and push exactly these files.",
+    "create": "Create repository and push",
+    "continue": "Continue",
+    "unfinished": "Repository {repo} was created, but the step “{step}” is not finished. “Continue” completes it without a second repository.",
+    "step": {
+      "created": "first commit",
+      "committed": "push",
+      "pushed": "done"
+    },
+    "hasGit": "The project folder already has git. If its origin is a GitHub repository, it can be connected as it is: nothing in the folder changes, and changes go through pull requests.",
+    "branch": "default branch {branch}",
+    "changesCount": "Unpushed changes: {n}.",
+    "noChanges": "Everything is pushed.",
+    "preparePr": "Prepare a pull request",
+    "prTitle": "PR title",
+    "prBody": "Description",
+    "prConfirm": "Push these changes to a new branch and open a pull request. The default branch does not change.",
+    "openPr": "Push and open PR",
+    "pullRequests": "Pull requests opened from the panel",
+    "disconnect": "Disconnect GitHub",
+    "disconnectConfirm": "The panel forgets the token and the connection. The repository on GitHub and the folder's history stay. Continue?",
+    "limits": "Changes go through a new branch and a PR, merging is for people, no force push. Tracked files the rules do not push (such as .env) are left alone.",
+    "failed": "The GitHub action failed.",
+    "errors": {
+      "invalid_token": "This does not look like a GitHub token (github_pat_… or ghp_…).",
+      "invalid_github_request": "Check the owner and the repository name.",
+      "github_token_required": "Enter a GitHub token.",
+      "github_token_rejected": "GitHub rejected the token.",
+      "github_unreachable": "GitHub did not answer; the local project is unchanged, you can retry.",
+      "github_repo_exists": "A repository with this name already exists and was not created by this project — choose another name.",
+      "github_repo_gone": "The repository created earlier is gone from GitHub.",
+      "github_no_permission": "The token may not create a repository for this owner.",
+      "github_private_unavailable": "The account cannot create a private repository; the panel will not make it public without your decision.",
+      "github_folder_has_git": "The folder already has git.",
+      "github_plan_changed": "Files changed after the plan was shown — show the plan again.",
+      "github_already_connected": "The project is already connected to GitHub.",
+      "github_not_connected": "The project is not connected to GitHub yet.",
+      "github_nothing_to_push": "No unpushed changes.",
+      "github_pull_request_failed": "The branch was pushed but the PR could not be opened.",
+      "github_git_failed": "A git command failed.",
+      "github_project_too_large": "The project is too large to push from the panel.",
+      "github_unavailable": "GitHub features are unavailable right now.",
+      "invalid_request": "Confirm the plan.",
+      "github_repo_not_found": "Repository not found or not visible to the token.",
+      "github_no_origin": "The folder has no GitHub origin.",
+      "github_folder_has_no_git": "The folder has no git.",
+      "workspace_exists": "A folder with this name already exists.",
+      "workspace_already_linked": "The project already has a folder."
+    },
+    "connect": "Connect the repository from origin",
+    "importIntro": "The project has no folder yet. It can come from GitHub: the repository is cloned into a new folder of the allowed root and linked to the project.",
+    "importUrl": "Repository address",
+    "importFolder": "New folder name",
+    "import": "Clone and connect"
+  },
+  "activity": {
+    "title": "Activity",
+    "office": "Interactive office",
+    "scope": "What each company agent is doing now. “Working” only while the Gateway reported a run; waiting and blocks come from requests and tasks. Without events an agent is not shown as working, and a run with no news for 10 minutes stops counting.",
+    "noGateway": "No connection to the Gateway: states are unknown and not shown as work.",
+    "notLive": "The update stream is reconnecting; the last snapshot is shown.",
+    "counts": {
+      "working": "working: {n}",
+      "idle": "free: {n}",
+      "waiting": "waiting: {n}",
+      "blocked": "blocked: {n}",
+      "error": "errors: {n}",
+      "offline": "offline: {n}"
+    },
+    "filter": "Which states to show",
+    "filters": {
+      "all": "All",
+      "working": "Working",
+      "waiting": "Waiting",
+      "problems": "Problems"
+    },
+    "search": "Search by name, team, department",
+    "empty": "Nobody matches the filter.",
+    "columns": {
+      "agent": "Agent",
+      "state": "State",
+      "detail": "What and why",
+      "last": "Last event"
+    },
+    "state": {
+      "idle": "free",
+      "queued": "queued",
+      "working": "working",
+      "waiting_for_agent": "waiting for a colleague",
+      "waiting_for_owner": "waiting for the owner",
+      "blocked": "blocked",
+      "error": "error",
+      "offline": "offline",
+      "unknown": "unknown"
+    },
+    "roles": {
+      "main": "main agent",
+      "specialist": "agent",
+      "team_member": "team member"
+    },
+    "positions": {
+      "developer": "developer",
+      "reviewer": "reviewer",
+      "pm": "PM",
+      "qa": "QA",
+      "manager": "manager",
+      "project-qa": "project QA",
+      "project-developer": "project developer",
+      "team-lead": "team lead"
+    },
+    "action": "tool: {tool}",
+    "inbox": "waiting for its answer: {n}",
+    "limits": "States come from Gateway events and the panel's database; the list polls no agents and runs no models. An exact action (“Running a command”) is shown only from a tool the run reported."
+  },
+  "office": {
+    "title": "Interactive office",
+    "toList": "List",
+    "demoTitle": "Demonstration — not monitoring",
+    "demo": "Test data to check the design; it is not connected to your agents.",
+    "demoSwitch": "Demo data",
+    "counts": {
+      "working": "working: {n}",
+      "idle": "free: {n}",
+      "waiting": "waiting for decisions: {n}",
+      "problems": "errors and offline: {n}"
+    },
+    "scope": "Whom to show",
+    "scopeAll": "Whole company",
+    "department": "Department",
+    "team": "Team",
+    "motion": "Motion",
+    "zoomIn": "Larger",
+    "zoomOut": "Smaller",
+    "tooMany": "{n} agents in this scope; the scene holds {max}. Choose a department or team.",
+    "failed": "The scene could not be drawn in this browser. All data is in the list:",
+    "narrow": "On a small screen the list comes first. You can open the office and pan and zoom the scene.",
+    "open": "Open the office",
+    "empty": "No agents in this scope. Add an agent or choose another scope.",
+    "hint": "Click a character to open its card; drag to move the scene.",
+    "close": "Close the card",
+    "task": "Task",
+    "request": "Request",
+    "chat": "Open chat",
+    "people": "Characters in the scene",
+    "actions": {
+      "task": "Working on a task",
+      "read": "Reading",
+      "write": "Writing a file",
+      "exec": "Running a command",
+      "web": "Searching the web",
+      "request": "Writing a request",
+      "report": "Handing in a result",
+      "tool": "Using a tool"
+    },
+    "short": {
+      "idle": "Free",
+      "queued": "Queued",
+      "waiting_for_agent": "Waiting for a colleague",
+      "waiting_for_owner": "Waiting for a decision",
+      "blocked": "Blocked",
+      "error": "Error",
+      "offline": "Offline",
+      "unknown": "Unknown",
+      "working": "Working on a task"
+    },
+    "limits": "The scene is drawn in the browser and spends no tokens; it polls no agents and updates from the same source as the list. Motion turns off with the switch and with the reduce-motion setting. Characters and furniture are drawn by the panel's code."
+  },
+  "agentAi": {
+    "title": "This agent's AI",
+    "lead": "The agent can run on the main agent's AI or on its own key or subscription. A separate AI is connected the same way as when creating an agent; after that the agent no longer follows the main agent's model changes.",
+    "providers": "Connected",
+    "none": "No own connections: the agent uses the main agent's AI (if it is set up).",
+    "statusFailed": "Could not find out which AI is connected.",
+    "connect": "Connect a separate AI",
+    "cancel": "Cancel",
+    "connected": "A separate AI is connected. Choose this agent's models below."
+  },
+  "agentCharter": {
+    "title": "Responsibilities and limits",
+    "lead": "The agent's working conditions in your words. The panel writes them into its AGENTS.md and puts them back if the file changes. The text describes the work and grants no access: technical powers are below.",
+    "loadFailed": "Could not load the agent's responsibilities.",
+    "failed": "Could not save.",
+    "version": "Version {version}",
+    "defaults": "Safe default conditions apply for now",
+    "notSpecified": "Not specified",
+    "note": "Note for this version (optional)",
+    "save": "Save a new version",
+    "saved": "New version saved and written to the agent",
+    "restored": "The earlier version was restored as a new one",
+    "repaired": "The conditions block was written to AGENTS.md again",
+    "expands": "This change widens the agent's powers: something was added to \"May do\" or taken from \"Forbidden\" / \"Ask permission\". Tightening applies at once; widening only with your confirmation.",
+    "confirmExpansion": "I confirm widening the powers",
+    "repair": "Write the conditions again",
+    "history": "Version history",
+    "restore": "Restore",
+    "restoreConfirm": "Save the text of version {version} as a new version? If it is looser than the current one, it widens the agent's powers.",
+    "fields": {
+      "responsibleFor": "Responsible for",
+      "mustDo": "Must do",
+      "mayDo": "May do",
+      "forbidden": "Forbidden",
+      "askPermission": "When to ask permission",
+      "escalateTo": "Whom to hand questions to",
+      "verifyBy": "How the result is checked"
+    },
+    "file": {
+      "changed": "The conditions block in AGENTS.md was changed",
+      "missing": "AGENTS.md has no conditions block",
+      "hint": "The agent may have edited the file itself. The panel's conditions apply; the panel puts the block back within 10 minutes, or now with the button.",
+      "unavailable": "No connection to the Gateway — AGENTS.md could not be compared."
+    },
+    "source": {
+      "owner": "owner",
+      "restore": "restored",
+      "default": "default"
+    },
+    "powers": {
+      "title": "What the agent can technically do",
+      "lead": "Team lead",
+      "sandbox": "Runs in a sandbox",
+      "noSandbox": "Runs without a sandbox",
+      "folder": "Own folder: {name}",
+      "noFolder": "No folder of its own",
+      "grants": "Granted access: {list}",
+      "noGrants": "No extra access granted",
+      "access": {
+        "read": "read",
+        "write": "read and write"
+      },
+      "askMain": "May ask the main agent",
+      "noAskMain": "May not ask the main agent",
+      "memberOf": "Member of team {team}",
+      "leadOf": "Lead of team {team}",
+      "manager": "Department manager",
+      "external": "External actions (publishing, e-mail, payments) only with the owner's approval, whatever the text above says."
+    },
+    "errors": {
+      "version_conflict": "The conditions were changed meanwhile — reload the page.",
+      "expansion_confirmation_required": "Confirm widening the powers.",
+      "version_missing": "No such version.",
+      "agent_missing": "Agent not found.",
+      "gateway_unavailable": "No connection to the Gateway."
+    }
+  },
+  "projectInterview": {
+    "open": "Interview with the assistant",
+    "title": "Project interview",
+    "lead": "The assistant (the main agent's model) asks 1–3 questions at a time, offers example answers and retells the first version. Answers are saved into the project brief; its guesses are marked as assumptions and go into the brief only if you accept them. You can close the window — nothing is lost.",
+    "summary": "How the assistant understood the project",
+    "users": "Who uses it",
+    "parts": {
+      "inFirstVersion": "In the first version",
+      "notInFirstVersion": "Not in the first version",
+      "scenarios": "Main scenarios",
+      "openQuestions": "Open questions"
+    },
+    "summaryNote": "This is the assistant's retelling, not agreed requirements: check it and fix the brief if something is off.",
+    "idle": "The assistant reads what the brief already has and asks only for what is missing.",
+    "asking": "The assistant is thinking of questions… Usually under a minute.",
+    "done": "The assistant thinks there is enough for a first version. Check the brief; you can ask again any time.",
+    "failure": {
+      "model_unavailable": "The assistant did not answer",
+      "invalid_reply": "The assistant answered in the wrong form",
+      "timeout": "The assistant ran out of time",
+      "interrupted": "The request was cut off (the panel restarted)"
+    },
+    "failureHint": "Try again, or fill the brief step by step — it works without the assistant.",
+    "answer": "Your answer (your own words, or pick an example above)",
+    "assumptions": "The assistant's assumptions",
+    "assumptionsHint": "The assistant guessed these. Accept to put them into the brief; reject so it knows they are wrong.",
+    "assumption": "assumption",
+    "accept": "Right",
+    "reject": "Wrong",
+    "answerNext": "Answer and continue",
+    "saveOnly": "Save without new questions",
+    "start": "Start the interview",
+    "askAgain": "Ask more",
+    "close": "Close",
+    "answered": "Answered already: {count}",
+    "failed": "The action failed.",
+    "errors": {
+      "revision_conflict": "The interview changed — the window was refreshed, try again.",
+      "interview_busy": "The assistant is still thinking — wait for its answer.",
+      "model_missing": "The main agent's model is unavailable. Fill the brief step by step.",
+      "project_archived": "The project is archived."
+    }
+  },
+  "ruleAudit": {
+    "title": "Contradictions between rules",
+    "check": "Check for contradictions",
+    "checking": "The assistant is reading the rules…",
+    "needTwo": "At least two rules are needed.",
+    "stale": "The rules changed since the last check — check again.",
+    "never": "The rules have not been checked yet.",
+    "checkedAt": "Checked {at}.",
+    "none": "The assistant found no contradictions. That does not prove there are none — check the important rules yourself.",
+    "failure": {
+      "model_unavailable": "The assistant did not answer. Try later.",
+      "invalid_reply": "The assistant answered in the wrong form. Try again.",
+      "timeout": "The assistant ran out of time.",
+      "interrupted": "The check was cut off (the panel restarted)."
+    },
+    "open": "contradiction",
+    "outdated": "a rule changed — check again",
+    "example": "Example",
+    "question": "What to choose",
+    "blocks": "While the contradiction is open, no task can be started on these rules. Fix one of them (a new version) or mark that they do not contradict.",
+    "note": "Why the rules do not contradict",
+    "dismiss": "They agree",
+    "decided": "Decided by the owner: {count}",
+    "searchTitle": "Find a rule by a phrase",
+    "searchPlaceholder": "For example: \"Now a 15% discount is for the manager only\"",
+    "search": "Find",
+    "noMatch": "No matching rule — perhaps it is a new one.",
+    "openRule": "Open",
+    "failed": "The action failed.",
+    "errors": {
+      "revision_conflict": "The check changed meanwhile — refreshed, try again.",
+      "audit_busy": "A check is already running.",
+      "model_missing": "The main agent's model is unavailable.",
+      "conflict_missing": "Contradiction not found — refresh.",
+      "no_rules": "At least two rules are needed."
+    }
+  },
+  "projectFoundation": {
+    "title": "Project foundation",
+    "decision": {
+      "fits": "The checked foundation fits: a small Node.js web app with an SQLite database. Nothing in the brief and rules goes beyond it.",
+      "partial": "The checked foundation does not cover everything. Below is what was found in the brief and rules and will not be in the first version. You can create the project only after confirming this; the rest is separate development."
+    },
+    "needs": {
+      "roles": "Sign-in, roles and permissions",
+      "integrations": "External services",
+      "realtime": "Real-time updates, chat",
+      "mobile": "Mobile app",
+      "files": "Files and images",
+      "offline": "Working offline",
+      "payments": "Payments",
+      "messages": "E-mail, SMS, notifications",
+      "load": "High load"
+    },
+    "covered": "in the foundation",
+    "notCovered": "not in the first version",
+    "fromField": "From \"{field}\"",
+    "fromRule": "From a business rule",
+    "basis": "The basis is the words of your brief and rules; if something was found wrongly, fix the brief (for example, move it to \"Not in the first version\").",
+    "technical": "Technical details",
+    "fields": {
+      "runtime": "Runtime",
+      "storage": "Data",
+      "ui": "Interface",
+      "tests": "Checks",
+      "dependencies": "Dependencies",
+      "platforms": "Runs on",
+      "license": "License",
+      "origin": "Origin"
+    },
+    "alternatives": "What would fit the missing needs",
+    "alternative": {
+      "vue-node": "A web app with a separate frontend (e.g. Vue + Node.js) — sign-in and roles, files, e-mail.",
+      "aspnet": "A server app with complex permissions and integrations (e.g. ASP.NET Core) — roles, external services, payments, load.",
+      "mobile": "A mobile app (e.g. Flutter or React Native) and a server for it.",
+      "realtime": "An app with persistent connections (WebSocket) — chat and real-time updates."
+    },
+    "notGenerated": "The panel does not create these automatically: they are directions for separate development, not ready templates.",
+    "acknowledge": "I understand: the listed needs will not be in the first version"
+  },
+  "projectTransfer": {
+    "title": "Move to another installation",
+    "lead": "The project's folder is on the machine this installation runs on: a server does not see a computer's folder, nor the other way round. To continue the project on another installation, download it as a file and upload it there under Projects → Upload a project file.",
+    "show": "Show what the file will hold",
+    "summary": "It holds: {files} files ({size}), {rules} business rules, the project brief.",
+    "folder": "Folder: \"{name}\".",
+    "files": "Files",
+    "excluded": "Left out ({count})",
+    "reasons": {
+      "secret_or_local": "a secret or local data",
+      "looks_like_secret": "looks like a key or token",
+      "version_control": "git history (connect GitHub on the new installation)",
+      "generated": "dependencies or build output",
+      "link": "a link",
+      "too_large": "over 5 MB",
+      "too_deep": "nested too deep"
+    },
+    "notCarried": "Not carried: acceptance scenarios, tasks, check runs, executors and the GitHub link — they stay with this installation.",
+    "download": "Download the project file",
+    "downloaded": "\"{name}\" downloaded. Upload it on the other installation.",
+    "import": "Upload a project file",
+    "imported": "Project \"{name}\" uploaded: folder \"{folder}\", {files} files, {rules} rules.",
+    "importedAgain": "This file was uploaded before — the same project \"{name}\" is open.",
+    "importFolderFailed": "Project \"{name}\" was created but its files were not written. Upload the same file again — the move continues without duplicates.",
+    "kb": "{n} KB",
+    "mb": "{n} MB",
+    "failed": "The move failed.",
+    "errors": {
+      "invalid_package": "This is not a ClawDesk project file, or it is damaged.",
+      "package_too_large": "The project file is too large (over 20 MB of files).",
+      "transfer_too_large": "The project is too large to move as a file (over 20 MB or 2000 files). Move it through GitHub.",
+      "gateway_unavailable": "No connection to the Gateway.",
+      "workspace_required": "The project has no folder."
+    }
+  },
+  "capabilities": {
+    "title": "Installation capabilities",
+    "subtitle": "What this installation can do now",
+    "lead": "Each row is checked right now on this installation: connection, settings and tools in the container. It is a fact about this machine, not a promise: what is missing here does not work, even if the documentation describes it.",
+    "check": "Check again",
+    "failed": "Could not check the capabilities.",
+    "checkedAt": "Checked {at}.",
+    "state": {
+      "ok": "present",
+      "off": "switched off",
+      "missing": "missing",
+      "unknown": "could not check"
+    },
+    "items": {
+      "gateway": {
+        "title": "Gateway connection",
+        "gives": "The panel runs the OpenClaw agents.",
+        "without": "No Gateway connection: agents, chats, tasks and checks do not work until it is back."
+      },
+      "openclaw": {
+        "title": "OpenClaw version",
+        "gives": "The pinned version the panel was checked with.",
+        "without": "The OpenClaw version could not be read."
+      },
+      "company_mode": {
+        "title": "Company mode",
+        "gives": "Departments, projects, requests and tasks are available.",
+        "without": "The installation is in personal mode: company features are off."
+      },
+      "model": {
+        "title": "Main agent's AI",
+        "gives": "The project interview, the contradiction check and the agents' work use this model.",
+        "without": "The main agent has no model: the interview, the contradiction check and agents' work are unavailable. Connect an AI under Assistant."
+      },
+      "sandbox": {
+        "title": "Agent sandbox",
+        "gives": "Junior agents run in containers of their own and see only the folders and copies granted to them.",
+        "without": "The sandbox is off: junior agents run in the Gateway container and are not bound by the folder and Google Doc rules."
+      },
+      "docker": {
+        "title": "Docker",
+        "gives": "Checks and previews of project apps, agent sandboxes.",
+        "without": "Docker is unavailable: checks and previews of created apps and agent sandboxes do not work."
+      },
+      "requests_plugin": {
+        "title": "Requests plugin",
+        "gives": "Agents file requests and task reports; Telegram buttons and /req.",
+        "without": "The requests plugin is not on: agents cannot file requests or reports. Restart the installation."
+      },
+      "telegram": {
+        "title": "Owner in Telegram",
+        "gives": "Requests to the owner arrive in Telegram with buttons.",
+        "without": "The owner is not confirmed in the bot: requests show in the panel only (Telegram → pairing)."
+      },
+      "google": {
+        "title": "Google",
+        "gives": "Google Docs are given to agents as read-only copies.",
+        "without": "Google is not connected: no Google Docs for agents (a spec can go into the shared folder as a file)."
+      },
+      "git": {
+        "title": "Git",
+        "gives": "GitHub teams and projects on GitHub.",
+        "without": "Git is unavailable: GitHub teams and pushing projects to GitHub do not work."
+      }
+    }
+  },
+  "projectLoad": {
+    "title": "Load check",
+    "lead": "The app runs in its own container (0.5 CPU, 192 MB) with a client next to it sending list and create requests at once. The result holds for these conditions only: on your server it will differ.",
+    "targetSimultaneous": "The brief says: {n} at once.",
+    "targetTotal": "The brief says: {n} users in all — how many at once is not said.",
+    "noTarget": "The brief states no expected load — the check shows only how the app behaves under the chosen conditions.",
+    "concurrency": "At once",
+    "seconds": "Seconds",
+    "run": "Check the load",
+    "verdict": {
+      "confirmed": "confirmed",
+      "not_confirmed": "not confirmed",
+      "no_target": "no target",
+      "failed": "did not hold",
+      "blocked": "no result"
+    },
+    "conditions": "Conditions: {c} at once, {s} s, app {cpu} CPU and {mem} MB;",
+    "result": "Result: {n} requests, {rps} per second; latency p50 {p50} ms, p95 {p95} ms, p99 {p99} ms; {errors} errors.",
+    "noResult": "The check gave no result ({error}). This is not a success.",
+    "explain": {
+      "confirmed": "The expected simultaneous load ({n}) held without errors, p95 within 1 s — under these conditions.",
+      "not_confirmed": "The expected load ({n}) is not confirmed: fewer requests at once were run, or the brief states only a total number of users.",
+      "no_target": "No target: nothing to confirm. Add \"N at once\" to the brief.",
+      "failed": "Over 1% errors or p95 above 1 s.",
+      "blocked": "The environment gave no result — try again."
+    },
+    "failed": "The load check failed.",
+    "errors": {
+      "load_busy": "A load check is already running.",
+      "checks_unsupported": "Load checks are available for apps created by the builder."
+    }
+  },
+  "existingPlan": {
+    "title": "Change plan",
+    "lead": "The assistant (the main agent's model) reads the file list, dependencies and git presence, the brief and the approved rules and proposes a small plan: what stays, what to change where, risks and questions. File contents are not sent. The plan executes nothing.",
+    "ask": "Propose a plan",
+    "again": "Propose again",
+    "planning": "The assistant is drafting the plan…",
+    "basis": "Basis: {files} files at the root, dependencies: {deps}.",
+    "keep": "Stays as it is",
+    "changes": "Changes",
+    "risks": "Risks",
+    "questions": "To clarify",
+    "newFile": "not found in the folder — a new file?",
+    "risk": {
+      "low": "low risk",
+      "medium": "medium risk",
+      "high": "high risk"
+    },
+    "notRun": "This is a proposal: nothing in the folder changed. Carry it out as a separate task for a developer, with checks and your consent.",
+    "failure": {
+      "model_unavailable": "The assistant did not answer.",
+      "invalid_reply": "The assistant answered in the wrong form — try again.",
+      "timeout": "The assistant ran out of time.",
+      "interrupted": "The request was cut off (the panel restarted)."
+    },
+    "failed": "Could not get a plan.",
+    "errors": {
+      "plan_busy": "A plan is being drafted.",
+      "model_missing": "The main agent's model is unavailable.",
+      "existing_workspace_required": "Plans are for an existing project folder.",
+      "revision_conflict": "The plan changed — refresh the card."
     }
   }
 }

@@ -27,7 +27,15 @@ import { LibraryService } from "./library/library-service.js";
 import { MemoryNoteService } from "./library/memory-note-service.js";
 import { ReminderService } from "./schedules/reminder-service.js";
 import { repairAgentFolders } from "./provision/agent-folders.js";
-import { repairAgentCommunication } from "./provision/agent-communication.js";
+import { liveAgentIds, repairAgentCommunication } from "./provision/agent-communication.js";
+import { WorkRequestsService } from "./company/work-requests-service.js";
+import { AccessService } from "./company/access-service.js";
+import { WorkItemsService } from "./company/work-items-service.js";
+import { AgentCharterService } from "./company/agent-charter-service.js";
+import { ActivityService, RunTracker } from "./company/activity-service.js";
+import { getConfig } from "./gateway/config-patch.js";
+import { syncRequestTools } from "./company/work-requests-config.js";
+import { mainSessionKey } from "./chat/chat-service.js";
 
 // Host development reads apps/bff/.env (written by init.sh --dev); containers get real env vars.
 if (process.env.NODE_ENV !== "production" && fs.existsSync(".env")) process.loadEnvFile(".env");
@@ -68,8 +76,44 @@ const video = new VideoService({ db, bridge, chat: new ChatService(gateway, libr
 video.recover();
 const reminders = new ReminderService({ db, gateway, telegram, mode: () => space.mode(), timeZone: () => space.get()?.timezone ?? "UTC" });
 reminders.recover();
+// Stage 5: what company agents can reach; grants are applied and checked where they are enforced.
+const access = new AccessService({
+  db, bridge, companyMode: () => space.mode() === "company",
+  setMcpAgents: (server, agentIds) => mcp.setAgents(server, agentIds),
+  config: async () => (await getConfig<Record<string, never>>(gateway)).config,
+  notify: async (agentId, message, idempotencyKey) => { await gateway.request("chat.send", { sessionKey: mainSessionKey(agentId), agentId, message, idempotencyKey }); },
+});
+// Stage 6, part 2: company tasks; a request filed for a task blocks it until it is decided.
+const workItems = new WorkItemsService({
+  db, companyMode: () => space.mode() === "company",
+  send: async (agentId, message, idempotencyKey) => { await gateway.request("chat.send", { sessionKey: mainSessionKey(agentId), agentId, message, idempotencyKey }); },
+});
+// Stage 4: agents' charters, written into AGENTS.md and put back when the file no longer matches.
+const charters = new AgentCharterService({ db, gateway, logger });
+// Stage 9: runs from the Gateway's events plus tasks and requests → one state per agent (list and office).
+const runTracker = new RunTracker();
+const activityListeners = new Set<() => void>();
+gateway.onEvent((event) => { if (runTracker.handle(event as { event: string; payload?: unknown })) for (const listener of activityListeners) listener(); });
+let liveCache: { at: number; ids: Set<string> } | null = null;
+const activity = new ActivityService({
+  db, tracker: runTracker, gatewayConnected: () => gateway.status.state === "connected", generation: () => gateway.generation,
+  // The agent list changes rarely; asking the Gateway on every snapshot would cost an RPC per update.
+  liveAgents: async () => {
+    if (liveCache && Date.now() - liveCache.at < 15_000) return liveCache.ids;
+    liveCache = { at: Date.now(), ids: await liveAgentIds(gateway) };
+    return liveCache.ids;
+  },
+});
+const onActivity = (listener: () => void) => { activityListeners.add(listener); return () => activityListeners.delete(listener); };
+// Stage 6: requests up the company structure, filed by agents through the clawdesk-requests plugin.
+const requests = new WorkRequestsService({
+  db, bridge, companyMode: () => space.mode() === "company", liveAgents: () => liveAgentIds(gateway),
+  // Stage 8: requests that reach the owner go to the owner's Telegram too, with buttons the plugin hands back.
+  telegram, grant: (request, by) => access.grant(request, by), tasks: workItems,
+  send: async (agentId, message, idempotencyKey) => { await gateway.request("chat.send", { sessionKey: mainSessionKey(agentId), agentId, message, idempotencyKey }); },
+});
 
-const app = await buildApp({ logger, gateway, db, aiSetup, signIn, telegram, freeModels, sources, skills, mcp, approvals, assistant, auth, backups, bridge, space, teams, audit, video, videoDir: config.videoDir, library, budget, notes, reminders, sandboxEnabled: config.sandboxEnabled, webDist: config.webDist, trustProxy: config.trustProxy });
+const app = await buildApp({ logger, gateway, db, aiSetup, signIn, telegram, freeModels, sources, skills, mcp, approvals, assistant, auth, backups, bridge, space, teams, audit, video, videoDir: config.videoDir, library, budget, notes, reminders, requests, access, workItems, charters, activity, onActivity, sandboxEnabled: config.sandboxEnabled, webDist: config.webDist, trustProxy: config.trustProxy });
 
 gateway.start();
 await app.listen({ host: config.host, port: config.port });
@@ -98,6 +142,9 @@ async function repairStartup(): Promise<void> {
   const repairs: [string, () => Promise<unknown>][] = [
     ["personal agent session policy and restricted ask-main configuration (tool availability unverified)", () => repairAgentCommunication({ gateway, db })],
     ["managed agent folders", () => repairAgentFolders({ gateway, db, bridge, logger })],
+    // GitHub teams made before OpenClaw refused binds into /workspace: members get copies in their workspaces.
+    ["team repository copies", () => teams.repairWorkspaces()],
+    ["company request tools", () => syncRequestTools({ gateway, db, companyMode: space.mode() === "company" })],
     ["default exec approval mode", repairDefaultApprovals],
     ["junior models", repairFollowerModels],
     ["memory provider", repairMemory],
@@ -148,6 +195,21 @@ const reminderTimer = setInterval(() => {
 }, 15_000);
 reminderTimer.unref();
 
+// Requests: new spool entries, deadlines and messages every few seconds; tools for new agents every minute.
+const requestsTimer = setInterval(() => {
+  if (!shuttingDown && gateway.status.state === "connected") void requests.tick().catch((error: Error) => logger.warn({ err: error }, "could not process company requests"));
+}, 5_000);
+requestsTimer.unref();
+const requestToolsTimer = setInterval(() => {
+  if (!shuttingDown && gateway.status.state === "connected" && space.mode() === "company") void syncRequestTools({ gateway, db, companyMode: true }).catch((error: Error) => logger.warn({ err: error }, "could not give company agents the request tools"));
+}, 60_000);
+requestToolsTimer.unref();
+// An agent may rewrite its own AGENTS.md; its charter block goes back within ten minutes.
+const charterTimer = setInterval(() => {
+  if (!shuttingDown && gateway.status.state === "connected") void charters.sweep().catch((error: Error) => logger.warn({ err: error }, "could not check agent charters"));
+}, 10 * 60_000);
+charterTimer.unref();
+
 async function shutdown(signal: string): Promise<void> {
   if (shuttingDown) return;
   shuttingDown = true;
@@ -157,6 +219,9 @@ async function shutdown(signal: string): Promise<void> {
   clearInterval(budgetTimer);
   clearInterval(notesTimer);
   clearInterval(reminderTimer);
+  clearInterval(requestsTimer);
+  clearInterval(requestToolsTimer);
+  clearInterval(charterTimer);
   await reminders.stop();
   await app.close();
   await notes.drain();

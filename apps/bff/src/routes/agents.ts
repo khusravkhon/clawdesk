@@ -46,6 +46,8 @@ export type AgentRouteDeps = {
   space: SpaceService;
   /** A new agent gets no MCP server until the owner grants one ("Навыки и MCP"). */
   mcp?: { syncAccess(): Promise<void> };
+  /** Stage 4: puts the saved charter back into AGENTS.md after a raw edit of the files. */
+  charters?: { apply(agentId: string): Promise<boolean> };
 };
 
 // OpenClaw is the source of truth for which agents exist; our rows add role/parent.
@@ -124,7 +126,11 @@ export function registerAgentRoutes(app: FastifyInstance, deps: AgentRouteDeps):
   app.put("/api/agents/:agentId/profile", async (request, reply): Promise<AgentProfileDto | ApiErrorDto> => {
     const { agentId } = AgentParams.parse(request.params);
     const body = SaveAgentProfileRequest.parse(request.body);
-    return withProfileErrors(reply, () => saveProfile(deps, agentId, body));
+    // The owner's raw edit may drop or change the charter block: the saved charter goes back in.
+    return withProfileErrors(reply, async () => {
+      const saved = await saveProfile(deps, agentId, body);
+      return (await deps.charters?.apply(agentId).catch(() => false)) ? readProfile(deps, agentId) : saved;
+    });
   });
 
   app.post("/api/agents/:agentId/template", async (request, reply): Promise<TemplateDto | ApiErrorDto> => {

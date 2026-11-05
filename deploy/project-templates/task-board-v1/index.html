@@ -1,0 +1,142 @@
+<!doctype html>
+<html lang="ru">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width,initial-scale=1">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; connect-src 'self'; base-uri 'none'; form-action 'none'">
+    <title>Мои задачи</title>
+    <style>
+        body { font: 16px system-ui; background: #f4f5f7; color: #20242c; max-width: 720px; margin: 48px auto; padding: 24px; }
+        h1 { font-size: 36px; }
+        .task-entry { display: flex; gap: 12px; }
+        input[type=text] { flex: 1; min-width: 0; padding: 12px; border: 1px solid #b9c0cb; border-radius: 8px; }
+        button { cursor: pointer; padding: 10px 16px; border: 0; border-radius: 8px; background: #304be0; color: white; }
+        ul { padding: 0; }
+        li { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; background: white; margin: 12px 0; padding: 16px; border-radius: 10px; }
+        li span { flex: 1; overflow-wrap: anywhere; }
+        small { color: #626c7a; }
+        #error { color: #ac2033; min-height: 24px; }
+    </style>
+</head>
+<body>
+    <h1>Мои задачи</h1>
+    <p>Добавляйте, изменяйте задачи и отмечайте выполненные.</p>
+    <div class="task-entry" role="group" aria-label="Новая задача">
+        <input id="title" type="text" maxlength="200" required placeholder="Что нужно сделать?" aria-label="Название задачи">
+        <button id="add-task" type="button">Добавить</button>
+    </div>
+    <p id="error" role="alert"></p>
+    <ul id="tasks"></ul>
+    <small>Предпросмотр шаблона. Данные хранятся временно и очищаются после остановки.</small>
+    <script>
+        const pending = new Map();
+        window.addEventListener('message', event => {
+            if (event.source !== parent || event.data?.type !== 'clawdesk-preview-response') return;
+            const entry = pending.get(event.data.id);
+            if (!entry) return;
+            pending.delete(event.data.id);
+            clearTimeout(entry.timer);
+            if (event.data.error) entry.reject(Error(event.data.error));
+            else entry.resolve(event.data);
+        });
+
+        async function api(method, path, body) {
+            if (parent !== window) {
+                const response = await new Promise((resolve, reject) => {
+                    const id = crypto.randomUUID();
+                    const timer = setTimeout(() => {
+                        pending.delete(id);
+                        reject(Error('Нет ответа от предпросмотра'));
+                    }, 15000);
+                    pending.set(id, { resolve, reject, timer });
+                    parent.postMessage({ type: 'clawdesk-preview-request', id, method, path, body }, '*');
+                });
+                if (response.status >= 400) throw Error('Не удалось выполнить действие');
+                return JSON.parse(response.body);
+            }
+            const response = await fetch(path, {
+                method,
+                headers: { 'content-type': 'application/json' },
+                body: body === undefined ? undefined : JSON.stringify(body),
+            });
+            if (!response.ok) throw Error('Не удалось выполнить действие');
+            return response.json();
+        }
+
+        function taskRow(row) {
+            const li = document.createElement('li');
+            const path = '/api/tasks/' + row.id;
+            const box = document.createElement('input');
+            box.type = 'checkbox';
+            box.checked = !!row.done;
+            box.setAttribute('aria-label', 'Выполнено');
+            box.onchange = () => act(() => api('PATCH', path, { done: box.checked }));
+            const title = document.createElement('span');
+            title.textContent = row.title;
+            if (row.done) title.style.textDecoration = 'line-through';
+            const edit = document.createElement('button');
+            edit.textContent = 'Изменить';
+            let field;
+            edit.onclick = () => {
+                if (field) {
+                    if (!field.value.trim()) {
+                        field.focus();
+                        return;
+                    }
+                    act(() => api('PATCH', path, { title: field.value }));
+                    return;
+                }
+                field = document.createElement('input');
+                field.type = 'text';
+                field.maxLength = 200;
+                field.value = row.title;
+                field.setAttribute('aria-label', 'Новое название задачи');
+                field.onkeydown = event => {
+                    if (event.key === 'Enter') edit.click();
+                    if (event.key === 'Escape') act(async () => {});
+                };
+                title.replaceWith(field);
+                edit.textContent = 'Сохранить';
+                field.focus();
+            };
+            const remove = document.createElement('button');
+            remove.textContent = 'Удалить';
+            remove.onclick = () => act(() => api('DELETE', path));
+            li.append(box, title, edit, remove);
+            return li;
+        }
+
+        async function refresh() {
+            const rows = await api('GET', '/api/tasks');
+            document.getElementById('tasks').replaceChildren(...rows.map(taskRow));
+        }
+
+        async function act(run) {
+            document.getElementById('error').textContent = '';
+            try {
+                await run();
+                await refresh();
+            } catch (error) {
+                document.getElementById('error').textContent = error.message;
+            }
+        }
+
+        function createTask() {
+            const field = document.getElementById('title');
+            if (!field.reportValidity()) return;
+            return act(async () => {
+                await api('POST', '/api/tasks', { title: field.value });
+                field.value = '';
+            });
+        }
+        document.getElementById('add-task').onclick = createTask;
+        document.getElementById('title').onkeydown = event => {
+            if (event.key === 'Enter') {
+                event.preventDefault();
+                return createTask();
+            }
+        };
+        act(async () => {});
+    </script>
+</body>
+</html>

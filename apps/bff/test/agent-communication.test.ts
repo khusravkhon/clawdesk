@@ -46,9 +46,14 @@ describe("permitted agent communication", () => {
 
   it("does not configure a plugin on company-only installs; grants exclude deleted or forbidden agents", () => {
     expect(mainPluginPatch({}, [], new Set())).toBeNull();
-    const patch = mainPluginPatch({ plugins: { allow: ["telegram"], load: { paths: ["/trusted/other"] } }, agents: { entries: { trainer: {}, finance: {} } } }, [{ id: "trainer", canAskMain: true }, { id: "gone", canAskMain: true }, { id: "finance", canAskMain: false }], new Set(["trainer", "finance"]))!;
+    const patch = mainPluginPatch({ plugins: { allow: ["telegram"], load: { paths: ["/trusted/other"] } }, agents: { entries: { trainer: {}, finance: {} } } }, [{ id: "trainer", canAskMain: true }, { id: "gone", canAskMain: true }, { id: "finance", canAskMain: false }], new Set(["trainer", "finance"])) as Record<string, any>;
     expect(patch.plugins.allow).toEqual(["telegram", ASK_MAIN_PLUGIN]);
     expect(patch.plugins.entries[ASK_MAIN_PLUGIN].config.allowedAgentIds).toEqual(["trainer"]);
+    // A granted sandboxed junior sees the tool only once the sandbox gate names the plugin.
+    expect(patch.tools).toEqual({ sandbox: { tools: { alsoAllow: [ASK_MAIN_PLUGIN] } } });
+    const applied = { tools: patch.tools, plugins: patch.plugins, agents: { entries: { trainer: {}, finance: {} } } };
+    expect(mainPluginPatch(applied, [{ id: "trainer", canAskMain: true }], new Set(["trainer"]))).toBeNull();
+    expect(mainPluginPatch({ ...applied, tools: { sandbox: { tools: { alsoAllow: ["clawdesk-requests"] } } } }, [{ id: "trainer", canAskMain: true }], new Set(["trainer"]))).toEqual({ tools: { sandbox: { tools: { alsoAllow: ["clawdesk-requests", ASK_MAIN_PLUGIN] } } } });
   });
 
   it("repairs only existing permitted agents and does not write again once repaired", async () => {

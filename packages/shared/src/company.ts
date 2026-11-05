@@ -27,6 +27,27 @@ export type CreateProjectRequest = z.infer<typeof CreateProjectRequest>;
 export const UpdateProjectRequest = ProjectFields.extend({ revision: z.number().int().min(0) });
 export type UpdateProjectRequest = z.infer<typeof UpdateProjectRequest>;
 export const AssignTeamProjectRequest = z.object({ projectId: EntityId.nullable(), revision: z.number().int().min(0) });
+/**
+ * Stage 3: a team without a repository (marketing, support…): its members are new agents made from company
+ * specialist templates, on the main agent's AI, sandboxed; it belongs to a department and optionally a project.
+ */
+export const OrganizationalTeamRole = z.enum(["team-lead", "marketing", "analyst", "sales", "support", "hr", "operations", "custom"]);
+export const CreateOrganizationalTeamRequest = z.object({
+  requestId: z.uuid(),
+  name: z.string().trim().min(1).max(80),
+  departmentId: EntityId.nullable().default(null),
+  projectId: EntityId.nullable().default(null),
+  /** What the team does: every member reads it as its context (the templates' "about the company" and purpose fields). */
+  context: z.string().trim().min(1).max(2000),
+  members: z.array(z.object({ templateId: OrganizationalTeamRole, name: z.string().trim().max(60).default(""), purpose: z.string().trim().max(1000).default("") })).min(1).max(8),
+  /** The member (by index) that becomes the team's lead. */
+  lead: z.number().int().min(0).max(7).nullable().default(null),
+  timezone: z.string().min(1).max(64),
+});
+export type CreateOrganizationalTeamRequest = z.infer<typeof CreateOrganizationalTeamRequest>;
+/** Stage 4: the team lead is one of the team's members or a standalone agent; null removes the lead. */
+export const AssignTeamLeadRequest = z.object({ agentId: z.string().min(1).max(80).nullable(), revision: z.number().int().min(0) });
+export type AssignTeamLeadRequest = z.infer<typeof AssignTeamLeadRequest>;
 export type AssignTeamProjectRequest = z.infer<typeof AssignTeamProjectRequest>;
 export type ProjectDto = z.infer<typeof ProjectFields> & { id: string; revision: number };
 const BriefText = z.string().trim().max(4000).default("");
@@ -80,5 +101,5 @@ export type CompanyDto = {
   projects: ProjectDto[];
   managers: { id: string; name: string; departmentId: string | null }[];
   agents: { id: string; name: string; departmentId: string | null; revision: number; managerOf: string | null; available: boolean }[];
-  teams: { id: string; name: string; departmentId: string | null; projectId: string | null; revision: number }[];
+  teams: { id: string; name: string; departmentId: string | null; projectId: string | null; revision: number; leadAgentId: string | null; leadName: string | null; members: { id: string; name: string }[] }[];
 };

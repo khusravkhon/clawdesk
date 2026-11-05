@@ -38,8 +38,24 @@ export async function findFlashModels(apiKey: string, fetchImpl: typeof fetch = 
   }
 }
 
+const GEMINI_KEY_CHOICE = "gemini-api-key";
+
 type Step = { id: string; type: string; title?: string; message?: string; options?: { value: unknown }[]; sensitive?: boolean };
 type WizardResult = { sessionId?: string; done: boolean; step?: Step; error?: string };
+
+/** Steps through notes after the model step and declines the wizard's live test; stops at anything else. */
+async function answerLiveTestOffer(gateway: GatewayService, sessionId: string, res: WizardResult): Promise<WizardResult> {
+  for (let i = 0; i < 5 && !res.done && res.step; i++) {
+    const step = res.step;
+    const text = `${step.title ?? ""} ${step.message ?? ""}`;
+    if (step.type === "confirm" && /test/i.test(text)) {
+      return gateway.request<WizardResult>("wizard.next", { sessionId, answer: { stepId: step.id, value: false } }, { timeoutMs: 120_000 });
+    }
+    if (step.type !== "note" && step.type !== "progress") break;
+    res = await gateway.request<WizardResult>("wizard.next", { sessionId, answer: { stepId: step.id } }, { timeoutMs: 120_000 });
+  }
+  return res;
+}
 
 /**
  * Drives the Gateway setup wizard just far enough to store the key and choose
@@ -65,6 +81,8 @@ export async function storeKeyWithModelViaWizard(
       else if (step.type === "confirm") value = true;
       else if (step.type === "select" && has("quickstart")) value = "quickstart";
       else if (step.type === "select" && has(params.provider)) value = params.provider;
+      // Asked when Google is already configured (e.g. left over from an earlier attempt): enter the new key.
+      else if (step.type === "select" && has(GEMINI_KEY_CHOICE)) value = GEMINI_KEY_CHOICE;
       else if (step.type === "select" && has("__manual__")) {
         value = "__manual__";
         manualModelChosen = true;
@@ -72,7 +90,11 @@ export async function storeKeyWithModelViaWizard(
       else if (step.type === "select" && has(false) && has(true)) value = false; // optional telemetry
       else if (step.type === "text" && step.sensitive) value = params.apiKey;
       else if (step.type === "text" && manualModelChosen && /model/i.test(text)) {
-        await gateway.request("wizard.next", { sessionId, answer: { stepId: step.id, value: params.modelRef } }, { timeoutMs: 120_000 });
+        res = await gateway.request<WizardResult>("wizard.next", { sessionId, answer: { stepId: step.id, value: params.modelRef } }, { timeoutMs: 120_000 });
+        // openclaw-bump-review: OpenClaw 2026.8.1 writes key + model only once the next step (the offer of a
+        // live test) is answered; cancelling right after the model step left nothing behind. The caller
+        // verifies the model itself, so the wizard's own test is declined.
+        res = await answerLiveTestOffer(gateway, sessionId, res);
         logger.info({ modelRef: params.modelRef }, "stored key and model through the setup wizard");
         return;
       } else throw new Error(`unexpected setup wizard step: ${step.type} ${text.slice(0, 80)}`);

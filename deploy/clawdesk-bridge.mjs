@@ -20,10 +20,14 @@
 //   POST /google/login/start { email, services, readonly, redirectUri? } → { authorizationUrl }
 //   POST /google/login/complete { …same, authUrl }
 //   POST /google/remove      { email }
+//   GET  /capabilities                      → { openclaw, docker, git, gog } versions, null when missing (P0)
+//   POST /google/doc/copy    { agentId, docId, account }  one Doc as a read-only copy in the agent's workspace (stage 7)
+//   POST /google/doc/remove  { agentId, docId }   POST /google/doc/list { agentId } → { copies: [{ docId, sha }] }
 //   POST /freellmapi/reset   { newPassword }   recover FreeLLMAPI's account (code from its log)
 //   POST /files/folder       { name }        a junior agent's folder in the shared files folder → { hostPath, gatewayPath }
 //   POST /teams/clone        { teamId, repoUrl, token }   project team repository (see clawdesk-teams.mjs)
-//   POST /teams/fetch | /teams/push { teamId, … }  GET /teams/status?teamId=…  POST /teams/remove { teamId }
+//   POST /teams/member { teamId, agentId, role }  a member's copy at <its workspace>/repo
+//   POST /teams/fetch | /teams/push { teamId, … }  GET /teams/status?teamId=…&developer=…  POST /teams/remove { teamId }
 //   GET  /backup/list                       → { backups: [{ name, kind, createdAt, size }] }
 //   POST /backup/create      { kind }        daily | manual | before-reset | before-update (see clawdesk-backup.mjs)
 //   POST /backup/delete      { name, confirm: true }   delete one completed archive
@@ -41,10 +45,12 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { BackupError, createBackup, deleteBackup, listBackups, startReset } from "./clawdesk-backup.mjs";
-import { cloneTeamRepo, fetchTeamRepo, pushTeamBranch, removeTeamRepo, TeamError, teamRepoStatus } from "./clawdesk-teams.mjs";
+import { cloneTeamRepo, fetchTeamRepo, prepareMemberRepo, pushTeamBranch, removeTeamRepo, TeamError, teamRepoStatus } from "./clawdesk-teams.mjs";
 import { isAuthorizationCode, mcpLoginArgs } from "./clawdesk-oauth.mjs";
 import { AudioSetupError, audioSettings, audioStatus, saveAudioKey, verifyAudioKey } from "./clawdesk-audio.mjs";
 import { AgentFolders } from "./clawdesk-agent-folders.mjs";
+import { ackRequestsSpool, readRequestsSpool, requestsSpoolDir } from "./clawdesk-requests-spool.mjs";
+import { ProjectGitHub } from "./clawdesk-project-github.mjs";
 import { directoryIdentityWithin } from "./clawdesk-file-sync.mjs";
 import { ClaudeLogin, ClaudeLoginError } from "./clawdesk-claude.mjs";
 import { removeWorkspaceSkill, SkillRemoveError } from "./clawdesk-skills.mjs";
@@ -52,6 +58,13 @@ import { cancelVideo, downloadVideo, framesOfVideo, studyVideo, videoProgress, V
 import { LocalMemory, MemoryError } from "./clawdesk-memory.mjs";
 import { StorageManager, StorageError } from "./clawdesk-storage.mjs";
 import { ProjectFolders, ProjectFolderError } from "./clawdesk-project-folders.mjs";
+import { ProjectBuilder } from "./clawdesk-project-builder.mjs";
+import { ProjectWork } from "./clawdesk-project-work.mjs";
+import { GoogleDocCopies } from "./clawdesk-google-docs.mjs";
+import { ProjectTransfer } from "./clawdesk-project-transfer.mjs";
+import { capabilities } from "./clawdesk-capabilities.mjs";
+import { sharedFolderSource } from "./clawdesk-shared-folder.mjs";
+import { composeServiceContainer } from "./clawdesk-containers.mjs";
 
 const HOST = process.env.CLAWDESK_BRIDGE_HOST || "127.0.0.1";
 const PORT = Number(process.env.CLAWDESK_BRIDGE_PORT || 18790);
@@ -246,6 +259,11 @@ async function googleRemove(body) {
 
 const FILES_IN_GATEWAY = path.join(process.env.OPENCLAW_STATE_DIR || "/var/lib/clawdesk/openclaw", "workspace", "files");
 const projectFolders = new ProjectFolders({ stateDir: process.env.OPENCLAW_STATE_DIR || "/var/lib/clawdesk/openclaw" });
+const projectWork = new ProjectWork({ stateDir: process.env.OPENCLAW_STATE_DIR || "/var/lib/clawdesk/openclaw", configPath: process.env.OPENCLAW_CONFIG_PATH || "/var/lib/clawdesk/openclaw/openclaw.json" });
+const projectTransfer = new ProjectTransfer({ folders: projectFolders });
+const googleDocs = new GoogleDocCopies({ stateDir: process.env.OPENCLAW_STATE_DIR || "/var/lib/clawdesk/openclaw", configPath: process.env.OPENCLAW_CONFIG_PATH || "/var/lib/clawdesk/openclaw/openclaw.json", gog: (args) => runGog(args, { timeoutMs: 90_000 }) });
+const projectGitHub = new ProjectGitHub({ folders: projectFolders, stateDir: process.env.OPENCLAW_STATE_DIR || "/var/lib/clawdesk/openclaw" });
+const projectBuilder = new ProjectBuilder({ folders: projectFolders, stateDir: process.env.OPENCLAW_STATE_DIR || "/var/lib/clawdesk/openclaw" });
 function spaceMode() {
   let db;
   try {
@@ -269,18 +287,7 @@ let filesSource;
 
 async function filesHostSource() {
   if (filesSource) return filesSource;
-  const res = await new Promise((resolve) => {
-    const child = spawn("docker", ["inspect", process.env.HOSTNAME ?? "", "--format", "{{json .Mounts}}"], { stdio: ["ignore", "pipe", "pipe"] });
-    let out = "";
-    child.stdout.on("data", (c) => (out += c));
-    child.on("close", (code) => resolve(code === 0 ? out : null));
-    child.on("error", () => resolve(null));
-  });
-  const mount = res ? JSON.parse(res).find((m) => m.Destination === FILES_IN_GATEWAY) : null;
-  // Docker Desktop may report the Windows path ("C:/Users/…"); its daemon knows that folder as /run/desktop/mnt/host/c/….
-  const source = mount?.Source ?? null;
-  const win = source ? /^([A-Za-z]):[\\/](.*)$/.exec(source) : null;
-  filesSource = win ? `/run/desktop/mnt/host/${win[1].toLowerCase()}/${win[2].replace(/\\/g, "/")}` : source;
+  filesSource = await sharedFolderSource();
   return filesSource;
 }
 
@@ -330,11 +337,11 @@ function runDocker(args, timeoutMs = 20_000) {
 
 /** The FreeLLMAPI container of this Compose project (it runs in this container's network namespace). */
 async function freellmapiContainer() {
-  const self = process.env.HOSTNAME ?? "";
-  const project = (await runDocker(["inspect", self, "--format", '{{index .Config.Labels "com.docker.compose.project"}}'])).out.trim();
-  if (!project) return null;
-  const list = await runDocker(["ps", "--filter", `label=com.docker.compose.project=${project}`, "--filter", "label=com.docker.compose.service=freellmapi", "--format", "{{.Names}}"]);
-  return list.out.trim().split("\n")[0] || null;
+  return composeServiceContainer(async (args) => {
+    const result = await runDocker(args);
+    if (result.code !== 0) throw new BackupError("docker_failed", "Cannot identify this installation's containers", 502);
+    return result.out;
+  }, "freellmapi");
 }
 
 async function freellmapiReset(body) {
@@ -362,12 +369,13 @@ async function freellmapiReset(body) {
   return { status: 200, body: { ok: true } };
 }
 
-function readJson(req) {
+/** A JSON body; most routes take small ones, project files (checks, work copies, transfer) larger. */
+function readJson(req, limit = 32_768) {
   return new Promise((resolve, reject) => {
     let raw = "";
     req.on("data", (chunk) => {
       raw += chunk;
-      if (raw.length > 32_768) reject(new Error("body too large"));
+      if (raw.length > limit) reject(new Error("body too large"));
     });
     req.on("end", () => {
       try {
@@ -408,7 +416,7 @@ const storage = new StorageManager({
       const relative = path.relative(agentFolders.stateDir, path.resolve(workspace));
       if (!relative || relative.startsWith("..") || path.isAbsolute(relative)) throw new StorageError("storage_unavailable", 503);
       if (!item.workspaceIdentity || await directoryIdentityWithin(agentFolders.stateDir, relative.split(path.sep).join("/")) !== item.workspaceIdentity) throw new StorageError("storage_unavailable", 503);
-      roots.push(path.join(FILES_IN_GATEWAY, item.name), path.join(agentFolders.stateDir, relative, "folders", item.name));
+      roots.push(path.join(FILES_IN_GATEWAY, item.name), path.join(agentFolders.stateDir, relative, AgentFolders.workspaceDir(item)));
     }
     return roots;
   },
@@ -427,6 +435,69 @@ async function handle(req) {
   const url = new URL(req.url, "http://bridge");
   if (req.method === "GET" && url.pathname === "/health") return { status: 200, body: { ok: true } };
   if (!authorized(req)) return { status: 401, body: { error: "unauthorized", message: "missing or wrong token" } };
+  if (url.pathname.startsWith("/projects/builder")) {
+    if (spaceMode() !== "company") return { status: 409, body: { error: "company_only" } };
+    try {
+      if (req.method === "GET" && url.pathname === "/projects/builder") return { status: 200, body: await projectBuilder.status(url.searchParams.get("projectId")) };
+      if (req.method === "GET" && url.pathname === "/projects/builder/files") return { status: 200, body: { files: await projectBuilder.appFiles(url.searchParams.get("projectId")) } };
+      if (req.method === "GET" && url.pathname === "/projects/builder/analyze") return { status: 200, body: await projectBuilder.analyze(url.searchParams.get("projectId")) };
+      if (req.method === "POST") {
+        const { projectId, ...body } = await readJson(req, 512 * 1024);
+        const operation = { "/projects/builder/prepare": "prepare", "/projects/builder/start": "start", "/projects/builder/stop": "stop", "/projects/builder/request": "request", "/projects/builder/checks": "checks", "/projects/builder/apply": "apply", "/projects/builder/load": "load" }[url.pathname];
+        if (operation) return { status: 200, body: await projectBuilder[operation](projectId, body) };
+      }
+      return { status: 404, body: { error: "not_found" } };
+    } catch (error) {
+      const code = error instanceof ProjectFolderError ? error.code : "builder_unavailable";
+      return { status: error instanceof ProjectFolderError ? error.status : 503, body: { error: code, message: code } };
+    }
+  }
+  // P7: a project's folder on GitHub; the token stays in the Gateway's state, never in the folder or a sandbox.
+  if (url.pathname.startsWith("/projects/github/")) {
+    if (spaceMode() !== "company") return { status: 409, body: { error: "company_only" } };
+    try {
+      if (req.method === "GET" && url.pathname === "/projects/github/status") return { status: 200, body: await projectGitHub.status(url.searchParams.get("projectId")) };
+      if (req.method === "GET" && url.pathname === "/projects/github/plan") return { status: 200, body: await projectGitHub.plan(url.searchParams.get("projectId")) };
+      if (req.method === "GET" && url.pathname === "/projects/github/changes") return { status: 200, body: await projectGitHub.changes(url.searchParams.get("projectId")) };
+      if (req.method !== "POST") return { status: 404, body: { error: "not_found" } };
+      const { projectId, ...body } = await readJson(req);
+      const operation = { "/projects/github/create": "create", "/projects/github/connect": "connect", "/projects/github/import": "importRepo", "/projects/github/pull-request": "pullRequest", "/projects/github/disconnect": "disconnect" }[url.pathname];
+      if (!operation) return { status: 404, body: { error: "not_found" } };
+      return { status: 200, body: await projectGitHub[operation](projectId, body) };
+    } catch (error) {
+      const code = error instanceof ProjectFolderError ? error.code : "github_unavailable";
+      return { status: error instanceof ProjectFolderError ? error.status : 503, body: { error: code, message: code } };
+    }
+  }
+  // P8: a project's files for a transfer package, and a package's files into a new project folder.
+  if (url.pathname.startsWith("/projects/transfer/")) {
+    if (spaceMode() !== "company") return { status: 409, body: { error: "company_only" } };
+    try {
+      if (req.method !== "POST") return { status: 404, body: { error: "not_found" } };
+      const { projectId, files } = await readJson(req, 40 * 1024 * 1024);
+      if (url.pathname === "/projects/transfer/read") return { status: 200, body: await projectTransfer.read(projectId) };
+      if (url.pathname === "/projects/transfer/write") return { status: 200, body: await projectTransfer.write(projectId, files) };
+      return { status: 404, body: { error: "not_found" } };
+    } catch (error) {
+      const code = error instanceof ProjectFolderError ? error.code : "transfer_unavailable";
+      return { status: error instanceof ProjectFolderError ? error.status : 503, body: { error: code, message: code } };
+    }
+  }
+  // Executors' work copies (P6.2): created, refilled and read by the panel only.
+  if (url.pathname.startsWith("/projects/work/")) {
+    if (spaceMode() !== "company") return { status: 409, body: { error: "company_only" } };
+    try {
+      if (req.method !== "POST") return { status: 404, body: { error: "not_found" } };
+      const { agentId, files } = await readJson(req, 512 * 1024);
+      if (url.pathname === "/projects/work/ensure") return { status: 200, body: await projectWork.ensure(agentId) };
+      if (url.pathname === "/projects/work/prepare") return { status: 200, body: await projectWork.prepare(agentId, files) };
+      if (url.pathname === "/projects/work/snapshot") return { status: 200, body: await projectWork.snapshot(agentId) };
+      return { status: 404, body: { error: "not_found" } };
+    } catch (error) {
+      const code = error instanceof ProjectFolderError ? error.code : "work_unavailable";
+      return { status: error instanceof ProjectFolderError ? error.status : 503, body: { error: code, message: code } };
+    }
+  }
   if (url.pathname === "/projects/workspace") {
     if (spaceMode() !== "company") return { status: 409, body: { error: "company_only" } };
     try {
@@ -475,6 +546,11 @@ async function handle(req) {
     }
   }
 
+  // Folders in the shared files folder (names only), for granting one to an agent.
+  if (req.method === "GET" && url.pathname === "/files/folders") {
+    const entries = await fs.readdir(FILES_IN_GATEWAY, { withFileTypes: true }).catch(() => []);
+    return { status: 200, body: { folders: entries.filter((entry) => entry.isDirectory() && FOLDER.test(entry.name)).map((entry) => entry.name).sort() } };
+  }
   if (req.method === "GET" && url.pathname === "/files/sync-status") {
     try { return { status: 200, body: await agentFolders.statuses() }; }
     catch { return { status: 503, body: { error: "folder_sync_unavailable", message: "folder sync status is unavailable" } }; }
@@ -515,9 +591,13 @@ async function handle(req) {
     }
   }
 
+  // P0: what this container can do now (versions and tools), for the capabilities screen.
+  if (req.method === "GET" && url.pathname === "/capabilities") return { status: 200, body: await capabilities() };
   if (req.method === "GET" && url.pathname === "/google/status") return googleStatus();
   if (req.method === "GET" && url.pathname === "/backup/list") return { status: 200, body: { backups: await listBackups() } };
-  if (req.method === "GET" && url.pathname === "/teams/status") return teamCall(() => teamRepoStatus({ teamId: url.searchParams.get("teamId") }));
+  // Company requests filed by agents (clawdesk-requests plugin): the panel reads, stores, then acknowledges.
+  if (req.method === "GET" && url.pathname === "/requests/spool") return { status: 200, body: await readRequestsSpool(requestsSpoolDir(process.env.OPENCLAW_STATE_DIR || "/var/lib/clawdesk/openclaw")) };
+  if (req.method === "GET" && url.pathname === "/teams/status") return teamCall(() => teamRepoStatus({ teamId: url.searchParams.get("teamId"), developer: url.searchParams.get("developer") || undefined }));
   if (req.method === "GET" && url.pathname === "/claude/status") return claudeCall(() => claudeLogin.status());
   if (req.method === "GET" && url.pathname === "/mcp/status") {
     const server = url.searchParams.get("server") || "";
@@ -551,16 +631,24 @@ async function handle(req) {
       return { status: 500, body: { error: "download_failed", message: "download_failed" } };
     }
   }
+  if (url.pathname === "/requests/ack") {
+    try { return { status: 200, body: await ackRequestsSpool(requestsSpoolDir(process.env.OPENCLAW_STATE_DIR || "/var/lib/clawdesk/openclaw"), body.ids) }; }
+    catch (error) { if (error.status === 400) return { status: 400, body: { error: "invalid_request", message: "invalid ack" } }; throw error; }
+  }
   if (url.pathname === "/freellmapi/reset") return freellmapiReset(body);
   if (url.pathname === "/files/folder") return ensureFolder(body);
+  if (url.pathname === "/files/agent-folder/remove") {
+    agentFolders.validate(body);
+    return { status: 200, body: await agentFolders.unregister(body.agentId, body.name, { dir: body.dir }) };
+  }
   if (url.pathname === "/files/agent-folder") {
     agentFolders.validate(body);
     const folder = await ensureFolder(body);
     if (folder.status !== 200) return folder;
-    const managed = await agentFolders.register(body.agentId, body.name);
+    const managed = await agentFolders.register(body.agentId, body.name, { dir: body.dir, readOnly: body.readOnly });
     return { status: 200, body: { hostPath: folder.body.hostPath, ...managed } };
   }
-  const teamOps = { "/teams/clone": cloneTeamRepo, "/teams/fetch": fetchTeamRepo, "/teams/push": pushTeamBranch, "/teams/remove": removeTeamRepo };
+  const teamOps = { "/teams/clone": cloneTeamRepo, "/teams/member": prepareMemberRepo, "/teams/fetch": fetchTeamRepo, "/teams/push": pushTeamBranch, "/teams/remove": removeTeamRepo };
   if (teamOps[url.pathname]) return teamCall(() => teamOps[url.pathname](body));
   if (url.pathname === "/backup/delete") {
     if (body.confirm !== true) return { status: 400, body: { error: "confirmation_required", message: "confirm backup deletion" } };
@@ -592,6 +680,19 @@ async function handle(req) {
     } catch (error) {
       if (error instanceof SkillRemoveError) return { status: 400, body: { error: error.code, message: error.message } };
       throw error;
+    }
+  }
+  // Stage 7: prepared copies of single Google Docs for company agents; the agent never gets the connection.
+  if (url.pathname.startsWith("/google/doc/")) {
+    if (spaceMode() !== "company") return { status: 409, body: { error: "company_only" } };
+    try {
+      if (url.pathname === "/google/doc/copy") return { status: 200, body: await googleDocs.copy(body.agentId, body.docId, body.account) };
+      if (url.pathname === "/google/doc/remove") return { status: 200, body: await googleDocs.remove(body.agentId, body.docId) };
+      if (url.pathname === "/google/doc/list") return { status: 200, body: await googleDocs.list(body.agentId) };
+      return { status: 404, body: { error: "not_found" } };
+    } catch (error) {
+      const code = error instanceof ProjectFolderError ? error.code : "google_unavailable";
+      return { status: error instanceof ProjectFolderError ? error.status : 503, body: { error: code, message: code } };
     }
   }
   switch (url.pathname) {

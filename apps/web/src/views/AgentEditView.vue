@@ -9,6 +9,9 @@ import { useI18n } from "vue-i18n";
 import { useRoute, useRouter } from "vue-router";
 import { api, ApiError } from "../api/client";
 import AgentExtensions from "../components/AgentExtensions.vue";
+import AgentAiCard from "../components/AgentAiCard.vue";
+import AgentCharterCard from "../components/AgentCharterCard.vue";
+import { useSpaceStore } from "../stores/space";
 import PageHeader from "../components/ui/PageHeader.vue";
 
 const { t } = useI18n();
@@ -16,6 +19,7 @@ const route = useRoute();
 const router = useRouter();
 const message = useMessage();
 const agentId = String(route.params.agentId);
+const space = useSpaceStore();
 
 const data = ref<AgentProfileDto | null>(null);
 const loadError = ref<string | null>(null);
@@ -127,6 +131,10 @@ onMounted(load);
         <n-button secondary @click="router.push('/schedules')">{{ t("agentEdit.schedules") }}</n-button>
         <span class="muted small">{{ t("agentEdit.saveHint") }}</span>
       </div>
+
+      <AgentCharterCard v-if="space.mode === 'company'" :agent-id="agentId" />
+
+      <AgentAiCard v-if="agentId !== 'main'" :agent-id="agentId" />
 
       <AgentExtensions :agent-id="agentId" />
 

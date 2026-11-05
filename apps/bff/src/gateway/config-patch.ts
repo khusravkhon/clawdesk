@@ -31,8 +31,8 @@ async function applyPatch(gateway: GatewayService, patch: ConfigPatch | ConfigPa
     const resolved = typeof patch === "function" ? patch(current.config ?? {}) : patch;
     if (resolved === null) return null;
     const replacePaths = typeof opts.replacePaths === "function" ? opts.replacePaths(current.config, resolved) : opts.replacePaths;
+    const generation = gateway.generation;
     try {
-      const generation = gateway.generation;
       const result = await gateway.request<{ sentinel?: { payload?: { stats?: { requiresRestart?: boolean } } } }>("config.patch", {
         raw: JSON.stringify(resolved),
         ...(current.hash ? { baseHash: current.hash } : {}),
@@ -43,6 +43,14 @@ async function applyPatch(gateway: GatewayService, patch: ConfigPatch | ConfigPa
       return resolved;
     } catch (error) {
       if (attempt === 0 && isStaleHash(error)) continue;
+      // OpenClaw 2026.8.35+: the patch is saved and applied, and the Gateway restarts itself to recover; the
+      // write succeeded once it is back and its config holds the patched values.
+      if (isRecoveryRestart(error)) {
+        await gateway.waitForReconnect(generation);
+        const after = await gateway.request<ConfigGetResult>("config.get", {});
+        if (after.hash && after.hash === current.hash) throw error;
+        return resolved;
+      }
       throw error;
     }
   }
@@ -51,6 +59,12 @@ async function applyPatch(gateway: GatewayService, patch: ConfigPatch | ConfigPa
 export async function getConfig<T = Record<string, unknown>>(gateway: GatewayService): Promise<{ hash: string | undefined; config: T }> {
   const result = await gateway.request<ConfigGetResult>("config.get", {});
   return { hash: result.hash, config: (result.config ?? {}) as T };
+}
+
+/** "config.patch persisted and updated the active Gateway, but a recovery restart is required". */
+export function isRecoveryRestart(error: unknown): boolean {
+  const message = error instanceof Error ? error.message.toLowerCase() : "";
+  return message.includes("recovery restart is required") || message.includes("persisted and updated the active gateway");
 }
 
 function isStaleHash(error: unknown): boolean {

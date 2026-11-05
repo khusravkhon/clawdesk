@@ -30,7 +30,7 @@ export type CreateAgentDeps = {
   /** Makes the agent's folder in the shared files folder and its managed workspace (the ClawDesk bridge). */
   folders?: { ensureAgentFolder(agentId: string, name: string): Promise<{ hostPath: string; gatewayPath: string }> };
   /** A project team member (screen 11): its team, the project values its template needs, extra sandbox binds. */
-  team?: { id: string; values: Record<string, string>; binds: string[] };
+  team?: { id: string; values: Record<string, string>; binds: string[]; /** A team without a repository: company specialists are its members. */ organizational?: boolean };
 };
 
 /** Where a sandboxed junior sees its folder: inside its workspace, where OpenClaw's file tools work. */
@@ -48,7 +48,7 @@ export class CreateAgentError extends Error {
 
 export async function createJuniorAgent(deps: CreateAgentDeps, req: CreateAgentRequest): Promise<CreateAgentResultDto> {
   const { gateway, db, logger } = deps;
-  const template = loadJuniorTemplate(db, req, !!deps.team);
+  const template = loadJuniorTemplate(db, req, !!deps.team, deps.team?.organizational === true);
   let files: ReturnType<typeof renderTemplateFiles>;
   try {
     files = renderTemplateFiles(template, { ...req.values, ...deps.team?.values });
@@ -315,12 +315,19 @@ function savingRule(where: string): string {
   ].join("\n");
 }
 
-function loadJuniorTemplate(db: Db, req: CreateAgentRequest, forTeam: boolean): LoadedTemplate {
+/** Company specialists a team without a repository may consist of; managers and the main agent never. */
+export const ORGANIZATIONAL_TEAM_TEMPLATES = ["team-lead", "marketing", "analyst", "sales", "support", "hr", "operations", "custom"] as const;
+
+function loadJuniorTemplate(db: Db, req: CreateAgentRequest, forTeam: boolean, organizational = false): LoadedTemplate {
   // Built-in, or one of the owner's own ("my-…", saved from an agent).
   const template = findTemplate(db, req.mode, req.templateId);
   if (!template) throw new CreateAgentError("invalid_template", `template ${req.mode}/${req.templateId} not found`);
   if (template.role === "main") throw new CreateAgentError("invalid_template", "the main-agent template cannot create a junior agent");
   // Team roles only through a team (they need its repository and project values), and the other way round.
+  if (organizational) {
+    if (template.mode !== "company" || !(ORGANIZATIONAL_TEAM_TEMPLATES as readonly string[]).includes(template.id)) throw new CreateAgentError("invalid_template", "not a role for a team without a repository");
+    return template;
+  }
   if ((template.role === "team_member") !== forTeam) throw new CreateAgentError("invalid_template", forTeam ? "not a team role" : "team roles are created with a team");
   return template;
 }

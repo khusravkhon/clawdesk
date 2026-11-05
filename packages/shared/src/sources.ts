@@ -27,6 +27,8 @@ export const FolderSyncIssueDto = z.object({
 });
 export const FolderSyncStatusDto = z.object({
   agentId: z.string().regex(/^[a-z0-9][a-z0-9_-]{0,79}$/), folder: z.string().max(60),
+  /** A fixed workspace folder (a team's "docs"), else folders/<folder>; readOnly: only mirrored into the workspace. */
+  dir: z.string().max(40).nullable().optional(), readOnly: z.boolean().optional(),
   state: z.enum(["pending", "ready", "partial", "error"]),
   lastAttempt: z.number().int().positive().max(8_640_000_000_000_000).nullable(), lastSuccess: z.number().int().positive().max(8_640_000_000_000_000).nullable(),
   conflicts: z.number().int().nonnegative(), skipped: z.number().int().nonnegative(),

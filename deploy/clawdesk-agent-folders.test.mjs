@@ -257,3 +257,58 @@ test("metadata cache requires personal-mode opt-in and discards cached data when
   personal = true;
   assert.notEqual(manager.syncOptions().cache, first);
 });
+
+test("a team member's docs: a fixed workspace folder, and read-only members never write back", async (t) => {
+  const { root, host } = await fixture(t);
+  const stateDir = path.join(root, "state"), pm = path.join(stateDir, "workspace", "shop-pm"), dev = path.join(stateDir, "workspace", "shop-developer");
+  await fs.mkdir(pm, { recursive: true }); await fs.mkdir(dev, { recursive: true });
+  const configPath = path.join(stateDir, "openclaw.json");
+  await fs.writeFile(configPath, JSON.stringify({ agents: { defaults: { workspace: path.join(stateDir, "workspace") }, entries: { "shop-pm": { workspace: pm }, "shop-developer": { workspace: dev } } } }));
+  await fs.mkdir(path.join(host, "Shop"));
+  await fs.writeFile(path.join(host, "Shop", "spec.md"), "v1");
+  const manager = new AgentFolders({ stateDir, filesDir: host, configPath });
+  assert.equal((await manager.register("shop-pm", "Shop", { dir: "docs" })).gatewayPath, path.join(pm, "docs"));
+  assert.equal((await manager.register("shop-developer", "Shop", { dir: "docs", readOnly: true })).gatewayPath, path.join(dev, "docs"));
+  assert.equal(await fs.readFile(path.join(dev, "docs", "spec.md"), "utf8"), "v1");
+  // The PM's edit reaches the shared folder and the developer; the developer's edits stay in its workspace.
+  await fs.writeFile(path.join(pm, "docs", "spec.md"), "v2");
+  await fs.writeFile(path.join(dev, "docs", "notes.md"), "mine");
+  await manager.syncAll();
+  await manager.syncAll();
+  assert.equal(await fs.readFile(path.join(host, "Shop", "spec.md"), "utf8"), "v2");
+  assert.equal(await fs.readFile(path.join(dev, "docs", "spec.md"), "utf8"), "v2");
+  await assert.rejects(fs.stat(path.join(host, "Shop", "notes.md")), { code: "ENOENT" });
+  await fs.writeFile(path.join(dev, "docs", "spec.md"), "tampered");
+  await manager.syncAll();
+  assert.equal(await fs.readFile(path.join(host, "Shop", "spec.md"), "utf8"), "v2");
+  assert.equal(await fs.readFile(path.join(dev, "docs", "spec.md"), "utf8"), "v2");
+  await assert.rejects(manager.register("shop-pm", "Shop", { dir: "../x" }));
+  await assert.rejects(manager.register("shop-pm", "Shop", { readOnly: "yes" }));
+});
+
+test("unregistering removes the agent's copy and stops synchronizing, never touching the shared folder", async (t) => {
+  const { root, host } = await fixture(t);
+  const stateDir = path.join(root, "state"), workspace = path.join(stateDir, "workspace", "analyst");
+  await fs.mkdir(workspace, { recursive: true });
+  const configPath = path.join(stateDir, "openclaw.json");
+  await fs.writeFile(configPath, JSON.stringify({ agents: { defaults: { workspace: path.join(stateDir, "workspace") }, entries: { analyst: { workspace } } } }));
+  await fs.mkdir(path.join(host, "Finance")); await fs.writeFile(path.join(host, "Finance", "report.txt"), "secret");
+  const manager = new AgentFolders({ stateDir, filesDir: host, configPath });
+  await manager.register("analyst", "Finance", { readOnly: true });
+  assert.deepEqual((await manager.statuses()).folders.map((item) => [item.folder, item.dir, item.readOnly]), [["Finance", null, true]]);
+  assert.equal(await fs.readFile(path.join(workspace, "folders", "Finance", "report.txt"), "utf8"), "secret");
+  assert.deepEqual(await manager.unregister("analyst", "Finance"), { removed: true });
+  await assert.rejects(fs.stat(path.join(workspace, "folders", "Finance")), { code: "ENOENT" });
+  assert.deepEqual(await manager.statuses(), { folders: [] });
+  await fs.writeFile(path.join(host, "Finance", "later.txt"), "new");
+  await manager.syncAll();
+  await assert.rejects(fs.stat(path.join(workspace, "folders", "Finance")), { code: "ENOENT" });
+  assert.equal(await fs.readFile(path.join(host, "Finance", "report.txt"), "utf8"), "secret");
+  // A link the agent put in place of the copy is removed itself; its target stays.
+  await fs.mkdir(path.join(root, "elsewhere")); await fs.writeFile(path.join(root, "elsewhere", "keep.txt"), "x");
+  await fs.mkdir(path.join(workspace, "folders"), { recursive: true });
+  await fs.symlink(path.join(root, "elsewhere"), path.join(workspace, "folders", "Finance"));
+  assert.deepEqual(await manager.unregister("analyst", "Finance"), { removed: false });
+  assert.equal(await fs.readFile(path.join(root, "elsewhere", "keep.txt"), "utf8"), "x");
+  await assert.rejects(fs.lstat(path.join(workspace, "folders", "Finance")), { code: "ENOENT" });
+});

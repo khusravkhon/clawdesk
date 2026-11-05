@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import type { AssignAgentDepartmentRequest, AssignTeamDepartmentRequest, AssignTeamProjectRequest, CompanyDto, CreateDepartmentRequest, CreateProjectRequest, DepartmentDto, UpdateDepartmentRequest, UpdateProjectRequest } from "@clawdesk/shared";
+import type { AssignAgentDepartmentRequest, AssignTeamDepartmentRequest, AssignTeamLeadRequest, AssignTeamProjectRequest, CompanyDto, CreateDepartmentRequest, CreateProjectRequest, DepartmentDto, UpdateDepartmentRequest, UpdateProjectRequest } from "@clawdesk/shared";
 import { eq } from "drizzle-orm";
 import type { Db } from "../db/client.js";
 import { agents, companyAgentAssignments, companyProjects, departmentManagers, departments, teams } from "../db/schema.js";
@@ -11,22 +11,77 @@ import { ProjectBriefFields, type ProjectBriefDto, type SaveProjectBriefRequest 
 import { projectBriefs } from "../db/schema.js";
 import { ProjectRulesService } from "./project-rules-service.js";
 import { ProjectAcceptanceService } from "./project-acceptance-service.js";
+import { ProjectBuilderService, type ProjectBuilderBridge } from "./project-builder-service.js";
+import { ProjectChecksService, type ProjectChecksBridge } from "./project-checks-service.js";
+import { ProjectExecutors } from "./project-executors.js";
+import { ProjectTasksService, type TaskBridge } from "./project-tasks-service.js";
+import { ProjectGitHubService, type ProjectGitHubBridge } from "./project-github-service.js";
+import { ProjectInterviewService } from "./project-interview-service.js";
+import { ProjectRuleAuditService } from "./project-rule-audit-service.js";
+import { ProjectTransferService, type TransferBridge } from "./project-transfer-service.js";
+import { OrganizationalTeams } from "./organizational-teams.js";
+import { ProjectLoadService, type LoadBridge } from "./project-load-service.js";
+import { ExistingPlanService } from "./existing-plan-service.js";
+import type { OneShot } from "../chat/one-shot.js";
+import { mainSessionKey } from "../chat/chat-service.js";
+import type { Logger } from "pino";
+import { randomUUID as newId } from "node:crypto";
 
 export class CompanyError extends Error {
-  constructor(readonly code: "company_only" | "department_missing" | "team_missing" | "revision_conflict" | "manager_invalid" | "manager_assigned" | "agent_invalid" | "agent_assigned" | "department_archived" | "gateway_unavailable" | "request_conflict" | "project_missing" | "project_archived" | "project_department_mismatch" | "team_project_assigned") { super(code); }
+  constructor(readonly code: "company_only" | "department_missing" | "team_missing" | "revision_conflict" | "manager_invalid" | "manager_assigned" | "agent_invalid" | "agent_assigned" | "department_archived" | "gateway_unavailable" | "request_conflict" | "project_missing" | "project_archived" | "project_department_mismatch" | "team_project_assigned" | "lead_not_eligible") { super(code); }
 }
 
 /** Organizational metadata only: assigning a manager grants no tools or data access. */
 export class CompanyService {
   readonly rules: ProjectRulesService;
   readonly acceptance: ProjectAcceptanceService;
+  readonly builder: ProjectBuilderService;
+  readonly checks: ProjectChecksService;
+  readonly tasks: ProjectTasksService;
+  readonly github: ProjectGitHubService;
+  readonly interview: ProjectInterviewService;
+  readonly audit: ProjectRuleAuditService;
+  readonly transfer: ProjectTransferService;
+  readonly organizationalTeams: OrganizationalTeams;
+  readonly load: ProjectLoadService;
+  readonly existingPlan: ExistingPlanService;
 
-  constructor(private readonly deps: { db: Db; gateway: GatewayService; space: SpaceService; bridge?: Pick<BridgeClient, "projectWorkspace" | "prepareProjectWorkspace"> }) {
+  constructor(private readonly deps: { db: Db; gateway: GatewayService; space: SpaceService; logger?: Logger; sandboxEnabled?: boolean; model?: OneShot; bridge?: Pick<BridgeClient, "projectWorkspace" | "prepareProjectWorkspace"> & Partial<ProjectBuilderBridge> & Partial<ProjectChecksBridge> & Partial<TaskBridge> & Partial<Pick<BridgeClient, "ensureProjectWork">> & Partial<ProjectGitHubBridge> & Partial<Pick<BridgeClient, "projectTransferRead" | "projectTransferWrite" | "projectLoad">> }) {
     this.rules = new ProjectRulesService({ db: deps.db, checkProject: (id, writing) => this.#briefProject(id, writing) });
+    this.audit = new ProjectRuleAuditService({ db: deps.db, checkProject: (id, writing) => this.#briefProject(id, writing), rules: (id) => this.rules.list(id).rules, model: deps.model });
     this.acceptance = new ProjectAcceptanceService({ db: deps.db, checkProject: (id, writing) => this.#briefProject(id, writing) });
+    this.checks = new ProjectChecksService({ db: deps.db, checkProject: (id, writing) => this.#briefProject(id, writing), bridge: deps.bridge?.runProjectChecks ? deps.bridge as ProjectChecksBridge : undefined });
+    const bridge = deps.bridge;
+    const taskBridge = bridge?.projectAppFiles && bridge.prepareProjectWork && bridge.snapshotProjectWork && bridge.runProjectChecks && bridge.applyProjectWork ? bridge as TaskBridge : undefined;
+    this.tasks = new ProjectTasksService({
+      db: deps.db,
+      checkProject: (id, writing) => { const project = this.#briefProject(id, writing); return { id: project.id, name: project.name, description: project.description, departmentId: project.departmentId }; },
+      rule: (projectId, ruleId, version) => {
+        const rule = this.rules.list(projectId).rules.find(item => item.id === ruleId);
+        const selected = rule && this.rules.history(projectId, ruleId).versions.find(item => item.version === version);
+        return rule && selected ? { id: rule.id, code: rule.code, version: selected.version, fields: selected.fields, approvedAt: selected.approvedAt } : null;
+      },
+      executors: deps.logger && bridge?.ensureProjectWork ? new ProjectExecutors({ db: deps.db, gateway: deps.gateway, logger: deps.logger, sandboxEnabled: deps.sandboxEnabled ?? false, bridge: bridge as Pick<BridgeClient, "ensureProjectWork"> }) : undefined,
+      bridge: taskBridge,
+      conflicts: (projectId, ruleId) => this.audit.blocking(projectId, ruleId),
+      send: taskBridge ? async (agentId, message) => { await deps.gateway.request("chat.send", { sessionKey: mainSessionKey(agentId), agentId, message, idempotencyKey: newId() }); } : undefined,
+    });
+    this.github = new ProjectGitHubService({ checkProject: (id, writing) => this.#briefProject(id, writing), bridge: bridge?.projectGitHub ? bridge as ProjectGitHubBridge : undefined });
+    this.interview = new ProjectInterviewService({ db: deps.db, checkProject: (id, writing) => this.#briefProject(id, writing), brief: id => this.projectBrief(id), saveBrief: (id, request) => this.saveProjectBrief(id, request), model: deps.model });
+    this.existingPlan = new ExistingPlanService({ db: deps.db, checkProject: (id, writing) => this.#briefProject(id, writing), brief: id => this.projectBrief(id), rules: id => this.rules.list(id).rules, analyze: bridge?.analyzeProjectWorkspace ? (id) => bridge.analyzeProjectWorkspace!(id) : undefined, model: deps.model });
+    this.load = new ProjectLoadService({ db: deps.db, checkProject: (id, writing) => this.#briefProject(id, writing), brief: id => this.projectBrief(id), bridge: bridge?.projectLoad ? bridge as LoadBridge : undefined });
+    this.organizationalTeams = new OrganizationalTeams({ db: deps.db, gateway: deps.logger ? deps.gateway : undefined, logger: deps.logger, sandboxEnabled: deps.sandboxEnabled ?? false });
+    this.transfer = new ProjectTransferService({
+      db: deps.db, project: (id) => { const project = this.#briefProject(id); return { id: project.id, name: project.name, description: project.description }; },
+      brief: id => this.projectBrief(id), saveBrief: (id, request) => this.saveProjectBrief(id, request), rules: this.rules,
+      createProject: (request) => this.createProject(request),
+      bridge: bridge?.projectTransferRead && bridge.projectTransferWrite ? bridge as unknown as TransferBridge : undefined,
+    });
+    this.builder = new ProjectBuilderService({ db: deps.db, checkProject: (id, writing) => this.#briefProject(id, writing), brief: id => this.projectBrief(id), saveBrief: (id, request) => this.saveProjectBrief(id, request), rules: id => this.rules.list(id).rules, bridge: deps.bridge?.builderStatus ? deps.bridge as ProjectBuilderBridge : undefined });
   }
 
   #company(): void { if (this.deps.space.mode() !== "company") throw new CompanyError("company_only"); }
+  assertCompany(): void { this.#company(); }
 
   #briefProject(id: string, writing = false) {
     this.#company();
@@ -132,7 +187,14 @@ export class CompanyService {
         available: agent.status === "ready" && !!live?.has(agent.id),
       })),
       projects: db.select().from(companyProjects).all().map((project) => ({ id: project.id, name: project.name, description: project.description, departmentId: project.departmentId, status: project.status, revision: project.revision })).sort((a, b) => Number(a.status === "archived") - Number(b.status === "archived") || a.name.localeCompare(b.name)),
-      teams: db.select().from(teams).all().map((team) => ({ id: team.id, name: team.name, departmentId: team.departmentId, projectId: team.projectId, revision: team.organizationRevision })),
+      teams: db.select().from(teams).all().map((team) => {
+        const lead = team.leadAgentId ? metadata.find((agent) => agent.id === team.leadAgentId) : undefined;
+        return {
+          id: team.id, name: team.name, departmentId: team.departmentId, projectId: team.projectId, revision: team.organizationRevision,
+          leadAgentId: lead ? lead.id : null, leadName: lead?.displayName ?? null,
+          members: metadata.filter((agent) => agent.teamId === team.id).map((agent) => ({ id: agent.id, name: agent.displayName })),
+        };
+      }),
     };
   }
 
@@ -262,21 +324,42 @@ export class CompanyService {
     });
   }
 
+  /**
+   * Stage 4: makes an agent the team's lead (or removes the lead). The lead is a member of this team or a
+   * standalone agent, never the main agent or another team's member; requests of the team go to it first.
+   */
+  assignTeamLead(id: string, req: AssignTeamLeadRequest): void {
+    this.#company();
+    this.deps.db.transaction((tx) => {
+      const team = tx.select().from(teams).where(eq(teams.id, id)).get();
+      if (!team) throw new CompanyError("team_missing");
+      if (team.organizationRevision !== req.revision) throw new CompanyError("revision_conflict");
+      if (req.agentId) {
+        const agent = tx.select().from(agents).where(eq(agents.id, req.agentId)).get();
+        if (!agent || agent.id === "main") throw new CompanyError("agent_invalid");
+        if (agent.teamId ? agent.teamId !== id : agent.role !== "specialist") throw new CompanyError("lead_not_eligible");
+      }
+      tx.update(teams).set({ leadAgentId: req.agentId, organizationRevision: team.organizationRevision + 1 }).where(eq(teams.id, id)).run();
+    });
+  }
+
   assignTeamProject(id: string, req: AssignTeamProjectRequest): void {
     this.#company();
     this.deps.db.transaction((tx) => {
       const team = tx.select().from(teams).where(eq(teams.id, id)).get();
       if (!team) throw new CompanyError("team_missing");
       if (team.organizationRevision !== req.revision) throw new CompanyError("revision_conflict");
+      let departmentId = team.departmentId;
       if (req.projectId) {
         const project = tx.select().from(companyProjects).where(eq(companyProjects.id, req.projectId)).get();
         if (!project) throw new CompanyError("project_missing");
         if (project.status === "archived") throw new CompanyError("project_archived");
         this.#projectDepartment(project.departmentId);
-        if (project.departmentId && project.departmentId !== team.departmentId) throw new CompanyError("project_department_mismatch");
+        if (project.departmentId && team.departmentId && project.departmentId !== team.departmentId) throw new CompanyError("project_department_mismatch");
         if (team.projectId && team.projectId !== req.projectId) throw new CompanyError("team_project_assigned");
+        departmentId ??= project.departmentId;
       }
-      tx.update(teams).set({ projectId: req.projectId, organizationRevision: req.revision + 1 }).where(eq(teams.id, id)).run();
+      tx.update(teams).set({ projectId: req.projectId, departmentId, organizationRevision: req.revision + 1 }).where(eq(teams.id, id)).run();
     });
   }
 }

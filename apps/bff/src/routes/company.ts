@@ -1,14 +1,33 @@
-import { AssignAgentDepartmentRequest, AssignTeamDepartmentRequest, AssignTeamProjectRequest, CreateDepartmentRequest, CreateProjectRequest, UpdateDepartmentRequest, UpdateProjectRequest } from "@clawdesk/shared";
+import { AssignAgentDepartmentRequest, AssignTeamDepartmentRequest, AssignTeamLeadRequest, AssignTeamProjectRequest, CreateDepartmentRequest, CreateProjectRequest, UpdateDepartmentRequest, UpdateProjectRequest } from "@clawdesk/shared";
 import type { FastifyInstance } from "fastify";
 import { z, ZodError } from "zod";
 import { CompanyError, type CompanyService } from "../company/company-service.js";
 import { PrepareProjectWorkspaceRequest } from "@clawdesk/shared";
-import { SaveProjectBriefRequest } from "@clawdesk/shared";
+import { SaveProjectBriefRequest, InterviewAnswerRequest, InterviewAskRequest } from "@clawdesk/shared";
+import { InterviewError } from "../company/project-interview-service.js";
+import { RuleAuditError } from "../company/project-rule-audit-service.js";
+import { ProjectTransferError } from "../company/project-transfer-service.js";
+import { OrganizationalTeamError } from "../company/organizational-teams.js";
+import { ProjectLoadError } from "../company/project-load-service.js";
+import { ExistingPlanError } from "../company/existing-plan-service.js";
+import { ExistingPlanRequest } from "@clawdesk/shared";
+import { RunLoadCheckRequest } from "@clawdesk/shared";
+import { CreateAgentError } from "../provision/create-agent.js";
+import { CreateOrganizationalTeamRequest } from "@clawdesk/shared";
+import { ImportProjectRequest } from "@clawdesk/shared";
+import { DismissRuleConflictRequest, RuleAuditCheckRequest, RuleSearchQuery } from "@clawdesk/shared";
 import { ApproveBusinessRuleRequest, CreateBusinessRuleRequest, UpdateBusinessRuleRequest } from "@clawdesk/shared";
 import { BridgeError } from "../gateway/bridge-client.js";
 import { ProjectRuleError } from "../company/project-rules-service.js";
 import { CreateAcceptanceRequest, RecordAcceptanceCheckRequest, UpdateAcceptanceRequest } from "@clawdesk/shared";
 import { AcceptanceError } from "../company/project-acceptance-service.js";
+import { AnswerProjectBuilderRequest, BuilderMutationRequest, ConfirmProjectBuilderRequest, PlanProjectBuilderRequest, ProjectPreviewRequest } from "@clawdesk/shared";
+import { ProjectBuilderError } from "../company/project-builder-service.js";
+import { ProjectChecksError } from "../company/project-checks-service.js";
+import { RunProjectChecksRequest, AssignExecutorsRequest, CreateProjectTaskRequest, ProjectTaskActionRequest, ReturnProjectTaskRequest, AcceptProjectTaskRequest } from "@clawdesk/shared";
+import { ProjectTaskError } from "../company/project-tasks-service.js";
+import { ConnectProjectRepoRequest, CreateProjectRepoRequest, ImportProjectRepoRequest, ProjectPullRequestRequest } from "@clawdesk/shared";
+import { ProjectGitHubError } from "../company/project-github-service.js";
 
 const Params = z.object({ id: z.string().min(1).max(128).regex(/^[a-zA-Z0-9_-]+$/) });
 const RuleParams = Params.extend({ ruleId: z.uuid() });
@@ -20,12 +39,13 @@ export function registerCompanyRoutes(app: FastifyInstance, company: CompanyServ
     scope.setErrorHandler((error, _request, reply) => {
       if (error instanceof ZodError) return reply.status(400).send({ error: "invalid_request", message: "request validation failed" });
       if (error instanceof BridgeError) {
-        const known = new Set(["invalid_workspace", "workspace_unavailable", "workspace_already_linked", "workspace_in_use", "workspace_limit", "workspace_exists", "workspace_not_directory", "company_only"]);
+        const known = new Set(["invalid_workspace", "workspace_unavailable", "workspace_already_linked", "workspace_in_use", "workspace_limit", "workspace_exists", "workspace_not_directory", "company_only", "builder_files_changed", "builder_existing_readonly", "invalid_builder_request", "builder_plan_changed", "builder_workspace_not_empty", "preview_identity_changed", "preview_image_unavailable", "preview_unavailable", "preview_not_running", "invalid_preview_request", "existing_workspace_required", "workspace_required", "workspace_changed", "checks_unsupported", "checks_too_large", "checks_no_files", "work_app_changed", "work_missing", "work_layout", "invalid_work_request",
+          "invalid_github_request", "invalid_token", "github_token_required", "github_token_rejected", "github_unreachable", "github_repo_exists", "github_repo_gone", "github_no_permission", "github_private_unavailable", "github_folder_has_git", "github_plan_changed", "github_already_connected", "github_not_connected", "github_nothing_to_push", "github_pull_request_failed", "github_git_failed", "github_project_too_large", "github_unavailable", "github_repo_not_found", "github_no_origin", "github_folder_has_no_git"]);
         const code = known.has(error.code) ? error.code : "workspace_unavailable";
-        return reply.status(code === "invalid_workspace" ? 400 : code === "workspace_unavailable" ? 503 : 409).send({ error: code, message: code });
+        return reply.status(code.startsWith("invalid_") ? 400 : code === "workspace_unavailable" ? 503 : 409).send({ error: code, message: code });
       }
-      if (!(error instanceof CompanyError) && !(error instanceof ProjectRuleError) && !(error instanceof AcceptanceError)) throw error;
-      const status = error.code === "company_only" || error.code.endsWith("_missing") ? 404 : error.code === "gateway_unavailable" ? 503 : 409;
+      if (!(error instanceof CompanyError) && !(error instanceof ProjectRuleError) && !(error instanceof AcceptanceError) && !(error instanceof ProjectBuilderError) && !(error instanceof ProjectChecksError) && !(error instanceof ProjectTaskError) && !(error instanceof ProjectGitHubError) && !(error instanceof InterviewError) && !(error instanceof RuleAuditError) && !(error instanceof ProjectTransferError) && !(error instanceof OrganizationalTeamError) && !(error instanceof CreateAgentError) && !(error instanceof ProjectLoadError) && !(error instanceof ExistingPlanError)) throw error;
+      const status = error.code === "company_only" || error.code.endsWith("_missing") ? 404 : error.code === "gateway_unavailable" || error.code === "model_missing" ? 503 : 409;
       return reply.status(status).send({ error: error.code, message: error.code });
     });
     scope.get("/api/company", () => company.list());
@@ -44,6 +64,60 @@ export function registerCompanyRoutes(app: FastifyInstance, company: CompanyServ
     });
     scope.post("/api/company/projects", async (request, reply) => reply.status(201).send(company.createProject(CreateProjectRequest.parse(request.body))));
     scope.get("/api/company/projects/:id/brief", (request) => company.projectBrief(Params.parse(request.params).id));
+    // Acceptance 2: a limited change plan for an existing project (shown, never executed).
+    scope.get("/api/company/projects/:id/existing-plan", (request) => company.existingPlan.get(Params.parse(request.params).id));
+    scope.post("/api/company/projects/:id/existing-plan", (request) => company.existingPlan.ask(Params.parse(request.params).id, ExistingPlanRequest.parse(request.body)));
+    // P9: load checks of the project's app.
+    scope.get("/api/company/projects/:id/load", (request) => company.load.list(Params.parse(request.params).id));
+    scope.post("/api/company/projects/:id/load", (request) => company.load.run(Params.parse(request.params).id, RunLoadCheckRequest.parse(request.body)));
+    // P8: a project carried to another installation as a file.
+    scope.get("/api/company/projects/:id/transfer", (request) => company.transfer.preview(Params.parse(request.params).id));
+    scope.post("/api/company/projects/:id/transfer/export", (request) => company.transfer.export(Params.parse(request.params).id));
+    scope.post("/api/company/projects/import", { bodyLimit: 45 * 1024 * 1024 }, (request) => company.transfer.import(ImportProjectRequest.parse(request.body).data));
+    // P3: contradictions between rules, and a rule by the owner's phrase.
+    scope.get("/api/company/projects/:id/rules-audit", (request) => company.audit.get(Params.parse(request.params).id));
+    scope.post("/api/company/projects/:id/rules-audit/check", (request) => company.audit.check(Params.parse(request.params).id, RuleAuditCheckRequest.parse(request.body)));
+    scope.post("/api/company/projects/:id/rules-audit/conflicts/:conflictId/dismiss", (request) => { const { id, conflictId } = Params.extend({ conflictId: z.uuid() }).parse(request.params); return company.audit.dismiss(id, conflictId, DismissRuleConflictRequest.parse(request.body)); });
+    scope.get("/api/company/projects/:id/rules-search", (request) => company.audit.search(Params.parse(request.params).id, RuleSearchQuery.parse(request.query).q));
+    // P2: the requirements interview with the model.
+    scope.get("/api/company/projects/:id/interview", (request) => company.interview.get(Params.parse(request.params).id));
+    scope.post("/api/company/projects/:id/interview/ask", (request) => company.interview.ask(Params.parse(request.params).id, InterviewAskRequest.parse(request.body)));
+    scope.post("/api/company/projects/:id/interview/answer", (request) => company.interview.answer(Params.parse(request.params).id, InterviewAnswerRequest.parse(request.body)));
+    const TaskParams = Params.extend({ taskId: z.uuid() });
+    scope.get("/api/company/projects/:id/executors", request => company.tasks.executors(Params.parse(request.params).id));
+    scope.post("/api/company/projects/:id/executors", request => company.tasks.assignExecutors(Params.parse(request.params).id, AssignExecutorsRequest.parse(request.body)));
+    scope.get("/api/company/projects/:id/tasks", request => company.tasks.list(Params.parse(request.params).id));
+    scope.post("/api/company/projects/:id/tasks", async (request, reply) => reply.status(201).send(await company.tasks.create(Params.parse(request.params).id, CreateProjectTaskRequest.parse(request.body))));
+    scope.get("/api/company/projects/:id/rules/:ruleId/impact", request => { const { id, ruleId } = RuleParams.parse(request.params); return company.tasks.impact(id, ruleId, SuiteQuery.parse(request.query).version); });
+    scope.post("/api/company/projects/:id/tasks/:taskId/accept", request => { const { id, taskId } = TaskParams.parse(request.params); return company.tasks.accept(id, taskId, AcceptProjectTaskRequest.parse(request.body)); });
+    for (const [action, run] of [["check", "checkStage"], ["resend", "resend"], ["cancel", "cancel"], ["rollback", "rollback"], ["review", "askReviewer"], ["review-collect", "collectReview"]] as const) {
+      scope.post(`/api/company/projects/:id/tasks/:taskId/${action}`, request => { const { id, taskId } = TaskParams.parse(request.params); return company.tasks[run](id, taskId, ProjectTaskActionRequest.parse(request.body)); });
+    }
+    scope.post("/api/company/projects/:id/tasks/:taskId/return", request => { const { id, taskId } = TaskParams.parse(request.params); return company.tasks.returnToDeveloper(id, taskId, ReturnProjectTaskRequest.parse(request.body)); });
+    // P7: GitHub for a project's folder.
+    scope.get("/api/company/projects/:id/github", request => company.github.status(Params.parse(request.params).id));
+    scope.get("/api/company/projects/:id/github/plan", request => company.github.plan(Params.parse(request.params).id));
+    scope.get("/api/company/projects/:id/github/changes", request => company.github.changes(Params.parse(request.params).id));
+    scope.post("/api/company/projects/:id/github/create", request => company.github.create(Params.parse(request.params).id, CreateProjectRepoRequest.parse(request.body)));
+    scope.post("/api/company/projects/:id/github/connect", request => company.github.connect(Params.parse(request.params).id, ConnectProjectRepoRequest.parse(request.body)));
+    scope.post("/api/company/projects/:id/github/import", request => company.github.importRepo(Params.parse(request.params).id, ImportProjectRepoRequest.parse(request.body)));
+    scope.post("/api/company/projects/:id/github/pull-request", request => company.github.pullRequest(Params.parse(request.params).id, ProjectPullRequestRequest.parse(request.body)));
+    scope.post("/api/company/projects/:id/github/disconnect", request => company.github.disconnect(Params.parse(request.params).id));
+    scope.get("/api/company/projects/:id/checks", request => company.checks.list(Params.parse(request.params).id));
+    scope.post("/api/company/projects/:id/checks/run", request => company.checks.run(Params.parse(request.params).id, RunProjectChecksRequest.parse(request.body)));
+    scope.get("/api/company/projects/:id/builder", request => company.builder.get(Params.parse(request.params).id));
+    scope.get("/api/company/projects/:id/builder/analysis", request => company.builder.analyze(Params.parse(request.params).id));
+    scope.post("/api/company/projects/:id/builder/answer", request => company.builder.answer(Params.parse(request.params).id, AnswerProjectBuilderRequest.parse(request.body)));
+    scope.post("/api/company/projects/:id/builder/plan", request => company.builder.plan(Params.parse(request.params).id, PlanProjectBuilderRequest.parse(request.body)));
+    scope.post("/api/company/projects/:id/builder/approve", request => company.builder.approve(Params.parse(request.params).id, ConfirmProjectBuilderRequest.parse(request.body)));
+    scope.post("/api/company/projects/:id/builder/prepare", request => company.builder.prepare(Params.parse(request.params).id, ConfirmProjectBuilderRequest.parse(request.body)));
+    scope.post("/api/company/projects/:id/builder/preview/start", request => company.builder.start(Params.parse(request.params).id, BuilderMutationRequest.parse(request.body)));
+    scope.post("/api/company/projects/:id/builder/preview/stop", request => company.builder.stop(Params.parse(request.params).id, BuilderMutationRequest.parse(request.body)));
+    scope.get("/api/company/projects/:id/builder/preview", async (request, reply) => {
+      const result = await company.builder.preview(Params.parse(request.params).id, { method: "GET", path: "/" });
+      return reply.status(result.status).header("Content-Security-Policy", "default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; connect-src 'none'; form-action 'none'; frame-ancestors 'self'").header("Cache-Control", "no-store").type(result.contentType).send(result.body);
+    });
+    scope.post("/api/company/projects/:id/builder/preview/request", request => company.builder.preview(Params.parse(request.params).id, ProjectPreviewRequest.parse(request.body)));
     scope.put("/api/company/projects/:id/brief", (request) => company.saveProjectBrief(Params.parse(request.params).id, SaveProjectBriefRequest.parse(request.body)));
     scope.get("/api/company/projects/:id/rules", (request) => company.rules.list(Params.parse(request.params).id));
     scope.get("/api/company/projects/:id/rules/:ruleId/acceptance", (request) => {
@@ -83,6 +157,12 @@ export function registerCompanyRoutes(app: FastifyInstance, company: CompanyServ
     scope.post("/api/company/projects/:id/workspace", (request) => company.prepareProjectWorkspace(Params.parse(request.params).id, PrepareProjectWorkspaceRequest.parse(request.body)));
     scope.put("/api/company/projects/:id", async (request) => {
       company.updateProject(Params.parse(request.params).id, UpdateProjectRequest.parse(request.body));
+      return { ok: true };
+    });
+    // Stage 3: a team without a repository, its members made from company specialist templates.
+    scope.post("/api/company/teams", async (request, reply) => { company.assertCompany(); return reply.status(201).send(await company.organizationalTeams.create(CreateOrganizationalTeamRequest.parse(request.body))); });
+    scope.put("/api/company/teams/:id/lead", async (request) => {
+      company.assignTeamLead(Params.parse(request.params).id, AssignTeamLeadRequest.parse(request.body));
       return { ok: true };
     });
     scope.put("/api/company/teams/:id/project", async (request) => {

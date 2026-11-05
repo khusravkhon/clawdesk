@@ -1,24 +1,30 @@
 import { CreateAgentRequest, FolderName, GITHUB_REPO_URL, parseTopicLink, type CreateTeamRequest, type PullRequestDto, type TeamDto, type TeamRepoStatusDto, type TeamRole, type TeamsDto } from "@clawdesk/shared";
 import { loadTemplate } from "@clawdesk/templates";
-import { and, eq, inArray } from "drizzle-orm";
+import { and, eq, inArray, isNotNull } from "drizzle-orm";
 import type { Logger } from "pino";
 import type { Db } from "../db/client.js";
 import { agents, agentSourceGrants, channelBindings, dataSources, schedules, teams } from "../db/schema.js";
 import type { BridgeClient } from "../gateway/bridge-client.js";
 import type { GatewayService } from "../gateway/gateway-service.js";
+import { getConfig, patchConfig } from "../gateway/config-patch.js";
 import { createJuniorAgent, deleteJuniorAgent, slugBase, uniqueSlug } from "../provision/create-agent.js";
 import type { SpaceService } from "../space/space-service.js";
 import type { TelegramService } from "../telegram/telegram-service.js";
 
 // Project teams (screen 11, company mode). A team = a GitHub repository + PM, developer, reviewer.
 //
-// The bridge clones the repository twice (clawdesk-teams.mjs): a read-only copy for PM and reviewer and the
-// developer's own branch. Sandboxes have no network and never see the token; the owner pushes the developer's
-// branch and opens the pull request from the panel. Merging stays with people.
+// The bridge keeps the panel's clone with the token aside and gives each member a copy in its own workspace
+// (clawdesk-teams.mjs): the developer's branch, read copies for PM and reviewer. The sandbox sees it at
+// /workspace/repo. The team's docs folder is synchronized into <workspace>/docs, writable for the PM only.
+// No sandbox binds: OpenClaw 2026.8+ accepts bind sources only inside the agent's workspace and reserves
+// /workspace. Sandboxes have no network and never see the token; the owner pushes the developer's branch
+// and opens the pull request from the panel. Merging stays with people.
 
 const ROLE_ORDER: TeamRole[] = ["pm", "developer", "reviewer"];
 const REPO = "/workspace/repo";
 const DOCS = "/workspace/docs";
+/** Targets of the binds teams used before members got copies in their workspaces. */
+const LEGACY_BINDS = [`:${REPO}:`, `:${DOCS}:`];
 
 export class TeamError extends Error {
   constructor(
@@ -50,7 +56,8 @@ export class TeamService {
 
   list(): TeamsDto {
     const { db } = this.deps;
-    const rows = db.select().from(teams).all();
+    // GitHub teams only: a project's executors (P6.2) are a team without a repository, managed on the project.
+    const rows = db.select().from(teams).where(isNotNull(teams.repoUrl)).all();
     const members = db.select().from(agents).where(eq(agents.role, "team_member")).all();
     const topics = db.select().from(channelBindings).where(and(eq(channelBindings.channel, "telegram"), eq(channelBindings.peerKind, "group"))).all();
     const docs = db.select().from(dataSources).where(eq(dataSources.kind, "folder")).all();
@@ -61,6 +68,7 @@ export class TeamService {
         repoUrl: team.repoUrl ?? "",
         docsFolder: docs.find((d) => d.id === `team-docs:${team.id}`)?.connectorRef ?? null,
         telegramChatId: team.telegramGroupId,
+        ownerRequests: team.ownerRequests,
         members: members
           .filter((m) => m.teamId === team.id)
           .map((m) => ({
@@ -75,6 +83,13 @@ export class TeamService {
     };
   }
 
+  /** Stage 8: where requests of the team's members that reach the owner arrive. */
+  setOwnerRequests(teamId: string, mode: "direct" | "topic"): void {
+    const team = this.deps.db.select().from(teams).where(eq(teams.id, teamId)).get();
+    if (!team) throw new TeamError("no_team", `team ${teamId} not found`);
+    this.deps.db.update(teams).set({ ownerRequests: mode }).where(eq(teams.id, teamId)).run();
+  }
+
   async create(req: CreateTeamRequest): Promise<TeamDto> {
     const { db, logger, bridge } = this.deps;
     if (this.deps.space.mode() !== "company") throw new TeamError("wrong_mode", "teams are for company projects");
@@ -86,32 +101,31 @@ export class TeamService {
     let cloned = false;
     db.insert(teams).values({ id: teamId, name: req.name, repoUrl: req.repoUrl.replace(/(\.git)?\/?$/, ""), telegramGroupId: null }).run();
     try {
+      const docsName = FolderName.safeParse(req.name).success ? req.name : teamId;
       const repo = await bridge.teamClone(teamId, req.repoUrl, req.token);
       cloned = true;
+      const docsReady = (agentId: string, role: TeamRole) => bridge.ensureAgentFolder(agentId, docsName, { dir: "docs", readOnly: role !== "pm" });
       // Specs and notes for the team: a folder in the shared files folder, named after the project.
-      const docsName = FolderName.safeParse(req.name).success ? req.name : teamId;
       const docs = await bridge.ensureFolder(docsName);
       db.insert(dataSources).values({ id: `team-docs:${teamId}`, kind: "folder", connectorRef: docsName, scope: docs.hostPath, status: "connected" }).onConflictDoNothing().run();
       db.insert(dataSources).values({ id: `github:${teamId}`, kind: "github", connectorRef: req.repoUrl, scope: repo.branch, status: "connected" }).onConflictDoNothing().run();
 
       const sandboxed = this.deps.sandboxEnabled;
       for (const role of ROLE_ORDER.filter((r) => req.roles.includes(r))) {
-        const own = role === "developer" ? repo.devPath : repo.repoPath;
-        // The state folder sits at the same path for the Gateway and the Docker daemon, so these are host paths too.
-        const binds = [`${own}:${REPO}:${role === "developer" ? "rw" : "ro"}`, `${docs.hostPath}:${DOCS}:${role === "pm" ? "rw" : "ro"}`];
         const template = loadTemplate("company", role);
         const result = await createJuniorAgent(
           {
             ...this.deps,
             team: {
               id: teamId,
-              binds,
+              binds: [],
               values: {
                 projectName: req.name,
                 projectBrief: req.brief || "—",
                 repoUrl: req.repoUrl,
-                repoPath: sandboxed ? REPO : own,
-                docsPath: sandboxed ? DOCS : docs.gatewayPath,
+                // Without a sandbox the agent works in its workspace, where the same folders are.
+                repoPath: sandboxed ? REPO : "repo",
+                docsPath: sandboxed ? DOCS : "docs",
                 branch: repo.branch,
               },
             },
@@ -129,6 +143,8 @@ export class TeamService {
           }),
         );
         created.push(result.agentId);
+        await bridge.teamMember(teamId, result.agentId, role);
+        await docsReady(result.agentId, role);
         db.insert(agentSourceGrants).values({ agentId: result.agentId, sourceId: `github:${teamId}`, access: role === "developer" ? "write" : "read" }).run();
         db.insert(agentSourceGrants).values({ agentId: result.agentId, sourceId: `team-docs:${teamId}`, access: role === "pm" ? "write" : "read" }).run();
       }
@@ -146,21 +162,61 @@ export class TeamService {
 
   status(teamId: string): Promise<TeamRepoStatusDto> {
     this.#team(teamId);
-    return this.deps.bridge.teamStatus(teamId);
+    return this.deps.bridge.teamStatus(teamId, this.#members(teamId).find((m) => m.role === "developer")?.agentId);
   }
 
   fetchUpdates(teamId: string): Promise<TeamRepoStatusDto> {
     this.#team(teamId);
-    return this.deps.bridge.teamFetch(teamId);
+    return this.deps.bridge.teamFetch(teamId, this.#members(teamId));
+  }
+
+  #members(teamId: string): { agentId: string; role: TeamRole }[] {
+    return this.deps.db.select().from(agents).where(and(eq(agents.teamId, teamId), eq(agents.role, "team_member"))).all()
+      .filter((m) => ROLE_ORDER.includes(m.templateId as TeamRole)).map((m) => ({ agentId: m.id, role: m.templateId as TeamRole }));
+  }
+
+  /**
+   * Teams made before members had copies in their workspaces: each member still carrying the old binds gets
+   * its copy (the developer's clone is moved in with its work) and the docs folder, then loses the binds.
+   * A member that fails keeps its binds and is tried again at the next start.
+   */
+  async repairWorkspaces(): Promise<void> {
+    const { db, bridge, gateway, logger } = this.deps;
+    const rows = db.select().from(teams).where(isNotNull(teams.repoUrl)).all();
+    if (!rows.length) return;
+    type Config = { agents?: { entries?: Record<string, { sandbox?: { docker?: { binds?: string[] } } }> } };
+    const legacy = (binds: string[] | undefined) => (binds ?? []).filter((bind) => LEGACY_BINDS.some((target) => bind.includes(target)));
+    for (const team of rows) {
+      const docsName = db.select().from(dataSources).where(eq(dataSources.id, `team-docs:${team.id}`)).get()?.connectorRef ?? null;
+      for (const member of this.#members(team.id)) {
+        try {
+          const { config } = await getConfig<Config>(gateway);
+          if (!legacy(config.agents?.entries?.[member.agentId]?.sandbox?.docker?.binds).length) continue;
+          const copy = await bridge.teamMember(team.id, member.agentId, member.role);
+          if (docsName) await bridge.ensureAgentFolder(member.agentId, docsName, { dir: "docs", readOnly: member.role !== "pm" });
+          await patchConfig(gateway, (snapshot) => {
+            const entry = (snapshot as Config).agents?.entries?.[member.agentId];
+            const binds = entry?.sandbox?.docker?.binds;
+            if (!binds || !legacy(binds).length) return null;
+            return { agents: { entries: { [member.agentId]: { sandbox: { docker: { binds: binds.filter((bind) => !legacy([bind]).length) } } } } } };
+          }, { replacePaths: [`agents.entries.${member.agentId}.sandbox.docker.binds`], note: "clawdesk: team member copy in its workspace" });
+          logger.info({ teamId: team.id, agentId: member.agentId, moved: copy.moved }, "team member moved to a copy in its workspace");
+        } catch (error) {
+          logger.warn({ err: error, teamId: team.id, agentId: member.agentId }, "could not move a team member off its old binds; kept as it was");
+        }
+      }
+    }
   }
 
   /** The owner's decision: pushes the developer's branch and opens its pull request. */
   async pushBranch(teamId: string): Promise<PullRequestDto> {
     const team = this.#team(teamId);
-    const status = await this.deps.bridge.teamStatus(teamId);
+    const developer = this.#members(teamId).find((m) => m.role === "developer")?.agentId;
+    const status = await this.deps.bridge.teamStatus(teamId, developer);
     const pr = await this.deps.bridge.teamPush(
       teamId,
       team.repoUrl ?? "",
+      developer,
       `${team.name}: ${status.lastCommit?.replace(/^\w+ /, "") ?? "changes from the team"}`,
       `Prepared by the ClawDesk team «${team.name}» (developer agent, branch \`${status.branch}\`).\n\nReview before merging — agents never merge.`,
     );

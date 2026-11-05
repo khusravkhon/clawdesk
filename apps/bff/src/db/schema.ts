@@ -81,6 +81,18 @@ export const projectBriefs = sqliteTable("project_briefs", {
   updatedAt: integer("updated_at").notNull(),
 });
 
+export const projectBuilders = sqliteTable("project_builders", {
+  projectId: text("project_id").primaryKey().references(() => companyProjects.id, { onDelete: "cascade" }),
+  revision: integer("revision").notNull().default(0),
+  plan: text("plan", { mode: "json" }).$type<import("@clawdesk/shared").ProjectBuilderPlanDto | null>(),
+});
+
+export const projectBuilderRequests = sqliteTable("project_builder_requests", {
+  projectId: text("project_id").notNull().references(() => companyProjects.id, { onDelete: "cascade" }),
+  requestId: text("request_id").notNull(),
+  payload: text("payload").notNull(),
+}, (t) => [primaryKey({ columns: [t.projectId, t.requestId] })]);
+
 export const projectRules = sqliteTable("project_rules", {
   id: text("id").primaryKey(),
   projectId: text("project_id").notNull().references(() => companyProjects.id, { onDelete: "cascade" }),
@@ -139,6 +151,81 @@ export const acceptanceChecks = sqliteTable("acceptance_checks", {
   requestPayload: text("request_payload").notNull(),
 }, (t) => [uniqueIndex("acceptance_check_request_uq").on(t.caseId, t.requestId), index("acceptance_checks_case_idx").on(t.caseId, t.revision, t.id), foreignKey({ columns: [t.caseId, t.revision], foreignColumns: [acceptanceRevisions.caseId, acceptanceRevisions.revision] })]);
 
+export const projectCheckRuns = sqliteTable("project_check_runs", {
+  id: text("id").primaryKey(),
+  projectId: text("project_id").notNull().references(() => companyProjects.id, { onDelete: "cascade" }),
+  status: text("status", { enum: ["completed", "blocked"] }).notNull(),
+  reason: text("reason", { enum: ["runner_failed", "timeout", "no_tests"] }),
+  /** Whether the app ran apart from the tests; null for runs from before the distinction. */
+  isolation: text("isolation", { enum: ["separate", "shared"] }),
+  filesFingerprint: text("files_fingerprint").notNull(),
+  durationMs: integer("duration_ms").notNull(),
+  createdAt: integer("created_at").notNull(),
+  requestId: text("request_id").notNull(),
+}, (t) => [uniqueIndex("project_check_run_request_uq").on(t.projectId, t.requestId), index("project_check_runs_project_idx").on(t.projectId, t.createdAt)]);
+
+export const projectCheckResults = sqliteTable("project_check_results", {
+  runId: text("run_id").notNull().references(() => projectCheckRuns.id, { onDelete: "cascade" }),
+  testId: text("test_id").notNull(),
+  file: text("file").notNull(),
+  name: text("name").notNull(),
+  status: text("status", { enum: ["passed", "failed", "flaky", "skipped"] }).notNull(),
+  message: text("message").notNull().default(""),
+  fileHash: text("file_hash"),
+  /** P6.3: hash of the test's own block (see project-test-units); null when it could not be found. */
+  testHash: text("test_hash"),
+}, (t) => [primaryKey({ columns: [t.runId, t.testId] })]);
+
+/** The test a scenario revision protects, with its file hash at the moment of linking. */
+export const acceptanceTestLinks = sqliteTable("acceptance_test_links", {
+  caseId: text("case_id").notNull(),
+  revision: integer("revision").notNull(),
+  testId: text("test_id").notNull(),
+  fileHash: text("file_hash").notNull(),
+  /** P6.3: the test's own block; when set, edits to other tests in the same file do not invalidate the link. */
+  testHash: text("test_hash"),
+  runId: text("run_id").notNull(),
+  createdAt: integer("created_at").notNull(),
+}, (t) => [primaryKey({ columns: [t.caseId, t.revision] }), foreignKey({ columns: [t.caseId, t.revision], foreignColumns: [acceptanceRevisions.caseId, acceptanceRevisions.revision] }).onDelete("cascade")]);
+
+/** P6.2: work on one approved rule version by the project's executors (see project-tasks-service). */
+export const projectTasks = sqliteTable("project_tasks", {
+  id: text("id").primaryKey(),
+  projectId: text("project_id").notNull().references(() => companyProjects.id, { onDelete: "cascade" }),
+  number: integer("number").notNull(),
+  ruleId: text("rule_id").notNull().references(() => projectRules.id, { onDelete: "cascade" }),
+  ruleVersion: integer("rule_version").notNull(),
+  /** P6.3: the rule version the app implemented when the task started; null for a new rule. */
+  previousVersion: integer("previous_version"),
+  title: text("title").notNull(),
+  note: text("note").notNull().default(""),
+  status: text("status", { enum: ["qa", "dev", "review", "done", "cancelled"] }).notNull(),
+  revision: integer("revision").notNull().default(0),
+  /** The app's files when the task started (the work must apply on top of exactly these). */
+  baseFiles: text("base_files", { mode: "json" }).$type<Record<string, string>>().notNull(),
+  qaTests: text("qa_tests", { mode: "json" }).$type<Record<string, string> | null>(),
+  devFiles: text("dev_files", { mode: "json" }).$type<Record<string, string> | null>(),
+  lastCheck: text("last_check", { mode: "json" }).$type<import("@clawdesk/shared").ProjectTaskCheckDto | null>(),
+  returnComment: text("return_comment").notNull().default(""),
+  /** P6.3: app/ was returned to baseFiles after the task had been accepted. */
+  rolledBackAt: integer("rolled_back_at"),
+  /** The reviewer agent was asked about the current changes; its verdict from REVIEW.md. */
+  reviewRequestedAt: integer("review_requested_at"),
+  reviewer: text("reviewer", { mode: "json" }).$type<import("@clawdesk/shared").ProjectTaskReviewDto | null>(),
+  createdAt: integer("created_at").notNull(),
+  updatedAt: integer("updated_at").notNull(),
+  requestId: text("request_id").notNull(),
+}, (t) => [uniqueIndex("project_task_number_uq").on(t.projectId, t.number), uniqueIndex("project_task_request_uq").on(t.projectId, t.requestId)]);
+
+export const projectTaskEvents = sqliteTable("project_task_events", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  taskId: text("task_id").notNull().references(() => projectTasks.id, { onDelete: "cascade" }),
+  kind: text("kind", { enum: ["created", "sent", "qa_checked", "dev_checked", "accepted", "returned", "cancelled", "rolled_back", "review_requested", "reviewed"] }).notNull(),
+  note: text("note").notNull().default(""),
+  createdAt: integer("created_at").notNull(),
+  requestId: text("request_id").notNull(),
+}, (t) => [uniqueIndex("project_task_event_request_uq").on(t.taskId, t.requestId)]);
+
 export const teams = sqliteTable("teams", {
   id: text("id").primaryKey(),
   name: text("name").notNull(),
@@ -146,6 +233,19 @@ export const teams = sqliteTable("teams", {
   telegramGroupId: text("telegram_group_id"),
   departmentId: text("department_id").references(() => departments.id),
   projectId: text("project_id").references(() => companyProjects.id),
+  /**
+   * Stage 4: the team's lead — a member of this team or a standalone agent; an assignment, not a template.
+   * No foreign key (SQLite cannot drop such a column): a lead that no longer exists counts as none.
+   */
+  leadAgentId: text("lead_agent_id"),
+  /**
+   * Stage 8: where requests of this team's members that reach the owner arrive — the owner's chat with the
+   * bot ("direct", default) or the member's topic in the team's group, with the owner mentioned ("topic").
+   */
+  ownerRequests: text("owner_requests", { enum: ["direct", "topic"] }).notNull().default("direct"),
+  /** Stage 3: the request that created a team without a repository, so a repeat returns the same team. */
+  requestId: text("request_id"),
+  requestPayload: text("request_payload"),
   organizationRevision: integer("organization_revision").notNull().default(0),
   createdAt: createdAt(),
 }, (t) => [index("teams_department_idx").on(t.departmentId), index("teams_project_idx").on(t.projectId)]);
@@ -448,3 +548,226 @@ export const personalReminders = sqliteTable("personal_reminders", {
   actionRequestId: text("action_request_id"),
   actionPayload: text("action_payload"),
 }, (t) => [index("personal_reminders_due_idx").on(t.action, t.delivery, t.dueAt)]);
+
+/** Stage 6: a request up the company structure (see work-requests-service). */
+export const workRequests = sqliteTable("work_requests", {
+  id: text("id").primaryKey(),
+  number: integer("number").notNull().unique(),
+  fromAgentId: text("from_agent_id").notNull(),
+  kind: text("kind", { enum: ["question", "decision", "access"] }).notNull(),
+  subject: text("subject").notNull(),
+  /** Lower-case subject without extra spaces: one active request of a kind per subject and requester. */
+  subjectKey: text("subject_key").notNull(),
+  details: text("details").notNull(),
+  taskRef: text("task_ref").notNull().default(""),
+  /** An access request: "folder:<name>" or "mcp:<server>", and the level asked for. */
+  resource: text("resource"),
+  access: text("access", { enum: ["read", "write"] }),
+  status: text("status", { enum: ["open", "clarify", "answered", "denied", "expired", "cancelled"] }).notNull(),
+  route: text("route", { mode: "json" }).$type<{ kind: "lead" | "manager" | "main" | "owner"; agentId: string | null }[]>().notNull(),
+  level: integer("level").notNull().default(0),
+  /** Organizational transitions so far (first routing included); limited to four. */
+  hops: integer("hops").notNull().default(0),
+  revision: integer("revision").notNull().default(0),
+  answerText: text("answer_text"),
+  answeredBy: text("answered_by"),
+  deadlineAt: integer("deadline_at").notNull(),
+  createdAt: integer("created_at").notNull(),
+  updatedAt: integer("updated_at").notNull(),
+  spoolId: text("spool_id").notNull().unique(),
+}, (t) => [index("work_requests_from_idx").on(t.fromAgentId, t.status)]);
+
+/** History of a request; an event with a recipient is also a message the panel delivers to that agent's chat. */
+export const workRequestEvents = sqliteTable("work_request_events", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  requestId: text("request_id").notNull().references(() => workRequests.id, { onDelete: "cascade" }),
+  kind: text("kind", { enum: ["created", "routed", "skipped", "escalated", "clarify", "reply", "answered", "denied", "expired", "cancelled", "refused", "granted", "notified"] }).notNull(),
+  actor: text("actor").notNull(),
+  text: text("text").notNull().default(""),
+  notifyAgentId: text("notify_agent_id"),
+  /** Stage 8: the message goes to the owner in Telegram instead of an agent's chat. */
+  notifyOwner: integer("notify_owner", { mode: "boolean" }).notNull().default(false),
+  notifyText: text("notify_text"),
+  deliveredAt: integer("delivered_at"),
+  attempts: integer("attempts").notNull().default(0),
+  createdAt: integer("created_at").notNull(),
+  /** The owner's requestId (idempotency of panel actions); null for agent and panel events. */
+  requestKey: text("request_key"),
+}, (t) => [index("work_request_events_request_idx").on(t.requestId), uniqueIndex("work_request_events_key_uq").on(t.requestId, t.requestKey)]);
+
+/** Spool entries already handled (stored, refused or duplicate): importing them again changes nothing. */
+export const workRequestSpool = sqliteTable("work_request_spool", {
+  id: text("id").primaryKey(),
+  agentId: text("agent_id").notNull(),
+  outcome: text("outcome").notNull(),
+  /** A message for an entry that made no request (e.g. a refused reply), delivered like event messages. */
+  notifyText: text("notify_text"),
+  deliveredAt: integer("delivered_at"),
+  attempts: integer("attempts").notNull().default(0),
+  createdAt: integer("created_at").notNull(),
+});
+
+/** Stage 5: the owner's grants and revocations (the record). Enforcement is the bridge's folder sync and the MCP denies. */
+export const resourceGrants = sqliteTable("resource_grants", {
+  id: text("id").primaryKey(),
+  agentId: text("agent_id").notNull(),
+  resource: text("resource").notNull(),
+  access: text("access", { enum: ["read", "write"] }).notNull(),
+  /** "owner" or the request it answered (REQ-…). */
+  grantedBy: text("granted_by").notNull(),
+  createdAt: integer("created_at").notNull(),
+  revokedAt: integer("revoked_at"),
+  revokedBy: text("revoked_by"),
+}, (t) => [index("resource_grants_agent_idx").on(t.agentId, t.resource)]);
+
+/** Stage 8: one-time tokens behind the owner's Telegram buttons on a request ("cdreq:<token>"). */
+export const workRequestButtons = sqliteTable("work_request_buttons", {
+  token: text("token").primaryKey(),
+  requestId: text("request_id").notNull().references(() => workRequests.id, { onDelete: "cascade" }),
+  /** The owner message the button belongs to. */
+  eventId: integer("event_id").notNull(),
+  action: text("action", { enum: ["grant", "deny", "cancel"] }).notNull(),
+  createdAt: integer("created_at").notNull(),
+  usedAt: integer("used_at"),
+}, (t) => [index("work_request_buttons_request_idx").on(t.requestId)]);
+
+/** Stage 6, part 2: company tasks (see work-items-service). */
+export const workItems = sqliteTable("work_items", {
+  id: text("id").primaryKey(),
+  number: integer("number").notNull().unique(),
+  title: text("title").notNull(),
+  description: text("description").notNull(),
+  criteria: text("criteria").notNull(),
+  executorAgentId: text("executor_agent_id").notNull(),
+  createdBy: text("created_by").notNull(),
+  status: text("status", { enum: ["draft", "queued", "running", "blocked", "review", "done", "failed", "cancelled"] }).notNull(),
+  blockText: text("block_text"),
+  /** The request (work_requests.id) the task waits for. */
+  blockRequestId: text("block_request_id"),
+  result: text("result").notNull().default(""),
+  returnComment: text("return_comment").notNull().default(""),
+  deadlineAt: integer("deadline_at"),
+  /** When it joined the executor's queue: the queue is first in, first out. */
+  queuedAt: integer("queued_at"),
+  /** Stage 4: the executor's charter version when the task started; the task keeps those conditions. */
+  charterVersion: integer("charter_version"),
+  revision: integer("revision").notNull().default(0),
+  createdAt: integer("created_at").notNull(),
+  updatedAt: integer("updated_at").notNull(),
+  requestId: text("request_id").notNull().unique(),
+  requestPayload: text("request_payload").notNull(),
+}, (t) => [index("work_items_executor_idx").on(t.executorAgentId, t.status)]);
+
+/** History of a task; an event with a recipient is also a message delivered to that agent's chat. */
+export const workItemEvents = sqliteTable("work_item_events", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  itemId: text("item_id").notNull().references(() => workItems.id, { onDelete: "cascade" }),
+  kind: text("kind", { enum: ["created", "queued", "started", "reported", "blocked", "unblocked", "accepted", "returned", "failed", "cancelled", "refused"] }).notNull(),
+  actor: text("actor").notNull(),
+  text: text("text").notNull().default(""),
+  notifyAgentId: text("notify_agent_id"),
+  notifyText: text("notify_text"),
+  deliveredAt: integer("delivered_at"),
+  attempts: integer("attempts").notNull().default(0),
+  createdAt: integer("created_at").notNull(),
+  requestKey: text("request_key"),
+}, (t) => [index("work_item_events_item_idx").on(t.itemId), uniqueIndex("work_item_events_key_uq").on(t.itemId, t.requestKey)]);
+
+/** Stage 4: versions of an agent's charter; the latest is current. Written into AGENTS.md by the panel. */
+export const agentCharterVersions = sqliteTable("agent_charter_versions", {
+  agentId: text("agent_id").notNull().references(() => agents.id, { onDelete: "cascade" }),
+  version: integer("version").notNull(),
+  fields: text("fields", { mode: "json" }).$type<import("@clawdesk/shared").AgentCharterFields>().notNull(),
+  source: text("source", { enum: ["owner", "restore"] }).notNull(),
+  note: text("note").notNull().default(""),
+  createdAt: integer("created_at").notNull(),
+  requestId: text("request_id").notNull(),
+}, (t) => [primaryKey({ columns: [t.agentId, t.version] }), uniqueIndex("agent_charter_request_uq").on(t.agentId, t.requestId)]);
+
+/** Stage 7: Google Docs copied for an agent (google/<doc>.md in its workspace): what the copy holds now. */
+export const googleDocCopies = sqliteTable("google_doc_copies", {
+  agentId: text("agent_id").notNull(),
+  docId: text("doc_id").notNull(),
+  title: text("title").notNull(),
+  revision: text("revision"),
+  sha: text("sha").notNull(),
+  copiedAt: integer("copied_at").notNull(),
+}, (t) => [primaryKey({ columns: [t.agentId, t.docId] })]);
+
+/** P2: the project's requirements interview with the model; answers themselves live in project_briefs. */
+export const projectInterviews = sqliteTable("project_interviews", {
+  projectId: text("project_id").primaryKey().references(() => companyProjects.id, { onDelete: "cascade" }),
+  status: text("status", { enum: ["idle", "asking", "ready", "done", "failed"] }).notNull(),
+  failure: text("failure", { enum: ["model_unavailable", "invalid_reply", "timeout", "interrupted"] }),
+  revision: integer("revision").notNull().default(0),
+  round: integer("round").notNull().default(0),
+  questions: text("questions", { mode: "json" }).$type<import("@clawdesk/shared").InterviewQuestionDto[]>().notNull(),
+  assumptions: text("assumptions", { mode: "json" }).$type<import("@clawdesk/shared").InterviewAssumptionDto[]>().notNull(),
+  summary: text("summary", { mode: "json" }).$type<import("@clawdesk/shared").InterviewSummaryDto | null>(),
+  answered: text("answered", { mode: "json" }).$type<import("@clawdesk/shared").ProjectInterviewDto["answered"]>().notNull(),
+  startedAt: integer("started_at"),
+  updatedAt: integer("updated_at").notNull(),
+  requestId: text("request_id").notNull(),
+});
+
+/** P3: the last model check of a project's rules for contradictions. */
+export const projectRuleAudits = sqliteTable("project_rule_audits", {
+  projectId: text("project_id").primaryKey().references(() => companyProjects.id, { onDelete: "cascade" }),
+  status: text("status", { enum: ["idle", "checking", "checked", "failed"] }).notNull(),
+  failure: text("failure", { enum: ["model_unavailable", "invalid_reply", "timeout", "interrupted"] }),
+  revision: integer("revision").notNull().default(0),
+  startedAt: integer("started_at"),
+  checkedAt: integer("checked_at"),
+  /** "ruleId:version,…" the last successful check read: a change makes the result stale. */
+  checkedRules: text("checked_rules").notNull().default(""),
+  updatedAt: integer("updated_at").notNull(),
+  requestId: text("request_id").notNull(),
+});
+
+/** P3: a contradiction found between rules at the versions the check read. */
+export const projectRuleConflicts = sqliteTable("project_rule_conflicts", {
+  id: text("id").primaryKey(),
+  projectId: text("project_id").notNull().references(() => companyProjects.id, { onDelete: "cascade" }),
+  rules: text("rules", { mode: "json" }).$type<{ ruleId: string; code: string; version: number }[]>().notNull(),
+  explanation: text("explanation").notNull(),
+  example: text("example").notNull().default(""),
+  question: text("question").notNull().default(""),
+  status: text("status", { enum: ["open", "dismissed", "superseded"] }).notNull(),
+  note: text("note").notNull().default(""),
+  createdAt: integer("created_at").notNull(),
+  decidedAt: integer("decided_at"),
+}, (t) => [index("project_rule_conflicts_project_idx").on(t.projectId, t.status)]);
+
+/** P8: packages imported here; the same package uploaded again finishes or returns the same project. */
+export const projectImports = sqliteTable("project_imports", {
+  packageId: text("package_id").primaryKey(),
+  projectId: text("project_id").notNull().references(() => companyProjects.id, { onDelete: "cascade" }),
+  state: text("state", { enum: ["imported", "folder_failed"] }).notNull(),
+  createdAt: integer("created_at").notNull(),
+});
+
+/** P9: load checks of a generated app, with the conditions, the result and the brief's target at that time. */
+export const projectLoadRuns = sqliteTable("project_load_runs", {
+  id: text("id").primaryKey(),
+  projectId: text("project_id").notNull().references(() => companyProjects.id, { onDelete: "cascade" }),
+  conditions: text("conditions", { mode: "json" }).$type<import("@clawdesk/shared").LoadConditionsDto>().notNull(),
+  result: text("result", { mode: "json" }).$type<import("@clawdesk/shared").LoadResultDto | null>(),
+  error: text("error"),
+  target: text("target", { mode: "json" }).$type<import("@clawdesk/shared").LoadTargetDto>().notNull(),
+  verdict: text("verdict", { enum: ["confirmed", "not_confirmed", "no_target", "failed", "blocked"] }).notNull(),
+  createdAt: integer("created_at").notNull(),
+  requestId: text("request_id").notNull(),
+}, (t) => [uniqueIndex("project_load_runs_request_uq").on(t.projectId, t.requestId)]);
+
+/** Acceptance 2: the model's limited change plan for an existing project (shown, never executed). */
+export const projectExistingPlans = sqliteTable("project_existing_plans", {
+  projectId: text("project_id").primaryKey().references(() => companyProjects.id, { onDelete: "cascade" }),
+  status: text("status", { enum: ["idle", "planning", "ready", "failed"] }).notNull(),
+  failure: text("failure", { enum: ["model_unavailable", "invalid_reply", "timeout", "interrupted"] }),
+  revision: integer("revision").notNull().default(0),
+  plan: text("plan", { mode: "json" }).$type<import("@clawdesk/shared").ExistingPlanDto["plan"]>(),
+  basis: text("basis", { mode: "json" }).$type<import("@clawdesk/shared").ExistingPlanDto["basis"]>(),
+  startedAt: integer("started_at"),
+  updatedAt: integer("updated_at").notNull(),
+  requestId: text("request_id").notNull(),
+});

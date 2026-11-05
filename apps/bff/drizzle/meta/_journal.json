@@ -113,6 +113,139 @@
       "when": 1792345000000,
       "tag": "0015_project_acceptance",
       "breakpoints": true
+    },
+    {
+      "idx": 16,
+      "version": "6",
+      "when": 1792346000000,
+      "tag": "0016_project_builder",
+      "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "6",
+      "when": 1792347000000,
+      "tag": "0017_project_checks",
+      "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "6",
+      "when": 1792348000000,
+      "tag": "0018_project_tasks",
+      "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "6",
+      "when": 1792349000000,
+      "tag": "0019_project_rule_changes",
+      "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "6",
+      "when": 1792350000000,
+      "tag": "0020_work_requests",
+      "breakpoints": true
+    },
+    {
+      "idx": 21,
+      "version": "6",
+      "when": 1792351000000,
+      "tag": "0021_resource_grants",
+      "breakpoints": true
+    },
+    {
+      "idx": 22,
+      "version": "6",
+      "when": 1792352000000,
+      "tag": "0022_request_telegram",
+      "breakpoints": true
+    },
+    {
+      "idx": 23,
+      "version": "6",
+      "when": 1792353000000,
+      "tag": "0023_work_items",
+      "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "6",
+      "when": 1792354000000,
+      "tag": "0024_project_reviewer",
+      "breakpoints": true
+    },
+    {
+      "idx": 25,
+      "version": "6",
+      "when": 1792355000000,
+      "tag": "0025_team_leads",
+      "breakpoints": true
+    },
+    {
+      "idx": 26,
+      "version": "6",
+      "when": 1792356000000,
+      "tag": "0026_agent_charters",
+      "breakpoints": true
+    },
+    {
+      "idx": 27,
+      "version": "6",
+      "when": 1792357000000,
+      "tag": "0027_team_request_delivery",
+      "breakpoints": true
+    },
+    {
+      "idx": 28,
+      "version": "6",
+      "when": 1792358000000,
+      "tag": "0028_google_doc_copies",
+      "breakpoints": true
+    },
+    {
+      "idx": 29,
+      "version": "6",
+      "when": 1792359000000,
+      "tag": "0029_project_interviews",
+      "breakpoints": true
+    },
+    {
+      "idx": 30,
+      "version": "6",
+      "when": 1792360000000,
+      "tag": "0030_project_rule_audits",
+      "breakpoints": true
+    },
+    {
+      "idx": 31,
+      "version": "6",
+      "when": 1792361000000,
+      "tag": "0031_project_imports",
+      "breakpoints": true
+    },
+    {
+      "idx": 32,
+      "version": "6",
+      "when": 1792362000000,
+      "tag": "0032_organizational_teams",
+      "breakpoints": true
+    },
+    {
+      "idx": 33,
+      "version": "6",
+      "when": 1792363000000,
+      "tag": "0033_project_load_runs",
+      "breakpoints": true
+    },
+    {
+      "idx": 34,
+      "version": "6",
+      "when": 1792364000000,
+      "tag": "0034_project_existing_plans",
+      "breakpoints": true
     }
   ]
 }

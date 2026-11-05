@@ -4,15 +4,17 @@ import { NAlert, NButton, NCard, NFormItem, NInput, NModal, NPopconfirm, NSpace,
 import { computed, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import { api, ApiError } from "../api/client";
+import ProjectInterviewDialog from "./ProjectInterviewDialog.vue";
 
-const props = defineProps<{ projectId: string; disabled: boolean }>();
+const props = defineProps<{ projectId: string; disabled: boolean; refreshToken?: number }>();
+const emit = defineEmits<{ changed: [] }>();
 const { t, te } = useI18n();
 type Field = keyof ProjectBriefFields;
 const pages: Field[][] = [["goal", "audience", "scenarios"], ["inScope", "outOfScope", "rules"], ["data", "integrations", "constraints"], ["openQuestions"]];
 const keys = pages.flat();
 const saved = ref<ProjectBriefDto | null>(null);
 const fields = ref(ProjectBriefFields.parse({}));
-const step = ref(0), editing = ref(false), loading = ref(false), saving = ref(false);
+const step = ref(0), editing = ref(false), loading = ref(false), saving = ref(false), interviewing = ref(false);
 const error = ref<string | null>(null);
 const pending = ref<SaveProjectBriefRequest | null>(null);
 const filled = computed(() => saved.value ? keys.filter(key => saved.value!.fields[key].trim()).length : 0);
@@ -42,10 +44,12 @@ async function save(nextStep = step.value): Promise<void> {
   try {
     const result = await api.company.saveBrief(props.projectId, pending.value!);
     saved.value = result; fields.value = { ...result.fields }; step.value = result.step; error.value = null; pending.value = null;
+    emit("changed");
   } catch (e) { error.value = explain(e); }
   finally { saving.value = false; }
 }
 watch(() => props.projectId, () => { saved.value = null; editing.value = false; void load(); }, { immediate: true });
+watch([() => props.refreshToken, editing], () => { if (!editing.value && !saving.value) void load(); });
 </script>
 
 <template>
@@ -56,7 +60,10 @@ watch(() => props.projectId, () => { saved.value = null; editing.value = false; 
       <p>{{ saved.updatedAt ? t('projectBrief.filled', { count: filled, total: keys.length }) : t('projectBrief.empty') }}</p>
       <p v-if="saved.updatedAt">{{ t('projectBrief.savedAt') }}: {{ new Date(saved.updatedAt).toLocaleString() }}</p>
       <p>{{ t('projectBrief.scope') }}</p>
-      <n-button :disabled="loading" @click="open">{{ t(disabled ? 'projectBrief.view' : 'projectBrief.open') }}</n-button>
+      <n-space>
+        <n-button v-if="!disabled" type="primary" :disabled="loading" @click="interviewing = true">{{ t('projectInterview.open') }}</n-button>
+        <n-button :disabled="loading" @click="open">{{ t(disabled ? 'projectBrief.view' : 'projectBrief.open') }}</n-button>
+      </n-space>
     </template>
   </n-card>
   <n-modal v-model:show="editing" preset="card" class="brief-editor" :title="t('projectBrief.title')" :closable="false" :mask-closable="false" :close-on-esc="false">
@@ -93,6 +100,7 @@ watch(() => props.projectId, () => { saved.value = null; editing.value = false; 
       <p v-if="!dirty && saved?.updatedAt">{{ t('projectBrief.saved') }}</p>
     </form>
   </n-modal>
+  <ProjectInterviewDialog v-model:show="interviewing" :project-id="projectId" :disabled="disabled" @changed="load(); emit('changed')" />
 </template>
 
 <style scoped>

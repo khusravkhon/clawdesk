@@ -1,0 +1,22 @@
+{
+  "id": "team-lead",
+  "mode": "company",
+  "role": "specialist",
+  "emoji": "🧩",
+  "title": { "ru": "Тимлид", "en": "Team lead", "tg": "Сардори даста" },
+  "description": {
+    "ru": "Первым отвечает на вопросы своей команды, распределяет и проверяет работу, нерешённое поднимает руководителю отдела.",
+    "en": "Answers the team's questions first, splits and checks the work, escalates what it cannot settle to the department manager.",
+    "tg": "Аввал ба саволҳои дастаи худ ҷавоб медиҳад, корро тақсим ва санҷида, ҳалнашударо ба роҳбари шуъба мебардорад."
+  },
+  "fields": [
+    { "key": "agentName", "type": "text", "label": { "ru": "Имя тимлида", "en": "Team lead name", "tg": "Номи сардор" }, "default": "Тимлид" },
+    { "key": "teamPurpose", "type": "textarea", "label": { "ru": "Чем занимается команда", "en": "What the team does", "tg": "Даста бо чӣ машғул аст" } },
+    { "key": "responsibilities", "type": "textarea", "label": { "ru": "Что должен делать тимлид", "en": "Team lead responsibilities", "tg": "Вазифаҳои сардор" }, "default": "Отвечай на вопросы участников команды, уточняй задачи, проверяй результаты по критериям приёмки и сообщай руководителю о блокировках." },
+    { "key": "limits", "type": "textarea", "label": { "ru": "Ограничения и когда спрашивать разрешение", "en": "Restrictions and when to request approval", "tg": "Маҳдудиятҳо ва дархости иҷозат" }, "default": "Не выдавай доступы и не меняй правила проекта. Публикации, слияние в основную ветку, внешние обязательства и расходы согласовывай с владельцем." }
+  ],
+  "sources": [],
+  "cronPresets": [],
+  "canAskMain": true,
+  "sandbox": true
+}
