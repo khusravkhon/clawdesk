@@ -3,7 +3,8 @@ import type { FastifyInstance } from "fastify";
 import { z, ZodError } from "zod";
 import { CompanyError, type CompanyService } from "../company/company-service.js";
 import { PrepareProjectWorkspaceRequest } from "@clawdesk/shared";
-import { SaveProjectBriefRequest } from "@clawdesk/shared";
+import { SaveProjectBriefRequest, InterviewAnswerRequest, InterviewAskRequest } from "@clawdesk/shared";
+import { InterviewError } from "../company/project-interview-service.js";
 import { ApproveBusinessRuleRequest, CreateBusinessRuleRequest, UpdateBusinessRuleRequest } from "@clawdesk/shared";
 import { BridgeError } from "../gateway/bridge-client.js";
 import { ProjectRuleError } from "../company/project-rules-service.js";
@@ -32,8 +33,8 @@ export function registerCompanyRoutes(app: FastifyInstance, company: CompanyServ
         const code = known.has(error.code) ? error.code : "workspace_unavailable";
         return reply.status(code.startsWith("invalid_") ? 400 : code === "workspace_unavailable" ? 503 : 409).send({ error: code, message: code });
       }
-      if (!(error instanceof CompanyError) && !(error instanceof ProjectRuleError) && !(error instanceof AcceptanceError) && !(error instanceof ProjectBuilderError) && !(error instanceof ProjectChecksError) && !(error instanceof ProjectTaskError) && !(error instanceof ProjectGitHubError)) throw error;
-      const status = error.code === "company_only" || error.code.endsWith("_missing") ? 404 : error.code === "gateway_unavailable" ? 503 : 409;
+      if (!(error instanceof CompanyError) && !(error instanceof ProjectRuleError) && !(error instanceof AcceptanceError) && !(error instanceof ProjectBuilderError) && !(error instanceof ProjectChecksError) && !(error instanceof ProjectTaskError) && !(error instanceof ProjectGitHubError) && !(error instanceof InterviewError)) throw error;
+      const status = error.code === "company_only" || error.code.endsWith("_missing") ? 404 : error.code === "gateway_unavailable" || error.code === "model_missing" ? 503 : 409;
       return reply.status(status).send({ error: error.code, message: error.code });
     });
     scope.get("/api/company", () => company.list());
@@ -52,6 +53,10 @@ export function registerCompanyRoutes(app: FastifyInstance, company: CompanyServ
     });
     scope.post("/api/company/projects", async (request, reply) => reply.status(201).send(company.createProject(CreateProjectRequest.parse(request.body))));
     scope.get("/api/company/projects/:id/brief", (request) => company.projectBrief(Params.parse(request.params).id));
+    // P2: the requirements interview with the model.
+    scope.get("/api/company/projects/:id/interview", (request) => company.interview.get(Params.parse(request.params).id));
+    scope.post("/api/company/projects/:id/interview/ask", (request) => company.interview.ask(Params.parse(request.params).id, InterviewAskRequest.parse(request.body)));
+    scope.post("/api/company/projects/:id/interview/answer", (request) => company.interview.answer(Params.parse(request.params).id, InterviewAnswerRequest.parse(request.body)));
     const TaskParams = Params.extend({ taskId: z.uuid() });
     scope.get("/api/company/projects/:id/executors", request => company.tasks.executors(Params.parse(request.params).id));
     scope.post("/api/company/projects/:id/executors", request => company.tasks.assignExecutors(Params.parse(request.params).id, AssignExecutorsRequest.parse(request.body)));

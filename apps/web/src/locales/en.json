@@ -2448,5 +2448,48 @@
       "agent_missing": "Agent not found.",
       "gateway_unavailable": "No connection to the Gateway."
     }
+  },
+  "projectInterview": {
+    "open": "Interview with the assistant",
+    "title": "Project interview",
+    "lead": "The assistant (the main agent's model) asks 1–3 questions at a time, offers example answers and retells the first version. Answers are saved into the project brief; its guesses are marked as assumptions and go into the brief only if you accept them. You can close the window — nothing is lost.",
+    "summary": "How the assistant understood the project",
+    "users": "Who uses it",
+    "parts": {
+      "inFirstVersion": "In the first version",
+      "notInFirstVersion": "Not in the first version",
+      "scenarios": "Main scenarios",
+      "openQuestions": "Open questions"
+    },
+    "summaryNote": "This is the assistant's retelling, not agreed requirements: check it and fix the brief if something is off.",
+    "idle": "The assistant reads what the brief already has and asks only for what is missing.",
+    "asking": "The assistant is thinking of questions… Usually under a minute.",
+    "done": "The assistant thinks there is enough for a first version. Check the brief; you can ask again any time.",
+    "failure": {
+      "model_unavailable": "The assistant did not answer",
+      "invalid_reply": "The assistant answered in the wrong form",
+      "timeout": "The assistant ran out of time",
+      "interrupted": "The request was cut off (the panel restarted)"
+    },
+    "failureHint": "Try again, or fill the brief step by step — it works without the assistant.",
+    "answer": "Your answer (your own words, or pick an example above)",
+    "assumptions": "The assistant's assumptions",
+    "assumptionsHint": "The assistant guessed these. Accept to put them into the brief; reject so it knows they are wrong.",
+    "assumption": "assumption",
+    "accept": "Right",
+    "reject": "Wrong",
+    "answerNext": "Answer and continue",
+    "saveOnly": "Save without new questions",
+    "start": "Start the interview",
+    "askAgain": "Ask more",
+    "close": "Close",
+    "answered": "Answered already: {count}",
+    "failed": "The action failed.",
+    "errors": {
+      "revision_conflict": "The interview changed — the window was refreshed, try again.",
+      "interview_busy": "The assistant is still thinking — wait for its answer.",
+      "model_missing": "The main agent's model is unavailable. Fill the brief step by step.",
+      "project_archived": "The project is archived."
+    }
   }
 }

@@ -690,3 +690,19 @@ export const googleDocCopies = sqliteTable("google_doc_copies", {
   sha: text("sha").notNull(),
   copiedAt: integer("copied_at").notNull(),
 }, (t) => [primaryKey({ columns: [t.agentId, t.docId] })]);
+
+/** P2: the project's requirements interview with the model; answers themselves live in project_briefs. */
+export const projectInterviews = sqliteTable("project_interviews", {
+  projectId: text("project_id").primaryKey().references(() => companyProjects.id, { onDelete: "cascade" }),
+  status: text("status", { enum: ["idle", "asking", "ready", "done", "failed"] }).notNull(),
+  failure: text("failure", { enum: ["model_unavailable", "invalid_reply", "timeout", "interrupted"] }),
+  revision: integer("revision").notNull().default(0),
+  round: integer("round").notNull().default(0),
+  questions: text("questions", { mode: "json" }).$type<import("@clawdesk/shared").InterviewQuestionDto[]>().notNull(),
+  assumptions: text("assumptions", { mode: "json" }).$type<import("@clawdesk/shared").InterviewAssumptionDto[]>().notNull(),
+  summary: text("summary", { mode: "json" }).$type<import("@clawdesk/shared").InterviewSummaryDto | null>(),
+  answered: text("answered", { mode: "json" }).$type<import("@clawdesk/shared").ProjectInterviewDto["answered"]>().notNull(),
+  startedAt: integer("started_at"),
+  updatedAt: integer("updated_at").notNull(),
+  requestId: text("request_id").notNull(),
+});
