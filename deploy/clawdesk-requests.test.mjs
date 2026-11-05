@@ -20,7 +20,7 @@ async function fixture(t) {
 test("manifest declares both optional tools with a strict agent allowlist", async () => {
   const manifest = JSON.parse(await fs.readFile(new URL("./plugins/clawdesk-requests/openclaw.plugin.json", import.meta.url), "utf8"));
   assert.equal(manifest.configSchema.additionalProperties, false);
-  assert.deepEqual(manifest.contracts.tools, [UP, REPLY]);
+  assert.deepEqual(manifest.contracts.tools, [UP, REPLY, "clawdesk_task_report"]);
   assert.equal(manifest.toolMetadata[UP].optional, true);
 });
 
@@ -100,4 +100,15 @@ test("an owner's Telegram button is filed once with the presser's ID and its but
   assert.equal(filed.length, 1);
   assert.deepEqual([filed[0].type, filed[0].token, filed[0].senderId, filed[0].accountId], ["owner_button", "tok_abcdefghijklmnop", "4242", "default"]);
   assert.equal(cleared, 2);
+});
+
+test("an executor's task report is filed once with its identity; malformed reports are refused", async (t) => {
+  const f = await fixture(t);
+  const report = f.tool("clawdesk_task_report");
+  assert.equal((await report.execute("r1", { taskId: "WI-001", status: "done", result: "Готово: отчёт в docs/report.md" })).details.status, "filed");
+  assert.equal((await report.execute("r2", { taskId: "WI-1", status: "done" })).details.code, "invalid_arguments");
+  assert.equal((await report.execute("r3", { taskId: "TASK-1", status: "done", result: "x" })).details.code, "invalid_arguments");
+  assert.equal((await report.execute("r4", { taskId: "WI-001", status: "maybe", result: "x" })).details.code, "invalid_arguments");
+  const [filed] = await f.spool();
+  assert.deepEqual([filed.type, filed.agentId, filed.taskId, filed.status], ["task_report", "dev", "WI-001", "done"]);
 });

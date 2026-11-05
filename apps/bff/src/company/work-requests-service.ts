@@ -26,7 +26,14 @@ export class WorkRequestError extends Error {
 type Level = { kind: WorkRequestLevelKind; agentId: string | null };
 type Row = typeof workRequests.$inferSelect;
 type Tx = Pick<Db, "select" | "insert" | "update">;
-type SpoolEntry = { id?: unknown; type?: unknown; agentId?: unknown; kind?: unknown; subject?: unknown; details?: unknown; taskRef?: unknown; resource?: unknown; access?: unknown; requestId?: unknown; action?: unknown; text?: unknown; token?: unknown; senderId?: unknown };
+type SpoolEntry = { id?: unknown; type?: unknown; agentId?: unknown; kind?: unknown; subject?: unknown; details?: unknown; taskRef?: unknown; resource?: unknown; access?: unknown; requestId?: unknown; action?: unknown; text?: unknown; taskId?: unknown; status?: unknown; result?: unknown; token?: unknown; senderId?: unknown };
+/** The hooks of the company tasks (WorkItemsService), called in the same transaction as the request change. */
+export type TaskHooks = {
+  requestFiled(tx: Tx, request: Row): void;
+  requestClosed(tx: Tx, request: Row): void;
+  report(tx: Tx, agentId: string, entry: SpoolEntry): { outcome: string; notify: string | null };
+  deliver(): Promise<number>;
+};
 /** The owner's Telegram (TelegramService): their numeric user ID and a message with buttons. */
 export type OwnerTelegram = {
   ownerUserId(): string | null;
@@ -58,6 +65,8 @@ export class WorkRequestsService {
     telegram?: OwnerTelegram;
     /** For the owner's "grant" button (AccessService.grant). */
     grant?: GrantPort;
+    /** Company tasks (WorkItemsService): blocked by a request with taskRef WI-…, unblocked when it is decided. */
+    tasks?: TaskHooks;
     now?: () => number;
   }) {}
 
@@ -122,6 +131,7 @@ export class WorkRequestsService {
       await this.importSpool();
       this.expire();
       await this.deliver();
+      await this.deps.tasks?.deliver();
     } finally { this.#ticking = false; }
   }
 
@@ -145,7 +155,10 @@ export class WorkRequestsService {
       this.deps.db.transaction((tx) => {
         if (tx.select().from(workRequestSpool).where(eq(workRequestSpool.id, id)).get()) return;
         const agentId = typeof entry.agentId === "string" && AGENT.test(entry.agentId) ? entry.agentId : "?";
-        const outcome = entry.type === "up" ? this.#file(tx, id, agentId, entry, live) : entry.type === "reply" ? this.#reply(tx, agentId, entry, live) : { outcome: "invalid", notify: null };
+        const outcome = entry.type === "up" ? this.#file(tx, id, agentId, entry, live)
+          : entry.type === "reply" ? this.#reply(tx, agentId, entry, live)
+          : entry.type === "task_report" && this.deps.tasks ? this.deps.tasks.report(tx, agentId, entry)
+          : { outcome: "invalid", notify: null };
         tx.insert(workRequestSpool).values({ id, agentId, outcome: outcome.outcome, notifyText: outcome.notify, createdAt: this.#now() }).run();
       });
       done.push(id);
@@ -182,6 +195,7 @@ export class WorkRequestsService {
     this.#event(tx, row.id!, "created", agentId, "");
     const created = tx.select().from(workRequests).where(eq(workRequests.id, row.id!)).get()!;
     const target = this.#advance(tx, created, -1, live);
+    this.deps.tasks?.requestFiled(tx, tx.select().from(workRequests).where(eq(workRequests.id, created.id)).get()!);
     const label = code(created.number);
     return { outcome: `created:${label}`, notify: `Обращение ${label} принято и передано: ${this.#name(route[target]!.agentId)}. Ответ придёт в этот чат; повторно не отправляй.` };
   }
@@ -219,6 +233,8 @@ export class WorkRequestsService {
 
   /** Once a request the owner was told about in Telegram is decided, the owner gets the outcome and its buttons stop working. */
   #ownerOutcome(tx: Tx, row: Row, text: string): void {
+    // Every place a request is decided comes here: the task waiting for it learns the outcome too.
+    this.deps.tasks?.requestClosed(tx, tx.select().from(workRequests).where(eq(workRequests.id, row.id)).get()!);
     tx.update(workRequestButtons).set({ usedAt: this.#now() }).where(and(eq(workRequestButtons.requestId, row.id), isNull(workRequestButtons.usedAt))).run();
     if (!tx.select({ id: workRequestEvents.id }).from(workRequestEvents).where(and(eq(workRequestEvents.requestId, row.id), eq(workRequestEvents.notifyOwner, true))).get()) return;
     this.#event(tx, row.id, "notified", "panel", text, { owner: true, text: `${code(row.number)} («${row.subject}»): ${text}` });

@@ -11,6 +11,7 @@ import path from "node:path";
 const ID = "clawdesk-requests";
 export const UP = "clawdesk_request_up";
 export const REPLY = "clawdesk_request_reply";
+export const REPORT = "clawdesk_task_report";
 const MAX_SPOOL = 500;
 const AGENT = /^[a-z0-9][a-z0-9_-]{0,79}$/;
 const text = (min, max) => ({ type: "string", minLength: min, maxLength: max });
@@ -31,6 +32,14 @@ const replyParameters = {
     requestId: { type: "string", pattern: "^REQ-[0-9]{1,6}$" },
     action: { type: "string", enum: ["answer", "deny", "clarify", "escalate", "reply"] },
     text: text(1, 4000),
+  },
+};
+const reportParameters = {
+  type: "object", additionalProperties: false, required: ["taskId", "status", "result"],
+  properties: {
+    taskId: { type: "string", pattern: "^WI-[0-9]{1,6}$" },
+    status: { type: "string", enum: ["done", "failed"] },
+    result: text(1, 4000),
   },
 };
 const result = (status, code, extra = {}) => {
@@ -109,6 +118,8 @@ export function registerRequests(api, { spoolDir = path.join(process.env.OPENCLA
 
   api.registerTool(tool(UP, "Ask up the company", "File a request to your supervisor in the company (department manager, then the main agent, then the owner). kind: question (you need information), decision (you need someone to decide) or access (you need a resource: set resource to folder:<shared folder name> or mcp:<server name>, and access to read or write). The panel delivers the answer to your chat; until then the work it blocks waits. Only the owner grants access, and the panel checks it before telling you.", upParameters, "up"), { names: [UP], optional: true });
   api.registerTool(tool(REPLY, "Reply to a company request", "Reply to a request REQ-… addressed to you: answer (give the information or decision), deny (with the reason), clarify (ask the requester a question), escalate (pass it to the next level). The requester uses reply to answer a clarification. Only the current addressee can act; a text answer never grants access.", replyParameters, "reply"), { names: [REPLY], optional: true });
+
+  api.registerTool(tool(REPORT, "Report a company task", "Report the result of a company task WI-… assigned to you: status done with what was done and where to see it (it goes to the owner's acceptance), or failed with the reason. Done without a result is not accepted. Only the task's executor can report.", reportParameters, "task_report"), { names: [REPORT], optional: true });
 
   // Stage 8: the owner's buttons on a request in Telegram ("cdreq:<token>"). OpenClaw hands the press to
   // this handler, never to a model, with the pressing user's numeric ID. The handler only files it; the

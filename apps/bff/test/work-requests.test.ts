@@ -171,8 +171,8 @@ describe("company requests", () => {
     const patch = requestsPluginPatch(config, ["main", "dev", "strict"]) as Record<string, any>;
     expect(patch.plugins.entries["clawdesk-requests"]).toEqual({ enabled: true, config: { allowedAgentIds: ["dev", "main", "strict"] } });
     expect(patch.plugins.load.paths).toEqual(["/p/ask", "/usr/local/share/clawdesk/plugins/clawdesk-requests"]);
-    expect(patch.agents.entries.dev.tools).toEqual({ alsoAllow: ["clawdesk_ask_main", "clawdesk_request_up", "clawdesk_request_reply"] });
-    expect(patch.agents.entries.strict.tools).toEqual({ allow: ["read", "clawdesk_request_up", "clawdesk_request_reply"] });
+    expect(patch.agents.entries.dev.tools).toEqual({ alsoAllow: ["clawdesk_ask_main", "clawdesk_request_up", "clawdesk_request_reply", "clawdesk_task_report"] });
+    expect(patch.agents.entries.strict.tools).toEqual({ allow: ["read", "clawdesk_request_up", "clawdesk_request_reply", "clawdesk_task_report"] });
     // Sandboxed sessions see plugin tools only when the sandbox gate names the plugin.
     expect(patch.tools).toEqual({ sandbox: { tools: { alsoAllow: ["clawdesk-requests"] } } });
     expect((requestsPluginPatch({ ...config, tools: { sandbox: { tools: { allow: ["read"] } } } }, ["main"]) as Record<string, any>).tools.sandbox.tools).toEqual({ allow: ["read", "clawdesk-requests"] });

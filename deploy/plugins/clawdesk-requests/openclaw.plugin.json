@@ -2,18 +2,43 @@
   "id": "clawdesk-requests",
   "name": "ClawDesk Requests",
   "description": "Company agents file requests up the organization and reply to requests addressed to them; the panel routes and decides.",
-  "activation": { "onStartup": true },
+  "activation": {
+    "onStartup": true
+  },
   "configSchema": {
     "type": "object",
     "additionalProperties": false,
-    "required": ["allowedAgentIds"],
+    "required": [
+      "allowedAgentIds"
+    ],
     "properties": {
       "allowedAgentIds": {
-        "type": "array", "maxItems": 1000, "uniqueItems": true,
-        "items": { "type": "string", "pattern": "^[a-z0-9][a-z0-9_-]{0,79}$" }
+        "type": "array",
+        "maxItems": 1000,
+        "uniqueItems": true,
+        "items": {
+          "type": "string",
+          "pattern": "^[a-z0-9][a-z0-9_-]{0,79}$"
+        }
       }
     }
   },
-  "contracts": { "tools": ["clawdesk_request_up", "clawdesk_request_reply"] },
-  "toolMetadata": { "clawdesk_request_up": { "optional": true }, "clawdesk_request_reply": { "optional": true } }
+  "contracts": {
+    "tools": [
+      "clawdesk_request_up",
+      "clawdesk_request_reply",
+      "clawdesk_task_report"
+    ]
+  },
+  "toolMetadata": {
+    "clawdesk_request_up": {
+      "optional": true
+    },
+    "clawdesk_request_reply": {
+      "optional": true
+    },
+    "clawdesk_task_report": {
+      "optional": true
+    }
+  }
 }

@@ -53,6 +53,8 @@ import { registerStorageRoutes } from "./routes/storage.js";
 import { registerSpaceRoutes } from "./routes/space.js";
 import { registerTeamRoutes } from "./routes/teams.js";
 import { registerWorkRequestRoutes } from "./routes/work-requests.js";
+import { registerWorkItemRoutes } from "./routes/work-items.js";
+import type { WorkItemsService } from "./company/work-items-service.js";
 import type { WorkRequestsService } from "./company/work-requests-service.js";
 import type { AccessService } from "./company/access-service.js";
 import { registerAuditRoutes } from "./routes/audit.js";
@@ -96,6 +98,8 @@ export type AppDeps = {
   requests?: WorkRequestsService;
   /** Stage 5: agents' access to shared folders and MCP servers. */
   access?: AccessService;
+  /** Stage 6, part 2: company tasks. */
+  workItems?: WorkItemsService;
   audit: AuditService;
   webDist: string | undefined;
   /** Fastify trustProxy: client address and HTTPS come from the proxy's headers (Caddy). */
@@ -153,6 +157,7 @@ export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
   registerSpaceRoutes(app, deps);
   registerTeamRoutes(app, deps);
   registerWorkRequestRoutes(app, deps);
+  registerWorkItemRoutes(app, deps);
   registerCompanyRoutes(app, new CompanyService(deps));
   registerAuditRoutes(app, deps);
   registerUsageRoutes(app, { usage: new UsageService(deps) });

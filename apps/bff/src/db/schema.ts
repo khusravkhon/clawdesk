@@ -612,3 +612,43 @@ export const workRequestButtons = sqliteTable("work_request_buttons", {
   createdAt: integer("created_at").notNull(),
   usedAt: integer("used_at"),
 }, (t) => [index("work_request_buttons_request_idx").on(t.requestId)]);
+
+/** Stage 6, part 2: company tasks (see work-items-service). */
+export const workItems = sqliteTable("work_items", {
+  id: text("id").primaryKey(),
+  number: integer("number").notNull().unique(),
+  title: text("title").notNull(),
+  description: text("description").notNull(),
+  criteria: text("criteria").notNull(),
+  executorAgentId: text("executor_agent_id").notNull(),
+  createdBy: text("created_by").notNull(),
+  status: text("status", { enum: ["draft", "queued", "running", "blocked", "review", "done", "failed", "cancelled"] }).notNull(),
+  blockText: text("block_text"),
+  /** The request (work_requests.id) the task waits for. */
+  blockRequestId: text("block_request_id"),
+  result: text("result").notNull().default(""),
+  returnComment: text("return_comment").notNull().default(""),
+  deadlineAt: integer("deadline_at"),
+  /** When it joined the executor's queue: the queue is first in, first out. */
+  queuedAt: integer("queued_at"),
+  revision: integer("revision").notNull().default(0),
+  createdAt: integer("created_at").notNull(),
+  updatedAt: integer("updated_at").notNull(),
+  requestId: text("request_id").notNull().unique(),
+  requestPayload: text("request_payload").notNull(),
+}, (t) => [index("work_items_executor_idx").on(t.executorAgentId, t.status)]);
+
+/** History of a task; an event with a recipient is also a message delivered to that agent's chat. */
+export const workItemEvents = sqliteTable("work_item_events", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  itemId: text("item_id").notNull().references(() => workItems.id, { onDelete: "cascade" }),
+  kind: text("kind", { enum: ["created", "queued", "started", "reported", "blocked", "unblocked", "accepted", "returned", "failed", "cancelled", "refused"] }).notNull(),
+  actor: text("actor").notNull(),
+  text: text("text").notNull().default(""),
+  notifyAgentId: text("notify_agent_id"),
+  notifyText: text("notify_text"),
+  deliveredAt: integer("delivered_at"),
+  attempts: integer("attempts").notNull().default(0),
+  createdAt: integer("created_at").notNull(),
+  requestKey: text("request_key"),
+}, (t) => [index("work_item_events_item_idx").on(t.itemId), uniqueIndex("work_item_events_key_uq").on(t.itemId, t.requestKey)]);

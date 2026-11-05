@@ -28,6 +28,7 @@ export const router = createRouter({
     { path: "/teams", name: "teams", component: () => import("./views/TeamsView.vue") },
     { path: "/company", name: "company", component: () => import("./views/CompanyView.vue"), meta: { aiOptional: true } },
     { path: "/company/departments/:departmentId", name: "department", component: () => import("./views/CompanyView.vue"), meta: { aiOptional: true } },
+    { path: "/company/work-items", name: "company-work-items", component: () => import("./views/WorkItemsView.vue"), meta: { aiOptional: true } },
     { path: "/company/access", name: "company-access", component: () => import("./views/AccessView.vue"), meta: { aiOptional: true } },
     { path: "/company/requests", name: "company-requests", component: () => import("./views/RequestsView.vue"), meta: { aiOptional: true } },
     { path: "/company/projects", name: "company-projects", component: () => import("./views/ProjectsView.vue"), meta: { aiOptional: true } },

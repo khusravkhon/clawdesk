@@ -2049,5 +2049,78 @@
       "company_only": "Access is managed in company mode.",
       "invalid_request": "Invalid resource."
     }
+  },
+  "workItems": {
+    "title": "Company tasks",
+    "scope": "You set a task: what to do, acceptance criteria, executor, deadline. An executor has one task in work; the rest wait in its queue and start by themselves when it is free. The agent gets the task in its chat and reports the result with a tool; done without a result does not count, and you accept it. If the agent lacks something, it files a request for the task — the task waits for the answer and continues when it comes.",
+    "new": "New task",
+    "fields": {
+      "title": "Title",
+      "description": "What to do",
+      "criteria": "Acceptance criteria",
+      "executor": "Executor",
+      "deadline": "Deadline"
+    },
+    "startNow": "Start now (queued if the executor is busy)",
+    "createStart": "Create and start",
+    "createDraft": "Save draft",
+    "filter": "Which tasks to show",
+    "filters": {
+      "active": "In progress",
+      "review": "Awaiting acceptance",
+      "all": "All"
+    },
+    "empty": "No tasks.",
+    "status": {
+      "draft": "draft",
+      "queued": "queued",
+      "running": "in work",
+      "blocked": "blocked",
+      "review": "awaiting acceptance",
+      "done": "accepted",
+      "failed": "failed",
+      "cancelled": "cancelled"
+    },
+    "position": "#{n} in queue",
+    "overdue": "overdue",
+    "blocked": "Waiting for",
+    "result": "Executor's result",
+    "failedResult": "Why it failed",
+    "history": "History",
+    "event": {
+      "created": "created",
+      "queued": "queued",
+      "started": "started",
+      "reported": "result handed in",
+      "blocked": "blocked",
+      "unblocked": "continued",
+      "accepted": "accepted",
+      "returned": "returned",
+      "failed": "failed",
+      "cancelled": "cancelled",
+      "refused": "refused"
+    },
+    "comment": "Comment (required when returning)",
+    "actions": {
+      "start": "Start",
+      "retry": "Start again",
+      "accept": "Accept",
+      "return": "Return with comment",
+      "resume": "Continue without answer",
+      "cancel": "Cancel"
+    },
+    "cancelConfirm": "The task will be cancelled; if it is in work, the executor is told to stop. Continue?",
+    "limits": "First version: the owner sets tasks; a task starts by itself only from the queue when the executor is free; up to 10 queued per executor; no token or cost limits per task yet; you do the acceptance.",
+    "failed": "The action failed.",
+    "errors": {
+      "company_only": "Tasks are available in company mode.",
+      "item_missing": "Task not found.",
+      "executor_missing": "Executor not found.",
+      "revision_conflict": "The task changed — refresh the page.",
+      "request_conflict": "A repeated request with different content.",
+      "wrong_state": "The task is already in another state — refresh the page.",
+      "queue_full": "The executor already has 10 tasks queued.",
+      "invalid_request": "Fill in the task fields."
+    }
   }
 }

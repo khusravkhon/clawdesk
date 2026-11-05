@@ -30,6 +30,7 @@ import { repairAgentFolders } from "./provision/agent-folders.js";
 import { liveAgentIds, repairAgentCommunication } from "./provision/agent-communication.js";
 import { WorkRequestsService } from "./company/work-requests-service.js";
 import { AccessService } from "./company/access-service.js";
+import { WorkItemsService } from "./company/work-items-service.js";
 import { getConfig } from "./gateway/config-patch.js";
 import { syncRequestTools } from "./company/work-requests-config.js";
 import { mainSessionKey } from "./chat/chat-service.js";
@@ -79,15 +80,20 @@ const access = new AccessService({
   setMcpAgents: (server, agentIds) => mcp.setAgents(server, agentIds),
   config: async () => (await getConfig<Record<string, never>>(gateway)).config,
 });
+// Stage 6, part 2: company tasks; a request filed for a task blocks it until it is decided.
+const workItems = new WorkItemsService({
+  db, companyMode: () => space.mode() === "company",
+  send: async (agentId, message, idempotencyKey) => { await gateway.request("chat.send", { sessionKey: mainSessionKey(agentId), agentId, message, idempotencyKey }); },
+});
 // Stage 6: requests up the company structure, filed by agents through the clawdesk-requests plugin.
 const requests = new WorkRequestsService({
   db, bridge, companyMode: () => space.mode() === "company", liveAgents: () => liveAgentIds(gateway),
   // Stage 8: requests that reach the owner go to the owner's Telegram too, with buttons the plugin hands back.
-  telegram, grant: (request, by) => access.grant(request, by),
+  telegram, grant: (request, by) => access.grant(request, by), tasks: workItems,
   send: async (agentId, message, idempotencyKey) => { await gateway.request("chat.send", { sessionKey: mainSessionKey(agentId), agentId, message, idempotencyKey }); },
 });
 
-const app = await buildApp({ logger, gateway, db, aiSetup, signIn, telegram, freeModels, sources, skills, mcp, approvals, assistant, auth, backups, bridge, space, teams, audit, video, videoDir: config.videoDir, library, budget, notes, reminders, requests, access, sandboxEnabled: config.sandboxEnabled, webDist: config.webDist, trustProxy: config.trustProxy });
+const app = await buildApp({ logger, gateway, db, aiSetup, signIn, telegram, freeModels, sources, skills, mcp, approvals, assistant, auth, backups, bridge, space, teams, audit, video, videoDir: config.videoDir, library, budget, notes, reminders, requests, access, workItems, sandboxEnabled: config.sandboxEnabled, webDist: config.webDist, trustProxy: config.trustProxy });
 
 gateway.start();
 await app.listen({ host: config.host, port: config.port });
