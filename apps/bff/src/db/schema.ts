@@ -745,3 +745,16 @@ export const projectImports = sqliteTable("project_imports", {
   state: text("state", { enum: ["imported", "folder_failed"] }).notNull(),
   createdAt: integer("created_at").notNull(),
 });
+
+/** P9: load checks of a generated app, with the conditions, the result and the brief's target at that time. */
+export const projectLoadRuns = sqliteTable("project_load_runs", {
+  id: text("id").primaryKey(),
+  projectId: text("project_id").notNull().references(() => companyProjects.id, { onDelete: "cascade" }),
+  conditions: text("conditions", { mode: "json" }).$type<import("@clawdesk/shared").LoadConditionsDto>().notNull(),
+  result: text("result", { mode: "json" }).$type<import("@clawdesk/shared").LoadResultDto | null>(),
+  error: text("error"),
+  target: text("target", { mode: "json" }).$type<import("@clawdesk/shared").LoadTargetDto>().notNull(),
+  verdict: text("verdict", { enum: ["confirmed", "not_confirmed", "no_target", "failed", "blocked"] }).notNull(),
+  createdAt: integer("created_at").notNull(),
+  requestId: text("request_id").notNull(),
+}, (t) => [uniqueIndex("project_load_runs_request_uq").on(t.projectId, t.requestId)]);

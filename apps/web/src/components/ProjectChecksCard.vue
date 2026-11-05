@@ -7,6 +7,7 @@ import { computed, onBeforeUnmount, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import { api, ApiError } from "../api/client";
 
+import ProjectLoadSection from "./ProjectLoadSection.vue";
 const props = defineProps<{ projectId: string; disabled: boolean; refreshToken?: number }>();
 const emit = defineEmits<{ changed: [] }>();
 const { t, te } = useI18n();
@@ -78,6 +79,7 @@ onBeforeUnmount(() => { disposed = true; generation++; });
       </details>
     </template>
     <p class="checks-meta checks-block">{{ t('projectChecks.limits') }}</p>
+    <ProjectLoadSection :project-id="projectId" :disabled="disabled" />
   </n-card>
 </template>
 

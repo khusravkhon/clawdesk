@@ -270,6 +270,11 @@ export class BridgeClient {
     return this.#call("GET", "/files/folders");
   }
 
+  /** P9: a load check of the project's app (app and load client in separate containers). */
+  projectLoad(projectId: string, request: { concurrency: number; durationMs: number }): Promise<{ conditions: import("@clawdesk/shared").LoadConditionsDto; result: import("@clawdesk/shared").LoadResultDto | null; error: string | null }> {
+    return this.#call("POST", "/projects/builder/load", { projectId, ...request }, request.durationMs + 120_000);
+  }
+
   /** P0: versions of OpenClaw and of the tools the container has (null when missing). */
   capabilities(): Promise<{ openclaw: string | null; docker: string | null; git: string | null; gog: string | null }> {
     return this.#call("GET", "/capabilities", undefined, 20_000);

@@ -247,6 +247,22 @@ test("tests that start the app themselves still run, in one container, and say s
     assert.equal(args[args.indexOf("--network") + 1], "none");
 });
 
+test("a load check runs the app alone and a load client next to it, and reports the conditions", linux, async t => {
+    const f = await fixture(t);
+    await f.builder.prepare("project-a", request);
+    await assert.rejects(f.builder.load("project-a", { concurrency: 0, durationMs: 2000 }), { code: "invalid_builder_request" });
+    await assert.rejects(f.builder.load("project-a", { concurrency: 5, durationMs: 60000 }), { code: "invalid_builder_request" });
+    const run = await f.builder.load("project-a", { concurrency: 4, durationMs: 2000 });
+    assert.equal(run.error, null, JSON.stringify(run));
+    assert.deepEqual({ concurrency: run.conditions.concurrency, cpus: run.conditions.appCpus, memory: run.conditions.appMemoryMb }, { concurrency: 4, cpus: 0.5, memory: 192 });
+    assert.ok(run.result.requests > 10 && run.result.errors === 0, JSON.stringify(run.result));
+    assert.ok(run.result.p50 <= run.result.p95 && run.result.p95 <= run.result.max);
+    assert.ok(run.result.statuses["200"] > 0 && run.result.statuses["201"] > 0);
+    const appRun = f.calls.find(call => call[0] === "run" && call.includes("-d")), client = f.calls.find(call => call[0] === "run" && !call.includes("-d"));
+    assert.equal(client[client.indexOf("--network") + 1], "container:" + appRun[appRun.indexOf("--name") + 1]);
+    assert.ok(!JSON.parse(Buffer.from(appRun[appRun.indexOf("-e") + 2], "base64"))["checks.test.mjs"]);
+});
+
 test("accepted work is written into app/ only from the baseline it started from, and keeps the build intact", linux, async t => {
     const f = await fixture(t);
     await f.builder.prepare("project-a", request);

@@ -6,6 +6,7 @@ import { ProjectFolderError } from "./clawdesk-project-folders.mjs";
 import { withDirectoryWithin, withChildDirectoryWithin } from "./clawdesk-file-sync.mjs";
 import { resetGateway } from "./clawdesk-backup.mjs";
 import { APP_BOOTSTRAP, CHECKS_BOOTSTRAP, attemptOf, CHECK_ARGUMENT_LIMIT, CHECK_FILE, CHECK_PAYLOAD_LIMIT, checkIsolation, filesFingerprint, joinRuns, parseCheckOutput, selectCheckFiles } from "./clawdesk-project-checks.mjs";
+import { LOAD_BOOTSTRAP, LOAD_LIMITS, parseLoadOutput } from "./clawdesk-project-load.mjs";
 /** Hardening shared by every checks container: no network of its own, read-only root, no capabilities, a fixed user. */
 const HARDENED = ["--read-only", "--cap-drop", "ALL", "--security-opt", "no-new-privileges", "--user", "1000:1000"];
 /** The whole separate run (all files, both attempts) stays within this, like one shared run. */
@@ -385,6 +386,46 @@ export class ProjectBuilder {
             return blocked("runner_failed");
         }
         return result(parseCheckOutput(joinRuns(runs, nonce), nonce, files));
+    }
+    /**
+     * A load check (see clawdesk-project-load.mjs): the app alone in its container with the checks limits, the
+     * load client in another that shares only its loopback network. Returns the conditions with the result.
+     */
+    async load(id, request = {}) {
+        const concurrency = Number(request.concurrency), durationMs = Number(request.durationMs);
+        if (!Number.isInteger(concurrency) || concurrency < 1 || concurrency > LOAD_LIMITS.maxConcurrency || !Number.isInteger(durationMs) || durationMs < LOAD_LIMITS.minDurationMs || durationMs > LOAD_LIMITS.maxDurationMs)
+            fail("invalid_builder_request", 400);
+        const files = await this.appFiles(id);
+        if (!Object.hasOwn(files, "server.mjs"))
+            fail("checks_unsupported");
+        const app = Object.fromEntries(Object.entries(files).filter(([name]) => !name.endsWith(".test.mjs")));
+        const payload = Buffer.from(JSON.stringify(app)).toString("base64");
+        if (payload.length > CHECK_ARGUMENT_LIMIT)
+            fail("checks_too_large", 413);
+        const gateway = await this.#gateway();
+        if (!/^(sha256:)?[a-f0-9]{64}$/.test(gateway.Image))
+            fail("preview_image_unavailable");
+        const install = gateway.Config.Labels["com.docker.compose.project"];
+        const name = `clawdesk-checks-${hash(install).slice(0, 12)}-${this.#key(id)}`, appName = `clawdesk-checks-app-${hash(install).slice(0, 12)}-${this.#key(id)}`;
+        await this.#removeChecks(name, install);
+        await this.#removeChecks(appName, install);
+        const labels = ["--label", `clawdesk.checks.install=${install}`, "--label", `clawdesk.checks.project=${this.#key(id)}`];
+        const conditions = { concurrency, durationMs, appCpus: 0.5, appMemoryMb: 192, requests: ["GET /api/tasks", "POST /api/tasks"], data: "пустая база SQLite во временной памяти контейнера", network: "только внутри контейнеров, без сети" };
+        const nonce = randomUUID().replace(/-/g, "");
+        let stdout = "";
+        try {
+            await this.command(["run", "-d", "--pull=never", "--name", appName, ...labels, "--label", "clawdesk.checks.role=app", "--network", "none", ...HARDENED, "--pids-limit", "64", "--memory", "192m", "--cpus", "0.5", "--tmpfs", "/data:rw,noexec,nosuid,size=16777216,uid=1000,gid=1000", "--tmpfs", "/tmp:rw,noexec,nosuid,size=8388608", "--tmpfs", "/project:rw,noexec,nosuid,size=4194304,uid=1000,gid=1000", "--env", "DATA_FILE=/data/tasks.sqlite", "--env", "PORT=3000", "--workdir", "/project", "--entrypoint", "node", gateway.Image, "--input-type=module", "-e", APP_BOOTSTRAP, payload]);
+            stdout = await this.command(["run", "--rm", "--pull=never", "--name", name, ...labels, "--network", `container:${appName}`, ...HARDENED, "--pids-limit", "64", "--memory", "128m", "--cpus", "0.5", "--tmpfs", "/tmp:rw,noexec,nosuid,size=8388608", "--env", "CLAWDESK_APP_URL=http://127.0.0.1:3000", "--entrypoint", "node", gateway.Image, "--input-type=module", "-e", LOAD_BOOTSTRAP, nonce, String(concurrency), String(durationMs)], { timeoutMs: durationMs + 40000 });
+        }
+        catch {
+            stdout = "";
+        }
+        finally {
+            await this.#removeChecks(appName, install).catch(() => { });
+            await this.#removeChecks(name, install).catch(() => { });
+        }
+        const result = parseLoadOutput(stdout, nonce);
+        return { conditions, result: result && !result.error ? result : null, error: result?.error ?? (result ? null : "runner_failed") };
     }
     /** The app's current flat files (see selectCheckFiles), for checks, executors' work copies and reviews. */
     appFiles(id) {

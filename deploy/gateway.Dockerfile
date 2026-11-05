@@ -29,6 +29,7 @@ COPY --chmod=0644 clawdesk-storage.mjs /usr/local/lib/
 COPY --chmod=0644 clawdesk-project-folders.mjs /usr/local/lib/
 COPY --chmod=0644 clawdesk-project-builder.mjs /usr/local/lib/
 COPY --chmod=0644 clawdesk-project-checks.mjs /usr/local/lib/
+COPY --chmod=0644 clawdesk-project-load.mjs /usr/local/lib/
 COPY --chmod=0644 clawdesk-project-work.mjs /usr/local/lib/
 COPY --chmod=0644 clawdesk-requests-spool.mjs /usr/local/lib/
 COPY --chmod=0644 clawdesk-project-github.mjs /usr/local/lib/

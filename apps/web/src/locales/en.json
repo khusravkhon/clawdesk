@@ -2703,5 +2703,37 @@
         "without": "Git is unavailable: GitHub teams and pushing projects to GitHub do not work."
       }
     }
+  },
+  "projectLoad": {
+    "title": "Load check",
+    "lead": "The app runs in its own container (0.5 CPU, 192 MB) with a client next to it sending list and create requests at once. The result holds for these conditions only: on your server it will differ.",
+    "targetSimultaneous": "The brief says: {n} at once.",
+    "targetTotal": "The brief says: {n} users in all — how many at once is not said.",
+    "noTarget": "The brief states no expected load — the check shows only how the app behaves under the chosen conditions.",
+    "concurrency": "At once",
+    "seconds": "Seconds",
+    "run": "Check the load",
+    "verdict": {
+      "confirmed": "confirmed",
+      "not_confirmed": "not confirmed",
+      "no_target": "no target",
+      "failed": "did not hold",
+      "blocked": "no result"
+    },
+    "conditions": "Conditions: {c} at once, {s} s, app {cpu} CPU and {mem} MB;",
+    "result": "Result: {n} requests, {rps} per second; latency p50 {p50} ms, p95 {p95} ms, p99 {p99} ms; {errors} errors.",
+    "noResult": "The check gave no result ({error}). This is not a success.",
+    "explain": {
+      "confirmed": "The expected simultaneous load ({n}) held without errors, p95 within 1 s — under these conditions.",
+      "not_confirmed": "The expected load ({n}) is not confirmed: fewer requests at once were run, or the brief states only a total number of users.",
+      "no_target": "No target: nothing to confirm. Add \"N at once\" to the brief.",
+      "failed": "Over 1% errors or p95 above 1 s.",
+      "blocked": "The environment gave no result — try again."
+    },
+    "failed": "The load check failed.",
+    "errors": {
+      "load_busy": "A load check is already running.",
+      "checks_unsupported": "Load checks are available for apps created by the builder."
+    }
   }
 }
