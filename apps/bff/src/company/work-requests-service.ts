@@ -26,12 +26,14 @@ export class WorkRequestError extends Error {
 type Level = { kind: WorkRequestLevelKind; agentId: string | null };
 type Row = typeof workRequests.$inferSelect;
 type Tx = Pick<Db, "select" | "insert" | "update">;
-type SpoolEntry = { id?: unknown; type?: unknown; agentId?: unknown; kind?: unknown; subject?: unknown; details?: unknown; taskRef?: unknown; resource?: unknown; access?: unknown; requestId?: unknown; action?: unknown; text?: unknown; taskId?: unknown; status?: unknown; result?: unknown; token?: unknown; senderId?: unknown };
+type SpoolEntry = { decision?: unknown; comment?: unknown; id?: unknown; type?: unknown; agentId?: unknown; kind?: unknown; subject?: unknown; details?: unknown; taskRef?: unknown; resource?: unknown; access?: unknown; requestId?: unknown; action?: unknown; text?: unknown; taskId?: unknown; status?: unknown; result?: unknown; token?: unknown; senderId?: unknown };
 /** The hooks of the company tasks (WorkItemsService), called in the same transaction as the request change. */
 export type TaskHooks = {
   requestFiled(tx: Tx, request: Row): void;
   requestClosed(tx: Tx, request: Row): void;
   report(tx: Tx, agentId: string, entry: SpoolEntry): { outcome: string; notify: string | null };
+  /** clawdesk_task_review: the executor's team lead accepts or returns a reported task. */
+  review?(tx: Tx, agentId: string, entry: SpoolEntry): { outcome: string; notify: string | null };
   deliver(): Promise<number>;
 };
 /** The owner's Telegram (TelegramService): their numeric user ID and a message with buttons. */
@@ -164,6 +166,7 @@ export class WorkRequestsService {
         const outcome = entry.type === "up" ? this.#file(tx, id, agentId, entry, live)
           : entry.type === "reply" ? this.#reply(tx, agentId, entry, live)
           : entry.type === "task_report" && this.deps.tasks ? this.deps.tasks.report(tx, agentId, entry)
+          : entry.type === "task_review" && this.deps.tasks?.review ? this.deps.tasks.review(tx, agentId, entry)
           : { outcome: "invalid", notify: null };
         tx.insert(workRequestSpool).values({ id, agentId, outcome: outcome.outcome, notifyText: outcome.notify, createdAt: this.#now() }).run();
       });

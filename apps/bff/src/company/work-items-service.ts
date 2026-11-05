@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import type { CreateWorkItemRequest, WorkItemActionRequest, WorkItemDto, WorkItemEventDto, WorkItemsDto } from "@clawdesk/shared";
 import { and, asc, desc, eq, inArray, isNull, lt } from "drizzle-orm";
 import type { Db } from "../db/client.js";
-import { agents, workItemEvents, workItems, workRequests, agentCharterVersions } from "../db/schema.js";
+import { agents, workItemEvents, workItems, workRequests, agentCharterVersions, teams } from "../db/schema.js";
 
 // Stage 6, part 2: company tasks. The owner sets and starts a task; each executor works on one task at a
 // time (running or blocked), the rest wait in its queue (first in, first out) and start when it is free —
@@ -20,6 +20,7 @@ type Tx = Pick<Db, "select" | "insert" | "update">;
 type Row = typeof workItems.$inferSelect;
 type RequestRow = typeof workRequests.$inferSelect;
 type Report = { taskId?: unknown; status?: unknown; result?: unknown };
+type Review = { taskId?: unknown; decision?: unknown; comment?: unknown };
 
 const OCCUPYING = ["running", "blocked"] as const;
 const OPEN = ["draft", "queued", "running", "blocked", "review"] as const;
@@ -164,7 +165,7 @@ export class WorkItemsService {
         case "return": {
           if (row.status !== "review") throw new WorkItemError("wrong_state");
           // Back ahead of the queue (its original place in time), with the owner's comment in the start message.
-          this.#set(tx, row, { returnComment: request.comment });
+          this.#set(tx, row, { returnComment: `Владелец: ${request.comment}` });
           this.#event(tx, id, "returned", "owner", request.comment, undefined, request.requestId);
           this.#enqueue(tx, { ...row, revision: row.revision + 1, returnComment: request.comment }, row.queuedAt ?? row.createdAt);
           break;
@@ -220,15 +221,50 @@ export class WorkItemsService {
     if (row.executorAgentId !== agentId) return { outcome: `refused:${label}`, notify: `${label} — не твоя задача, отчитаться по ней может только исполнитель.` };
     if (row.status !== "running" && row.status !== "blocked") return { outcome: `wrong_state:${label}`, notify: `${label} сейчас не в работе (${row.status}); отчёт не нужен.` };
     if (!result) return { outcome: `no_result:${label}`, notify: `Отчёт по ${label} не принят: «сделано» без результата не засчитывается. Опиши, что сделано и где это посмотреть.` };
+    // The executor's team lead accepts first (the owner can decide too); without a lead, the owner.
+    const lead = entry.status === "done" ? this.#lead(tx, row.executorAgentId) : null;
     if (entry.status === "done") {
       this.#set(tx, row, { status: "review", result, blockText: null, blockRequestId: null });
-      this.#event(tx, row.id, "reported", agentId, result);
+      this.#event(tx, row.id, "reported", agentId, result, lead ? { agentId: lead, text: leadMessage(label, this.#name(row.executorAgentId), row, result) } : undefined);
     } else {
       this.#set(tx, row, { status: "failed", result, blockText: null, blockRequestId: null });
       this.#event(tx, row.id, "failed", agentId, result);
     }
     this.#pump(tx, row.executorAgentId);
-    return { outcome: `${entry.status}:${label}`, notify: entry.status === "done" ? `Отчёт по ${label} принят и передан владельцу на приёмку.` : `${label} отмечена как не выполненная; владелец увидит причину.` };
+    return { outcome: `${entry.status}:${label}`, notify: entry.status === "done" ? (lead ? `Отчёт по ${label} принят и передан на приёмку тимлиду (${this.#name(lead)}); владелец тоже может решить.` : `Отчёт по ${label} принят и передан владельцу на приёмку.`) : `${label} отмечена как не выполненная; владелец увидит причину.` };
+  }
+
+  /** The lead of the agent's team, when there is one and it is someone else that still exists. */
+  #lead(tx: Tx, agentId: string): string | null {
+    const agent = tx.select().from(agents).where(eq(agents.id, agentId)).get();
+    const team = agent?.teamId ? tx.select().from(teams).where(eq(teams.id, agent.teamId)).get() : undefined;
+    const lead = team?.leadAgentId;
+    return lead && lead !== agentId && tx.select({ id: agents.id }).from(agents).where(eq(agents.id, lead)).get() ? lead : null;
+  }
+
+  /**
+   * clawdesk_task_review from a team lead: accept (done) or return (back to the executor with the comment), the
+   * same as the owner's buttons. Only the current lead of the executor's team, and only while the task is in review.
+   */
+  review(tx: Tx, agentId: string, entry: Review): { outcome: string; notify: string | null } {
+    const match = typeof entry.taskId === "string" ? /^WI-(\d{1,6})$/.exec(entry.taskId) : null;
+    const comment = typeof entry.comment === "string" ? entry.comment.trim().slice(0, 2000) : "";
+    if (!match || (entry.decision !== "accept" && entry.decision !== "return") || !comment) return { outcome: "invalid", notify: "Решение не принято: укажи taskId WI-…, decision accept или return и комментарий." };
+    const row = tx.select().from(workItems).where(eq(workItems.number, Number(match[1]))).get();
+    if (!row) return { outcome: "missing", notify: `Задачи ${entry.taskId} нет.` };
+    const label = code(row.number);
+    if (this.#lead(tx, row.executorAgentId) !== agentId) return { outcome: `refused:${label}`, notify: `${label}: принять или вернуть её может только тимлид команды исполнителя или владелец.` };
+    if (row.status !== "review") return { outcome: `wrong_state:${label}`, notify: `${label} сейчас не ждёт приёмки (${row.status}).` };
+    const by = this.#name(agentId);
+    if (entry.decision === "accept") {
+      this.#set(tx, row, { status: "done" });
+      this.#event(tx, row.id, "accepted", agentId, comment, { agentId: row.executorAgentId, text: `Тимлид ${by} принял задачу ${label} («${row.title}»). ${comment}` });
+      return { outcome: `accepted:${label}`, notify: `${label} принята. Исполнитель узнает об этом.` };
+    }
+    this.#set(tx, row, { returnComment: `${by}: ${comment}` });
+    this.#event(tx, row.id, "returned", agentId, comment);
+    this.#enqueue(tx, { ...row, revision: row.revision + 1, returnComment: `${by}: ${comment}` }, row.queuedAt ?? row.createdAt);
+    return { outcome: `returned:${label}`, notify: `${label} возвращена исполнителю с твоим замечанием.` };
   }
 
   /** Sends pending messages to executors (event ID as the idempotency key). */
@@ -247,15 +283,27 @@ export class WorkItemsService {
   }
 }
 
+/** The lead's assignment: a team member says a task is done; the lead checks it against the criteria. */
+function leadMessage(label: string, executor: string, row: Row, result: string): string {
+  return [
+    `Задача ${label} «${row.title}» — ${executor} сообщает, что сделано. Ты тимлид: проверь результат.`,
+    `Что нужно было сделать: ${row.description}`,
+    `Критерии приёмки: ${row.criteria}`,
+    `Результат: ${result}`,
+    "",
+    `Реши инструментом clawdesk_task_review: taskId «${label}», decision accept (что проверил) или return (что исправить). Владелец тоже может решить сам.`,
+  ].join("\n");
+}
+
 function startMessage(label: string, row: Row): string {
   return [
     `Задача ${label} от владельца: «${row.title}».`,
     `Что сделать: ${row.description}`,
     `Критерии приёмки: ${row.criteria}`,
     row.deadlineAt ? `Срок: ${new Date(row.deadlineAt).toISOString().slice(0, 16).replace("T", " ")} UTC.` : null,
-    row.returnComment ? `Владелец вернул работу с замечанием: ${row.returnComment}` : null,
+    row.returnComment ? `Работу вернули с замечанием: ${row.returnComment}` : null,
     "",
-    `Когда закончишь, сообщи результат инструментом clawdesk_task_report: taskId «${label}», status done и что сделано (где посмотреть результат), или status failed и почему не получилось. «Сделано» без результата не засчитывается; принимает владелец.`,
+    `Когда закончишь, сообщи результат инструментом clawdesk_task_report: taskId «${label}», status done и что сделано (где посмотреть результат), или status failed и почему не получилось. «Сделано» без результата не засчитывается; принимает тимлид твоей команды или владелец.`,
     `Если чего-то не хватает (сведений, решения, доступа), подай обращение clawdesk_request_up с taskRef «${label}»: задача подождёт ответа и продолжится, когда он придёт.`,
   ].filter((line): line is string => typeof line === "string").join("\n");
 }

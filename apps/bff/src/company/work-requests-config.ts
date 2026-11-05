@@ -13,7 +13,7 @@ import { communicationReplacePaths, liveAgentIds, sandboxPluginGate } from "../p
 
 export const REQUESTS_PLUGIN = "clawdesk-requests";
 export const REQUESTS_PATH = "/usr/local/share/clawdesk/plugins/clawdesk-requests";
-export const REQUEST_TOOLS = ["clawdesk_request_up", "clawdesk_request_reply", "clawdesk_task_report"];
+export const REQUEST_TOOLS = ["clawdesk_request_up", "clawdesk_request_reply", "clawdesk_task_report", "clawdesk_task_review"];
 
 type Policy = { allow?: string[]; alsoAllow?: string[]; deny?: string[] };
 type Config = {

@@ -2143,7 +2143,7 @@
   },
   "workItems": {
     "title": "Company tasks",
-    "scope": "You set a task: what to do, acceptance criteria, executor, deadline. An executor has one task in work; the rest wait in its queue and start by themselves when it is free. The agent gets the task in its chat and reports the result with a tool; done without a result does not count, and you accept it. If the agent lacks something, it files a request for the task — the task waits for the answer and continues when it comes.",
+    "scope": "You set a task: what to do, acceptance criteria, executor, deadline. An executor has one task in work; the rest wait in its queue and start by themselves when it is free. The agent gets the task in its chat and reports the result with a tool; done without a result does not count, and you accept it. If the agent lacks something, it files a request for the task — the task waits for the answer and continues when it comes. A team member's task is accepted by the team lead (if one is set) or by you.",
     "new": "New task",
     "fields": {
       "title": "Title",

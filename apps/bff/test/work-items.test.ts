@@ -3,11 +3,12 @@ import os from "node:os";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
 import Fastify from "fastify";
+import { eq } from "drizzle-orm";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { WorkItemsService } from "../src/company/work-items-service.js";
 import { WorkRequestsService } from "../src/company/work-requests-service.js";
 import { openDb, type Db } from "../src/db/client.js";
-import { agents } from "../src/db/schema.js";
+import { agents, teams } from "../src/db/schema.js";
 import { registerWorkItemRoutes } from "../src/routes/work-items.js";
 
 // Stage 6, part 2: company tasks. Reports and requests come through the same spool as requests do.
@@ -37,6 +38,44 @@ describe("company tasks", () => {
   });
   afterEach(() => { close(); fs.rmSync(root, { recursive: true, force: true }); });
 
+  it("a team member's done task goes to its team lead, who accepts or returns it; others cannot", async () => {
+    db.insert(teams).values({ id: "content", name: "Контент", leadAgentId: "lead" }).run();
+    db.insert(agents).values({ id: "lead", role: "team_member", teamId: "content", displayName: "Тимлид" }).run();
+    db.update(agents).set({ teamId: "content" }).where(eq(agents.id, "writer")).run();
+    const review = (agentId: string, taskId: string, decision: string, comment = "Проверил по критериям") => add({ type: "task_review", agentId, taskId, decision, comment });
+    task("Пост", "writer");
+    report("writer", "WI-001", "done");
+    await tick();
+    expect(status()).toEqual({ "WI-001": "review" });
+    expect(to("lead").at(-1)).toContain("Задача WI-001 «Пост» — Автор сообщает, что сделано");
+    expect(to("lead").at(-1)).toContain("Критерии приёмки: Отчёт в папке");
+    expect(to("writer").some((message) => message.includes("передан на приёмку тимлиду (Тимлид)"))).toBe(true);
+    // Not the lead, no comment, a wrong decision: refused.
+    review("analyst", "WI-001", "accept");
+    review("lead", "WI-001", "accept", "   ");
+    review("lead", "WI-001", "maybe");
+    await tick();
+    expect(status()).toEqual({ "WI-001": "review" });
+    expect(to("analyst").some((message) => message.includes("только тимлид команды исполнителя или владелец"))).toBe(true);
+    // The lead returns it: back with the lead's comment in the start message.
+    review("lead", "WI-001", "return", "Добавь ссылку на источник");
+    await tick();
+    expect(status()).toEqual({ "WI-001": "running" });
+    expect(to("writer").at(-1)).toContain("Тимлид: Добавь ссылку на источник");
+    report("writer", "WI-001", "done", "Готово, со ссылкой");
+    await tick();
+    review("lead", "WI-001", "accept");
+    await tick();
+    expect(status()).toEqual({ "WI-001": "done" });
+    expect(to("writer").at(-1)).toContain("Тимлид Тимлид принял задачу WI-001");
+    expect(items.list().items[0]!.events.map((event) => event.kind)).toEqual(expect.arrayContaining(["reported", "returned", "accepted"]));
+    // Without a lead the owner accepts, as before.
+    task("Справка", "analyst");
+    report("analyst", "WI-002", "done");
+    await tick();
+    expect(to("analyst").some((message) => message.includes("передан владельцу на приёмку"))).toBe(true);
+  });
+
   it("runs one task per executor, queues the rest, and starts the next when the executor is free", async () => {
     const draft = task("Черновик", "analyst", false);
     const first = task("Первая"); clock++;
@@ -65,7 +104,7 @@ describe("company tasks", () => {
     report("analyst", "WI-003", "failed", "Нет данных за март");
     await tick();
     expect(status()).toMatchObject({ "WI-002": "running", "WI-003": "failed" });
-    expect(to("analyst").at(-1)).toContain("Владелец вернул работу с замечанием: Добавь итоги по месяцам");
+    expect(to("analyst").at(-1)).toContain("Работу вернули с замечанием: Владелец: Добавь итоги по месяцам");
     report("analyst", "WI-002", "done", "Итоги добавлены");
     await tick();
     act(first.id, "accept");

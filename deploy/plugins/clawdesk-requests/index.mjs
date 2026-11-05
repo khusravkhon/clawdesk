@@ -12,6 +12,7 @@ const ID = "clawdesk-requests";
 export const UP = "clawdesk_request_up";
 export const REPLY = "clawdesk_request_reply";
 export const REPORT = "clawdesk_task_report";
+export const REVIEW = "clawdesk_task_review";
 const MAX_SPOOL = 500;
 const AGENT = /^[a-z0-9][a-z0-9_-]{0,79}$/;
 const text = (min, max) => ({ type: "string", minLength: min, maxLength: max });
@@ -40,6 +41,14 @@ const reportParameters = {
     taskId: { type: "string", pattern: "^WI-[0-9]{1,6}$" },
     status: { type: "string", enum: ["done", "failed"] },
     result: text(1, 4000),
+  },
+};
+const reviewParameters = {
+  type: "object", additionalProperties: false, required: ["taskId", "decision", "comment"],
+  properties: {
+    taskId: { type: "string", pattern: "^WI-[0-9]{1,6}$" },
+    decision: { type: "string", enum: ["accept", "return"] },
+    comment: text(1, 2000),
   },
 };
 const result = (status, code, extra = {}) => {
@@ -119,6 +128,7 @@ export function registerRequests(api, { spoolDir = path.join(process.env.OPENCLA
   api.registerTool(tool(UP, "Ask up the company", "File a request to your supervisor in the company (department manager, then the main agent, then the owner). kind: question (you need information), decision (you need someone to decide) or access (you need a resource: set resource to folder:<shared folder name>, mcp:<server name> or gdoc:<Google Doc link or ID> (a Google Doc is given read-only, as a copy in google/ of your workspace), and access to read or write). The panel delivers the answer to your chat; until then the work it blocks waits. Only the owner grants access, and the panel checks it before telling you.", upParameters, "up"), { names: [UP], optional: true });
   api.registerTool(tool(REPLY, "Reply to a company request", "Reply to a request REQ-… addressed to you: answer (give the information or decision), deny (with the reason), clarify (ask the requester a question), escalate (pass it to the next level). The requester uses reply to answer a clarification. Only the current addressee can act; a text answer never grants access.", replyParameters, "reply"), { names: [REPLY], optional: true });
 
+  api.registerTool(tool(REVIEW, "Accept or return a team member's task", "As the team lead, decide on a company task WI-… your team member reported as done: accept (the result meets the criteria; say what you checked) or return (with what to fix). Only the lead of the executor's team can decide; the owner can decide too.", reviewParameters, "task_review"), { names: [REVIEW], optional: true });
   api.registerTool(tool(REPORT, "Report a company task", "Report the result of a company task WI-… assigned to you: status done with what was done and where to see it (it goes to the owner's acceptance), or failed with the reason. Done without a result is not accepted. Only the task's executor can report.", reportParameters, "task_report"), { names: [REPORT], optional: true });
 
   registerOwnerCommand(api, { spoolDir, now });

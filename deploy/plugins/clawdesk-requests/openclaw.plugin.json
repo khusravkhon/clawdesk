@@ -27,7 +27,8 @@
     "tools": [
       "clawdesk_request_up",
       "clawdesk_request_reply",
-      "clawdesk_task_report"
+      "clawdesk_task_report",
+      "clawdesk_task_review"
     ]
   },
   "toolMetadata": {
@@ -38,6 +39,9 @@
       "optional": true
     },
     "clawdesk_task_report": {
+      "optional": true
+    },
+    "clawdesk_task_review": {
       "optional": true
     }
   }
