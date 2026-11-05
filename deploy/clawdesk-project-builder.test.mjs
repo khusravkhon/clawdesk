@@ -12,11 +12,21 @@ import { ProjectBuilder, PROJECT_TEMPLATE_FILES } from "./clawdesk-project-build
 
 const linux = { skip: process.platform !== "linux" && "Directory handle confinement requires Linux /proc" };
 const request = { templateId: "task-board-v1", planId: "plan-1", projectName: "Мои задачи", brief: { purpose: "Учёт задач" }, rules: [] };
-const gatewayId = "a".repeat(64), previewId = "b".repeat(64);
+const gatewayId = "a".repeat(64), previewId = "b".repeat(64), appId = "d".repeat(64);
+const freePort = () => new Promise(resolve => { const server = net.createServer(); server.listen(0, "127.0.0.1", () => { const { port } = server.address(); server.close(() => resolve(port)); }); });
 
 function runner(stateDir, options = {}) {
     const calls = [];
-    let preview = null;
+    let preview = null, app = null;
+    const stopApp = async () => {
+        if (!app) return;
+        const { child, dir } = app;
+        app = null;
+        child.kill("SIGKILL");
+        await new Promise(resolve => child.exitCode !== null || child.signalCode ? resolve() : child.once("close", resolve));
+        await fs.chmod(path.join(dir, "project"), 0o755).catch(() => {});
+        await fs.rm(dir, { recursive: true, force: true });
+    };
     const gateway = {
         Id: gatewayId, Image: "sha256:" + "c".repeat(64),
         Config: { Labels: { "com.docker.compose.project": "fixture", "com.docker.compose.service": "gateway" }, Env: ["OPENCLAW_GATEWAY_TOKEN=fixture-token", `OPENCLAW_STATE_DIR=${stateDir}`] },
@@ -24,6 +34,23 @@ function runner(stateDir, options = {}) {
     };
     const command = async args => {
         calls.push(args);
+        if (args[0] === "ps" && args.some(value => value.includes("clawdesk-checks-app-")))
+            return app ? appId : "";
+        if (args[0] === "inspect" && args[1] === appId)
+            return JSON.stringify([app.item]);
+        if (args[0] === "run" && args.includes("clawdesk.checks.role=app")) {
+            // The app of a separate checks run: the real app bootstrap as a local process on a free port.
+            const at = args.indexOf("-e"), dir = await fs.mkdtemp(path.join(os.tmpdir(), "clawdesk-checks-app-")), port = await freePort();
+            await fs.mkdir(path.join(dir, "project"));
+            const child = spawn(process.execPath, ["--input-type=module", "-e", args[at + 1], args[at + 2]], { env: { ...process.env, CLAWDESK_CHECKS_ROOT: path.join(dir, "project"), PORT: String(port), DATA_FILE: path.join(dir, "tasks.sqlite") }, stdio: ["ignore", "ignore", "ignore"] });
+            const labels = Object.fromEntries(args.flatMap((value, index) => value === "--label" ? [args[index + 1].split("=")] : []));
+            app = { child, dir, port, item: { Id: appId, Name: "/" + args[args.indexOf("--name") + 1], Config: { Labels: labels } } };
+            return appId;
+        }
+        if (args[0] === "rm" && args.includes(appId)) {
+            await stopApp();
+            return "";
+        }
         if (args[0] === "ps")
             return args.includes("label=com.docker.compose.service=gateway") ? gatewayId : preview ? previewId : "";
         if (args[0] === "inspect")
@@ -33,7 +60,9 @@ function runner(stateDir, options = {}) {
             const at = args.indexOf("-e");
             const dirs = await fs.mkdtemp(path.join(os.tmpdir(), "clawdesk-checks-run-"));
             await fs.mkdir(path.join(dirs, "project")); await fs.mkdir(path.join(dirs, "runner"));
-            const child = spawn(process.execPath, ["--input-type=module", "-e", args[at + 1], args[at + 2], args[at + 3]], { env: { ...process.env, NODE_TEST_CONTEXT: "child-v8", CLAWDESK_CHECKS_ROOT: path.join(dirs, "project"), CLAWDESK_CHECKS_RUNNER: path.join(dirs, "runner") }, stdio: ["ignore", "pipe", "ignore"] });
+            const network = args[args.indexOf("--network") + 1];
+            const appUrl = network.startsWith("container:") ? { CLAWDESK_APP_URL: `http://127.0.0.1:${app?.port ?? 1}` } : {};
+            const child = spawn(process.execPath, ["--input-type=module", "-e", ...args.slice(at + 1)], { env: { ...process.env, NODE_TEST_CONTEXT: "child-v8", CLAWDESK_CHECKS_ROOT: path.join(dirs, "project"), CLAWDESK_CHECKS_RUNNER: path.join(dirs, "runner"), ...appUrl }, stdio: ["ignore", "pipe", "ignore"] });
             let out = "";
             child.stdout.on("data", chunk => out += chunk);
             await new Promise(resolve => child.once("close", resolve));
@@ -168,7 +197,7 @@ test("existing workspaces are analyzed without executing or writing project file
     assert.equal(f.calls.length, 0);
 });
 
-test("checks run the project's current files in a hardened throwaway container", linux, async t => {
+test("checks run the project's current files with the app and the tests in separate hardened containers", linux, async t => {
     const f = await fixture(t);
     await assert.rejects(f.builder.checks("project-a"), { code: "checks_unsupported" });
     await f.builder.prepare("project-a", request);
@@ -176,12 +205,22 @@ test("checks run the project's current files in a hardened throwaway container",
     await fs.writeFile(path.join(f.directory, "app", "tasks.sqlite"), "local data, never copied");
     let run = await f.builder.checks("project-a");
     assert.equal(run.status, "completed");
+    assert.equal(run.isolation, "separate");
     assert.equal(run.tests.length, 6);
     assert.ok(run.tests.every(item => item.status === "passed" && /^[a-f0-9]{64}$/.test(item.fileHash)));
-    const args = f.calls.find(call => call[0] === "run");
-    for (const flag of [["--network", "none"], ["--read-only"], ["--cap-drop", "ALL"], ["--user", "1000:1000"], ["--pull=never"], ["--rm"]])
-        assert.ok(flag.every(value => args.includes(value)) && (flag.length === 1 || args[args.indexOf(flag[0]) + 1] === flag[1]), flag.join(" "));
-    assert.equal(JSON.parse(Buffer.from(args[args.indexOf("-e") + 2], "base64"))["tasks.sqlite"], undefined);
+    const has = (args, flag) => flag.every(value => args.includes(value)) && (flag.length === 1 || args[args.indexOf(flag[0]) + 1] === flag[1]);
+    const appRun = f.calls.find(call => call[0] === "run" && call.includes("-d")), testRun = f.calls.find(call => call[0] === "run" && !call.includes("-d"));
+    for (const flag of [["--network", "none"], ["--read-only"], ["--cap-drop", "ALL"], ["--user", "1000:1000"], ["--pull=never"]])
+        assert.ok(has(appRun, flag), "app " + flag.join(" "));
+    for (const flag of [["--read-only"], ["--cap-drop", "ALL"], ["--user", "1000:1000"], ["--pull=never"], ["--rm"], ["--env", "CLAWDESK_APP_URL=http://127.0.0.1:3000"]])
+        assert.ok(has(testRun, flag), "tests " + flag.join(" "));
+    // The tests join only the app's loopback network, and the two never hold each other's files.
+    assert.equal(testRun[testRun.indexOf("--network") + 1], "container:" + appRun[appRun.indexOf("--name") + 1]);
+    const appFiles = JSON.parse(Buffer.from(appRun[appRun.indexOf("-e") + 2], "base64")), testFiles = JSON.parse(Buffer.from(testRun[testRun.indexOf("-e") + 2], "base64"));
+    assert.deepEqual(Object.keys(testFiles), ["checks.test.mjs"]);
+    assert.ok(appFiles["server.mjs"] && !appFiles["checks.test.mjs"] && !appFiles["tasks.sqlite"]);
+    // The app container is gone after the run.
+    assert.ok(f.calls.some(call => call[0] === "rm" && call.includes("d".repeat(64))));
     // A developer edits the code: checks run the edited file even though it no longer matches the template.
     await fs.chmod(server, 0o644);
     const source = await fs.readFile(server, "utf8");
@@ -190,6 +229,22 @@ test("checks run the project's current files in a hardened throwaway container",
     await fs.writeFile(server, source.replace(rule, rule.replace("|| !body.title.trim() ", "")));
     run = await f.builder.checks("project-a");
     assert.deepEqual(run.tests.filter(item => item.status !== "passed").map(item => item.name.slice(0, 6)), ["TB-002"]);
+});
+
+test("tests that start the app themselves still run, in one container, and say so", linux, async t => {
+    const f = await fixture(t);
+    await f.builder.prepare("project-a", request);
+    const files = await f.builder.appFiles("project-a");
+    // Tests from before the separate run: they never read the app URL the panel would give them.
+    const legacy = files["checks.test.mjs"].replaceAll("CLAWDESK_APP_URL", "OLD_APP_URL");
+    assert.ok(!legacy.includes("CLAWDESK_APP_URL"), "template changed: update this test");
+    const run = await f.builder.checks("project-a", { files: { ...files, "checks.test.mjs": legacy } });
+    assert.equal(run.isolation, "shared");
+    assert.equal(run.status, "completed");
+    assert.ok(run.tests.length === 6 && run.tests.every(item => item.status === "passed"), JSON.stringify(run.tests));
+    assert.equal(f.calls.filter(call => call[0] === "run").length, 1);
+    const args = f.calls.find(call => call[0] === "run");
+    assert.equal(args[args.indexOf("--network") + 1], "none");
 });
 
 test("accepted work is written into app/ only from the baseline it started from, and keeps the build intact", linux, async t => {

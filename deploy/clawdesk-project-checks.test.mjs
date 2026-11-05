@@ -3,8 +3,9 @@ import assert from "node:assert/strict";
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
+import net from "node:net";
 import { spawn } from "node:child_process";
-import { CHECKS_BOOTSTRAP, parseCheckOutput, selectCheckFiles } from "./clawdesk-project-checks.mjs";
+import { APP_BOOTSTRAP, CHECKS_BOOTSTRAP, attemptOf, checkIsolation, joinRuns, parseCheckOutput, selectCheckFiles } from "./clawdesk-project-checks.mjs";
 
 const linux = { skip: process.platform !== "linux" && "The checks bootstrap runs in a Linux container" };
 const line = (nonce, attempt, code, results) => `${nonce}A${attempt} ${JSON.stringify({ code, signal: null, timedOut: false, results })}`;
@@ -85,4 +86,64 @@ test("breaking the empty-title rule in the code is caught by TB-002 and only by 
     const failed = run.tests.filter(item => item.status !== "passed");
     assert.deepEqual(failed.map(item => [item.name.slice(0, 6), item.status]), [["TB-002", "failed"]]);
     assert.ok(failed[0].message.length > 0);
+});
+
+test("tests run apart from the app only when every test file can use an app the panel starts", () => {
+    const aware = "const base = process.env.CLAWDESK_APP_URL;";
+    const separate = checkIsolation({ "server.mjs": "app", "index.html": "<p>", "checks.test.mjs": aware, "more.test.mjs": aware });
+    assert.equal(separate.mode, "separate");
+    assert.deepEqual(Object.keys(separate.app), ["index.html", "server.mjs"]);
+    assert.deepEqual(Object.keys(separate.tests), ["checks.test.mjs", "more.test.mjs"]);
+    assert.equal(checkIsolation({ "server.mjs": "app", "checks.test.mjs": aware, "old.test.mjs": "spawn server.mjs" }).mode, "shared");
+    assert.equal(checkIsolation({ "checks.test.mjs": aware }).mode, "shared");
+    assert.equal(checkIsolation({ "server.mjs": "app" }).mode, "shared");
+    const many = Object.fromEntries(Array.from({ length: 11 }, (_, index) => [`t${index}.test.mjs`, aware]));
+    assert.equal(checkIsolation({ "server.mjs": "app", ...many }).mode, "shared");
+});
+
+test("per-file runs join into one run; a file without a result blocks the whole run", () => {
+    const file = (attempt, code, results) => line("n", attempt, code, results) + "\nnDONE";
+    const joined = joinRuns([
+        { stdout: file(1, 0, [result("A a", "passed")]) },
+        { stdout: file(1, 1, [{ ...result("B b", "failed", "x"), file: "more.test.mjs" }]) },
+        { stdout: file(2, 0, [result("A a", "passed")]) },
+        { stdout: file(2, 0, [{ ...result("B b", "passed"), file: "more.test.mjs" }]) },
+    ], "n");
+    const run = parseCheckOutput(joined, "n", {});
+    assert.deepEqual(run.tests.map(t => [t.id, t.status]), [["checks.test.mjs::A a", "passed"], ["more.test.mjs::B b", "flaky"]]);
+    assert.equal(attemptOf(file(1, 1, []), "n").code, 1);
+    assert.equal(attemptOf("nA1 {}", "n"), null);
+    assert.equal(parseCheckOutput(joinRuns([{ stdout: file(1, 0, [result("A a", "passed")]) }, { stdout: "crashed" }], "n"), "n", {}).reason, "runner_failed");
+});
+
+async function runSeparate(t, files) {
+    const isolation = checkIsolation(files);
+    assert.equal(isolation.mode, "separate");
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), "clawdesk-checks-app-"));
+    t.after(async () => { await fs.chmod(path.join(root, "app"), 0o755).catch(() => {}); await fs.rm(root, { recursive: true, force: true }); });
+    await fs.mkdir(path.join(root, "app"));
+    const server = net.createServer();
+    await new Promise(resolve => server.listen(0, "127.0.0.1", resolve));
+    const port = server.address().port;
+    await new Promise(resolve => server.close(resolve));
+    const app = spawn(process.execPath, ["--input-type=module", "-e", APP_BOOTSTRAP, Buffer.from(JSON.stringify(isolation.app)).toString("base64")], { env: { ...process.env, CLAWDESK_CHECKS_ROOT: path.join(root, "app"), PORT: String(port), DATA_FILE: path.join(root, "tasks.sqlite") }, stdio: "ignore" });
+    t.after(() => app.kill("SIGKILL"));
+    process.env.CLAWDESK_APP_URL = `http://127.0.0.1:${port}`;
+    try { return await runBootstrap(t, isolation.tests); }
+    finally { delete process.env.CLAWDESK_APP_URL; }
+}
+
+test("the template's tests pass against an app they share no files with", linux, async t => {
+    const run = await runSeparate(t, await templateFiles());
+    assert.equal(run.status, "completed");
+    assert.equal(run.tests.length, 6);
+    assert.ok(run.tests.every(item => item.status === "passed"), JSON.stringify(run.tests));
+});
+
+test("an app that cannot start fails its tests instead of blocking the run", linux, async t => {
+    const files = await templateFiles();
+    files["server.mjs"] = "throw new Error('broken on purpose');";
+    const run = await runSeparate(t, files);
+    assert.equal(run.status, "completed");
+    assert.ok(run.tests.length > 0 && run.tests.every(item => item.status === "failed"), JSON.stringify(run.tests));
 });

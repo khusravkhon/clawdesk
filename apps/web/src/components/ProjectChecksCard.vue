@@ -65,6 +65,8 @@ onBeforeUnmount(() => { disposed = true; generation++; });
       </n-space>
       <n-alert v-if="latest.status === 'blocked'" type="warning" class="checks-block">{{ t(`projectChecks.reasons.${latest.reason ?? 'runner_failed'}`) }}</n-alert>
       <p v-else>{{ counts(latest) }}</p>
+      <n-alert v-if="latest.isolation === 'shared'" type="warning" class="checks-block">{{ t('projectChecks.isolation.shared') }}</n-alert>
+      <p v-else-if="latest.isolation === 'separate'" class="checks-meta">{{ t('projectChecks.isolation.separate') }}</p>
       <section v-for="item in latest.tests" :key="item.id" class="checks-row">
         <n-space align="center"><n-tag :type="tagType(item.status)" size="small">{{ t(`projectChecks.status.${item.status}`) }}</n-tag><strong>{{ item.name }}</strong></n-space>
         <p class="checks-meta">{{ item.file }}</p>

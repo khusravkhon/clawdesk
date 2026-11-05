@@ -2,7 +2,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { createHash, randomUUID } from "node:crypto";
-import { BusinessRuleFields, CreateAcceptanceRequest, CreateProjectRequest, type ProjectChecksRunResult, type ProjectCheckTestDto, type ProjectExecutorsDto } from "@clawdesk/shared";
+import { BusinessRuleFields, CreateAcceptanceRequest, CreateProjectRequest, type ProjectChecksRunResult, type ProjectCheckTestDto, type ProjectExecutorRole, type ProjectExecutorsDto } from "@clawdesk/shared";
 import Database from "better-sqlite3";
 import Fastify from "fastify";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -32,8 +32,8 @@ const act = (revision: number) => ({ requestId: randomUUID(), revision });
 
 describe("project tasks", () => {
   let root: string, db: Db, close: () => void, company: CompanyService, tasks: ProjectTasksService, projectId: string, ruleId: string;
-  let app: Record<string, string>, work: Record<"qa" | "developer", Record<string, string>>, sent: { agentId: string; message: string }[], executors: ProjectExecutorsDto;
-  const roleOf = (agentId: string): "qa" | "developer" => executors.executors.find(item => item.agentId === agentId)!.role;
+  let app: Record<string, string>, work: Record<ProjectExecutorRole, Record<string, string>>, sent: { agentId: string; message: string }[], executors: ProjectExecutorsDto;
+  const roleOf = (agentId: string): ProjectExecutorRole => executors.executors.find(item => item.agentId === agentId)!.role;
   const bridge = {
     projectAppFiles: async () => ({ files: { ...app } }),
     prepareProjectWork: async (agentId: string, files: Record<string, string>) => { work[roleOf(agentId)] = { ...files }; return { path: "/workspace/project", files: Object.keys(files) }; },
@@ -68,7 +68,7 @@ describe("project tasks", () => {
     ruleId = rule.id;
     company.rules.approve(projectId, ruleId, { requestId: randomUUID(), version: 1, revision: rule.revision, confirm: true });
     app = { "server.mjs": "create;", "checks.test.mjs": T("TB-001 create", "create") };
-    work = { qa: {}, developer: {} };
+    work = { qa: {}, developer: {}, reviewer: {} };
     sent = [];
     executors = { teamId: "tasks-work", sandboxed: true, executors: [{ role: "qa", agentId: "tasks-work-project-qa", name: "QA", emoji: null }, { role: "developer", agentId: "tasks-work-project-developer", name: "Dev", emoji: null }] };
     tasks = build();
@@ -121,6 +121,66 @@ describe("project tasks", () => {
     expect(task.events.map(e => e.kind)).toEqual(["created", "sent", "qa_checked", "sent", "qa_checked", "qa_checked", "sent", "dev_checked", "dev_checked", "accepted"]);
   });
 
+  it("sends accepted changes to the reviewer agent and makes its verdict count before acceptance", async () => {
+    executors = { ...executors, executors: [...executors.executors, { role: "reviewer", agentId: "tasks-work-project-reviewer", name: "Reviewer", emoji: null }] };
+    const created = await tasks.create(projectId, { requestId: randomUUID(), ruleId, ruleVersion: 1, note: "" });
+    work.qa = { ...app, "checks.test.mjs": app["checks.test.mjs"] + T("BR-001 rejects empty", "validate") };
+    let task = await tasks.checkStage(projectId, created.id, act(0));
+    work.developer = { ...work.qa, "server.mjs": "create; validate;" };
+    // Asking before the review stage is refused.
+    await expect(tasks.collectReview(projectId, created.id, act(task.revision))).rejects.toThrow("task_closed");
+    task = await tasks.checkStage(projectId, created.id, act(task.revision));
+    // The panel accepted the developer's work: the reviewer gets the files and the request at once.
+    expect(task).toMatchObject({ status: "review", reviewer: null });
+    expect(task.reviewRequestedAt).toBeTypeOf("number");
+    expect(work.reviewer["server.mjs"]).toBe("create; validate;");
+    expect(work.reviewer["REVIEW-REQUEST.md"]).toContain("BR-001");
+    expect(work.reviewer["REVIEW-REQUEST.md"]).toContain("+ create; validate;");
+    expect(sent.at(-1)).toMatchObject({ agentId: "tasks-work-project-reviewer" });
+    expect(sent.at(-1)!.message).toContain("REVIEW.md");
+
+    // No REVIEW.md yet.
+    await expect(tasks.collectReview(projectId, created.id, act(task.revision))).rejects.toThrow("review_not_written");
+    // "Changes" plus an edit of the code: the edit is listed, never applied; accepting needs the owner's override.
+    work.reviewer = { ...work.reviewer, "server.mjs": "create; validate; hack;", "REVIEW.md": "**НУЖНЫ ИЗМЕНЕНИЯ**\n- server.mjs: пробелы не учитываются" };
+    task = await tasks.collectReview(projectId, created.id, act(task.revision));
+    expect(task.reviewer).toMatchObject({ verdict: "changes", comment: "- server.mjs: пробелы не учитываются", changedFiles: ["server.mjs"] });
+    await expect(tasks.accept(projectId, created.id, act(task.revision))).rejects.toThrow("review_changes_requested");
+
+    // Returned to the developer: the old verdict goes; the next accepted work goes to review again.
+    task = await tasks.returnToDeveloper(projectId, created.id, { ...act(task.revision), comment: "учти пробелы" });
+    expect(task).toMatchObject({ status: "dev", reviewer: null, reviewRequestedAt: null });
+    work.developer = { ...work.qa, "server.mjs": "create; validate; trim;" };
+    task = await tasks.checkStage(projectId, created.id, act(task.revision));
+    expect(work.reviewer["server.mjs"]).toBe("create; validate; trim;");
+    expect(work.reviewer["REVIEW.md"]).toBeUndefined();
+    work.reviewer = { ...work.reviewer, "REVIEW.md": "ОДОБРЕНО\nПроверил пустые и пробельные названия." };
+    task = await tasks.collectReview(projectId, created.id, act(task.revision));
+    expect(task.reviewer).toMatchObject({ verdict: "approve", changedFiles: [] });
+    task = await tasks.accept(projectId, created.id, act(task.revision));
+    expect(task.status).toBe("done");
+    expect(app["server.mjs"]).toBe("create; validate; trim;");
+    expect(app["REVIEW.md"]).toBeUndefined();
+    expect(task.events.map(e => e.kind).filter(kind => kind === "review_requested" || kind === "reviewed")).toEqual(["review_requested", "reviewed", "review_requested", "reviewed"]);
+  });
+
+  it("asks the reviewer again on request, and accepts over a 'changes' verdict only with the owner's word", async () => {
+    executors = { ...executors, executors: [...executors.executors, { role: "reviewer", agentId: "tasks-work-project-reviewer", name: "Reviewer", emoji: null }] };
+    const created = await tasks.create(projectId, { requestId: randomUUID(), ruleId, ruleVersion: 1, note: "" });
+    work.qa = { ...app, "checks.test.mjs": app["checks.test.mjs"] + T("BR-001 rejects empty", "validate") };
+    let task = await tasks.checkStage(projectId, created.id, act(0));
+    work.developer = { ...work.qa, "server.mjs": "create; validate;" };
+    task = await tasks.checkStage(projectId, created.id, act(task.revision));
+    work.reviewer = { "REVIEW.md": "Не уверен." };
+    task = await tasks.askReviewer(projectId, created.id, act(task.revision));
+    expect(work.reviewer["REVIEW.md"]).toBeUndefined();
+    work.reviewer = { ...work.reviewer, "REVIEW.md": "Нужны изменения\nнет проверки длины" };
+    task = await tasks.collectReview(projectId, created.id, act(task.revision));
+    expect(task.reviewer?.verdict).toBe("changes");
+    task = await tasks.accept(projectId, created.id, { ...act(task.revision), overrideReview: true });
+    expect(task.status).toBe("done");
+  });
+
   it("refuses to start without approval, executors or while another task is active", async () => {
     const draft = company.rules.create(projectId, { requestId: randomUUID(), fields: { ...ruleFields(), title: "Draft" } });
     await expect(tasks.create(projectId, { requestId: randomUUID(), ruleId: draft.id, ruleVersion: 1, note: "" })).rejects.toThrow("rule_not_approved");
@@ -161,7 +221,7 @@ describe("project tasks", () => {
   it("migrates from 0017 keeping rules and checks, with no tasks yet", async () => {
     close();
     const sqlite = new Database(path.join(root, "panel.sqlite"));
-    sqlite.exec("DROP TABLE work_item_events; DROP TABLE work_items; DROP TABLE work_request_buttons; DROP TABLE resource_grants; DROP TABLE work_request_events; DROP TABLE work_request_spool; DROP TABLE work_requests; DROP TABLE project_task_events; DROP TABLE project_tasks; ALTER TABLE project_check_results DROP COLUMN test_hash; ALTER TABLE acceptance_test_links DROP COLUMN test_hash; DELETE FROM __drizzle_migrations WHERE created_at >= 1792348000000");
+    sqlite.exec("DROP TABLE work_item_events; DROP TABLE work_items; DROP TABLE work_request_buttons; DROP TABLE resource_grants; DROP TABLE work_request_events; DROP TABLE work_request_spool; DROP TABLE work_requests; DROP TABLE project_task_events; DROP TABLE project_tasks; ALTER TABLE project_check_results DROP COLUMN test_hash; ALTER TABLE acceptance_test_links DROP COLUMN test_hash; ALTER TABLE project_check_runs DROP COLUMN isolation; DELETE FROM __drizzle_migrations WHERE created_at >= 1792348000000");
     sqlite.close();
     ({ db, close } = openDb(path.join(root, "panel.sqlite")));
     company = new CompanyService({ db, space: { mode: () => "company" } as SpaceService, gateway: {} as GatewayService });
@@ -265,6 +325,7 @@ describe("project tasks", () => {
     const sqlite = new Database(path.join(root, "panel.sqlite"));
     sqlite.exec([
       "ALTER TABLE project_tasks DROP COLUMN previous_version", "ALTER TABLE project_tasks DROP COLUMN rolled_back_at",
+      "ALTER TABLE project_tasks DROP COLUMN review_requested_at", "ALTER TABLE project_tasks DROP COLUMN reviewer", "ALTER TABLE project_check_runs DROP COLUMN isolation",
       "ALTER TABLE project_check_results DROP COLUMN test_hash", "ALTER TABLE acceptance_test_links DROP COLUMN test_hash",
       "CREATE TABLE old_events (`id` integer PRIMARY KEY AUTOINCREMENT NOT NULL, `task_id` text NOT NULL REFERENCES `project_tasks`(`id`) ON DELETE CASCADE, `kind` text NOT NULL CHECK (`kind` IN ('created','sent','qa_checked','dev_checked','accepted','returned','cancelled')), `note` text DEFAULT '' NOT NULL, `created_at` integer NOT NULL, `request_id` text NOT NULL)",
       "INSERT INTO old_events SELECT * FROM project_task_events", "DROP TABLE project_task_events", "ALTER TABLE old_events RENAME TO project_task_events",

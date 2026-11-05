@@ -4,6 +4,8 @@
 // Every stage ends with the owner's button; the panel checks the work and explains a refusal.
 // P6.3: a task on a newer version of an implemented rule is a change — the card shows what it touches
 // before the task starts, test-by-test changes, asks the owner about existing data and offers a rollback.
+// Review: the reviewer agent's verdict (from its REVIEW.md) sits next to the changes; accepting over
+// "changes" needs a tick. Each check says whether the app ran apart from the tests.
 import type { BusinessRuleDto, BusinessRuleFields, ProjectCheckTestDto, ProjectExecutorsDto, ProjectTaskDto, ProjectTaskStatus, ProjectTestChangeDto, RuleChangeImpactDto } from "@clawdesk/shared";
 import { NAlert, NButton, NCard, NCheckbox, NEmpty, NFormItem, NInput, NPopconfirm, NSelect, NSpace, NSteps, NStep, NTag } from "naive-ui";
 import { computed, onBeforeUnmount, ref, watch } from "vue";
@@ -18,15 +20,18 @@ const tasks = ref<ProjectTaskDto[]>([]);
 const rules = ref<BusinessRuleDto[]>([]);
 const impact = ref<RuleChangeImpactDto | null>(null);
 const loading = ref(false), busy = ref(false), error = ref<string | null>(null);
-const ruleId = ref<string | null>(null), note = ref(""), comment = ref(""), confirmData = ref(false);
+const ruleId = ref<string | null>(null), note = ref(""), comment = ref(""), confirmData = ref(false), overrideReview = ref(false);
 let pending: { key: string; requestId: string } | null = null, generation = 0, impactGeneration = 0, disposed = false;
 
-const ready = computed(() => (executors.value?.executors.length ?? 0) === 2);
+const ready = computed(() => !!executor("qa") && !!executor("developer"));
+/** Projects assigned before the reviewer existed: it can be added without touching QA and the developer. */
+const noReviewer = computed(() => ready.value && !executor("reviewer"));
+const verdictType = (verdict: "approve" | "changes" | "unclear") => verdict === "approve" ? "success" : verdict === "changes" ? "warning" : "info";
 const active = computed(() => tasks.value.find(task => ["qa", "dev", "review"].includes(task.status)) ?? null);
 const past = computed(() => tasks.value.filter(task => task !== active.value));
 const approved = computed(() => rules.value.filter(rule => rule.approvedAt !== null).map(rule => ({ value: rule.id, label: `${rule.code} · ${rule.fields.title} (${t('projectRules.version', { version: rule.version })})` })));
 const stepOf = (status: ProjectTaskStatus) => ({ qa: 1, dev: 2, review: 3, done: 4, cancelled: 1 })[status];
-const executor = (role: "qa" | "developer") => executors.value?.executors.find(item => item.role === role) ?? null;
+const executor = (role: "qa" | "developer" | "reviewer") => executors.value?.executors.find(item => item.role === role) ?? null;
 const testType = (test: Pick<ProjectCheckTestDto, "status">) => test.status === "passed" ? "success" : test.status === "failed" ? "error" : "warning";
 const changeType = (change: ProjectTestChangeDto) => change.rule ? "info" : "error";
 const fieldValue = (fields: BusinessRuleFields | null, field: keyof BusinessRuleFields) => fields?.[field]?.trim() || t("projectRules.notSpecified");
@@ -68,15 +73,18 @@ function create(): void {
   if (!rule) return;
   void run(`create:${rule.id}:${note.value}`, requestId => api.company.createProjectTask(props.projectId, { requestId, ruleId: rule.id, ruleVersion: rule.version, note: note.value.trim() })).then(() => { if (!error.value) { ruleId.value = null; note.value = ""; } });
 }
-const action = (task: ProjectTaskDto, name: "check" | "resend" | "cancel" | "rollback") => run(`${name}:${task.id}:${task.revision}`, requestId => api.company.projectTaskAction(props.projectId, task.id, name, { requestId, revision: task.revision }));
-const accept = (task: ProjectTaskDto) => run(`accept:${task.id}:${task.revision}:${confirmData.value}`, requestId => api.company.acceptProjectTask(props.projectId, task.id, { requestId, revision: task.revision, ...(task.previousVersion !== null ? { confirmData: confirmData.value } : {}) }));
+const action = (task: ProjectTaskDto, name: "check" | "resend" | "cancel" | "rollback" | "review" | "review-collect") => run(`${name}:${task.id}:${task.revision}`, requestId => api.company.projectTaskAction(props.projectId, task.id, name, { requestId, revision: task.revision }));
+const accept = (task: ProjectTaskDto) => run(`accept:${task.id}:${task.revision}:${confirmData.value}:${overrideReview.value}`, requestId => api.company.acceptProjectTask(props.projectId, task.id, { requestId, revision: task.revision, ...(task.previousVersion !== null ? { confirmData: confirmData.value } : {}), ...(task.reviewer?.verdict === "changes" ? { overrideReview: overrideReview.value } : {}) }));
+/** The reviewer's remarks as the start of the comment for the developer. */
+function useReviewComment(task: ProjectTaskDto): void { if (task.reviewer?.comment) comment.value = task.reviewer.comment.slice(0, 2000); }
 function returnTask(task: ProjectTaskDto): void {
   if (!comment.value.trim()) return;
   void run(`return:${task.id}:${task.revision}`, requestId => api.company.returnProjectTask(props.projectId, task.id, { requestId, revision: task.revision, comment: comment.value.trim() })).then(() => { if (!error.value) comment.value = ""; });
 }
 watch(() => [props.projectId, props.refreshToken], () => { pending = null; void load(); }, { immediate: true });
 watch(() => [ruleId.value, rules.value], () => { void loadImpact(); });
-watch(() => active.value?.id, () => { confirmData.value = false; });
+watch(() => active.value?.id, () => { confirmData.value = false; overrideReview.value = false; });
+watch(() => active.value?.reviewer?.at, () => { overrideReview.value = false; });
 onBeforeUnmount(() => { disposed = true; generation++; impactGeneration++; });
 </script>
 
@@ -93,6 +101,10 @@ onBeforeUnmount(() => { disposed = true; generation++; impactGeneration++; });
           <router-link v-for="item in executors?.executors" :key="item.agentId" :to="`/chat/${item.agentId}`"><n-tag>{{ item.emoji }} {{ item.name }} · {{ t(`projectTasks.roles.${item.role}`) }}</n-tag></router-link>
         </n-space>
         <p class="tasks-meta">{{ t('projectTasks.executorsHint') }}</p>
+        <template v-if="noReviewer">
+          <p>{{ t('projectTasks.noReviewer') }}</p>
+          <n-button :loading="busy" :disabled="disabled || loading" @click="assign">{{ t('projectTasks.addReviewer') }}</n-button>
+        </template>
       </template>
       <template v-else>
         <p>{{ t('projectTasks.noExecutors') }}</p>
@@ -152,6 +164,7 @@ onBeforeUnmount(() => { disposed = true; generation++; impactGeneration++; });
           <ul v-if="!active.lastCheck.ok"><li v-for="reason in active.lastCheck.reasons" :key="reason">{{ t(`projectTasks.reasons.${reason}`) }}</li></ul>
           <p v-for="warning in active.lastCheck.warnings" :key="warning">{{ t(`projectTasks.warnings.${warning}`) }}</p>
           <p v-if="active.lastCheck.ignored.length">{{ t('projectTasks.ignored') }}: {{ active.lastCheck.ignored.join(', ') }}</p>
+          <p v-if="active.lastCheck.run?.isolation" class="tasks-meta">{{ t(`projectChecks.isolation.${active.lastCheck.run.isolation}`) }}</p>
         </n-alert>
         <template v-if="active.lastCheck.testChanges.length">
           <h4 class="tasks-block">{{ t('projectTasks.testChanges') }}</h4>
@@ -175,6 +188,21 @@ onBeforeUnmount(() => { disposed = true; generation++; impactGeneration++; });
           <pre v-if="change.diff !== null" class="tasks-diff">{{ change.diff }}</pre>
           <p v-else-if="change.change !== 'removed'" class="tasks-meta">{{ t('projectTasks.diffTooLarge') }}</p>
         </details>
+        <section v-if="executor('reviewer')" class="tasks-row">
+          <h4>{{ t('projectTasks.reviewer.title', { name: executor('reviewer')?.name ?? '' }) }}</h4>
+          <p v-if="!active.reviewRequestedAt">{{ t('projectTasks.reviewer.notAsked') }}</p>
+          <p v-else-if="!active.reviewer">{{ t('projectTasks.reviewer.waiting', { name: executor('reviewer')?.name ?? '' }) }}</p>
+          <n-alert v-if="active.reviewer" :type="verdictType(active.reviewer.verdict)" :title="t(`projectTasks.reviewer.verdict.${active.reviewer.verdict}`)" class="tasks-block">
+            <p v-if="active.reviewer.comment" class="tasks-text">{{ active.reviewer.comment }}</p>
+            <p v-if="active.reviewer.changedFiles.length">{{ t('projectTasks.reviewer.changedFiles', { files: active.reviewer.changedFiles.join(', ') }) }}</p>
+          </n-alert>
+          <n-space class="tasks-block">
+            <n-button v-if="active.reviewRequestedAt" :type="active.reviewer ? 'default' : 'primary'" :loading="busy" :disabled="disabled" @click="action(active, 'review-collect')">{{ t('projectTasks.reviewer.collect') }}</n-button>
+            <n-button :disabled="disabled || busy" @click="action(active, 'review')">{{ t(active.reviewRequestedAt ? 'projectTasks.reviewer.askAgain' : 'projectTasks.reviewer.ask') }}</n-button>
+            <n-button v-if="active.reviewer?.comment" :disabled="busy" @click="useReviewComment(active)">{{ t('projectTasks.reviewer.useComment') }}</n-button>
+          </n-space>
+        </section>
+        <n-checkbox v-if="active.reviewer?.verdict === 'changes'" v-model:checked="overrideReview" class="tasks-block" :disabled="busy">{{ t('projectTasks.reviewer.override') }}</n-checkbox>
         <n-checkbox v-if="active.previousVersion !== null" v-model:checked="confirmData" class="tasks-block" :disabled="busy">{{ t('projectTasks.confirmData') }}</n-checkbox>
         <n-form-item :label="t('projectTasks.returnComment')" class="tasks-block"><n-input v-model:value="comment" type="textarea" :maxlength="2000" :autosize="{ minRows: 2, maxRows: 5 }" :aria-label="t('projectTasks.returnComment')" :disabled="busy" /></n-form-item>
       </template>
@@ -183,7 +211,7 @@ onBeforeUnmount(() => { disposed = true; generation++; impactGeneration++; });
       <n-space :key="active.status" class="tasks-block">
         <n-button v-if="active.status === 'qa' || active.status === 'dev'" type="primary" :loading="busy" :disabled="disabled" @click="action(active, 'check')">{{ t(`projectTasks.check.${active.status}`) }}</n-button>
         <n-button v-if="active.status === 'qa' || active.status === 'dev'" :disabled="disabled || busy" @click="action(active, 'resend')">{{ t(active.lastCheck && !active.lastCheck.ok ? 'projectTasks.sendFindings' : 'projectTasks.remind') }}</n-button>
-        <n-popconfirm v-if="active.status === 'review'" @positive-click="accept(active)"><template #trigger><n-button type="primary" :loading="busy" :disabled="disabled || active.outdated || (active.previousVersion !== null && !confirmData)">{{ t('projectTasks.accept') }}</n-button></template><span class="tasks-confirm">{{ t('projectTasks.acceptConfirm') }}</span></n-popconfirm>
+        <n-popconfirm v-if="active.status === 'review'" @positive-click="accept(active)"><template #trigger><n-button type="primary" :loading="busy" :disabled="disabled || active.outdated || (active.previousVersion !== null && !confirmData) || (active.reviewer?.verdict === 'changes' && !overrideReview)">{{ t('projectTasks.accept') }}</n-button></template><span class="tasks-confirm">{{ t('projectTasks.acceptConfirm') }}</span></n-popconfirm>
         <n-button v-if="active.status === 'review'" :disabled="disabled || busy || !comment.trim()" @click="returnTask(active)">{{ t('projectTasks.return') }}</n-button>
         <n-popconfirm @positive-click="action(active, 'cancel')"><template #trigger><n-button :disabled="busy">{{ t('projectTasks.cancel') }}</n-button></template><span class="tasks-confirm">{{ t('projectTasks.cancelConfirm') }}</span></n-popconfirm>
       </n-space>

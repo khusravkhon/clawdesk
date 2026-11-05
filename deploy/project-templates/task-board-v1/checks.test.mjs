@@ -1,5 +1,7 @@
 // Checks of the task board's rules. Each test name starts with a permanent ID (TB-001…): the panel links
 // acceptance scenarios to these IDs, so a test that protects a rule keeps its ID. Run: node --test
+// The tests talk to the app only over HTTP. When CLAWDESK_APP_URL is set, the panel has started a fresh
+// app for this file in a separate container; otherwise the tests start server.mjs themselves.
 import { test, before, after } from "node:test";
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
@@ -9,25 +11,27 @@ import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-let base, child, dataDir;
+let base, child, dataDir, output = "";
 
 before(async () => {
-    dataDir = await fs.mkdtemp(path.join(os.tmpdir(), "task-board-checks-"));
-    const reservation = net.createServer();
-    await new Promise(resolve => reservation.listen(0, "127.0.0.1", resolve));
-    const port = reservation.address().port;
-    await new Promise(resolve => reservation.close(resolve));
-    child = spawn(process.execPath, ["server.mjs"], {
-        cwd: path.dirname(fileURLToPath(import.meta.url)),
-        env: { ...process.env, PORT: String(port), DATA_FILE: path.join(dataDir, "tasks.sqlite") },
-        stdio: ["ignore", "ignore", "pipe"],
-    });
-    let output = "";
-    child.stderr.on("data", chunk => output += chunk);
-    base = `http://127.0.0.1:${port}`;
-    for (let attempt = 0; attempt < 100; attempt++) {
+    if (process.env.CLAWDESK_APP_URL) base = process.env.CLAWDESK_APP_URL;
+    else {
+        dataDir = await fs.mkdtemp(path.join(os.tmpdir(), "task-board-checks-"));
+        const reservation = net.createServer();
+        await new Promise(resolve => reservation.listen(0, "127.0.0.1", resolve));
+        const port = reservation.address().port;
+        await new Promise(resolve => reservation.close(resolve));
+        child = spawn(process.execPath, ["server.mjs"], {
+            cwd: path.dirname(fileURLToPath(import.meta.url)),
+            env: { ...process.env, PORT: String(port), DATA_FILE: path.join(dataDir, "tasks.sqlite") },
+            stdio: ["ignore", "ignore", "pipe"],
+        });
+        child.stderr.on("data", chunk => output += chunk);
+        base = `http://127.0.0.1:${port}`;
+    }
+    for (let attempt = 0; attempt < 200; attempt++) {
         try { if ((await fetch(base + "/api/tasks")).ok) return; } catch {}
-        if (child.exitCode !== null) break;
+        if (child && child.exitCode !== null) break;
         await new Promise(resolve => setTimeout(resolve, 50));
     }
     throw new Error("The app did not start: " + output.slice(0, 500));
@@ -35,7 +39,7 @@ before(async () => {
 
 after(async () => {
     child?.kill();
-    await fs.rm(dataDir, { recursive: true, force: true });
+    if (dataDir) await fs.rm(dataDir, { recursive: true, force: true });
 });
 
 const call = (method, route, body) => fetch(base + route, { method, headers: { "content-type": "application/json" }, body: body === undefined ? undefined : JSON.stringify(body) });

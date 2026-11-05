@@ -59,7 +59,7 @@ export function registerCompanyRoutes(app: FastifyInstance, company: CompanyServ
     scope.post("/api/company/projects/:id/tasks", async (request, reply) => reply.status(201).send(await company.tasks.create(Params.parse(request.params).id, CreateProjectTaskRequest.parse(request.body))));
     scope.get("/api/company/projects/:id/rules/:ruleId/impact", request => { const { id, ruleId } = RuleParams.parse(request.params); return company.tasks.impact(id, ruleId, SuiteQuery.parse(request.query).version); });
     scope.post("/api/company/projects/:id/tasks/:taskId/accept", request => { const { id, taskId } = TaskParams.parse(request.params); return company.tasks.accept(id, taskId, AcceptProjectTaskRequest.parse(request.body)); });
-    for (const [action, run] of [["check", "checkStage"], ["resend", "resend"], ["cancel", "cancel"], ["rollback", "rollback"]] as const) {
+    for (const [action, run] of [["check", "checkStage"], ["resend", "resend"], ["cancel", "cancel"], ["rollback", "rollback"], ["review", "askReviewer"], ["review-collect", "collectReview"]] as const) {
       scope.post(`/api/company/projects/:id/tasks/:taskId/${action}`, request => { const { id, taskId } = TaskParams.parse(request.params); return company.tasks[run](id, taskId, ProjectTaskActionRequest.parse(request.body)); });
     }
     scope.post("/api/company/projects/:id/tasks/:taskId/return", request => { const { id, taskId } = TaskParams.parse(request.params); return company.tasks.returnToDeveloper(id, taskId, ReturnProjectTaskRequest.parse(request.body)); });

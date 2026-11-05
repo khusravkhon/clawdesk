@@ -8,11 +8,13 @@ import type { GatewayService } from "../gateway/gateway-service.js";
 import { ProjectTaskError } from "./project-tasks-service.js";
 import { createJuniorAgent, deleteJuniorAgent, slugBase, uniqueSlug } from "../provision/create-agent.js";
 
-// A project's executors (P6.2): a team without GitHub, bound to the project, with a QA and a developer agent.
+// A project's executors (P6.2): a team without GitHub, bound to the project, with a QA, a developer and a
+// reviewer agent (projects assigned before the reviewer existed get it when executors are assigned again).
 // Each agent works in its own copy, the folder "project" in its workspace (/workspace/project in its sandbox).
 // No extra bind: OpenClaw allows bind sources only inside the agent's workspace, so app/ never reaches a sandbox.
 
-export const EXECUTOR_TEMPLATES: Record<ProjectExecutorRole, string> = { qa: "project-qa", developer: "project-developer" };
+export const EXECUTOR_TEMPLATES: Record<ProjectExecutorRole, string> = { qa: "project-qa", developer: "project-developer", reviewer: "project-reviewer" };
+const ROLES = ["qa", "developer", "reviewer"] as const;
 const WORK_PATH = "/workspace/project";
 
 export type ExecutorsPort = {
@@ -28,7 +30,7 @@ export class ProjectExecutors implements ExecutorsPort {
     const team = this.deps.db.select().from(teams).where(and(eq(teams.projectId, projectId), isNull(teams.repoUrl))).all()
       .find(row => this.#members(row.id).length);
     const members = team ? this.#members(team.id) : [];
-    const executors = (["qa", "developer"] as const).flatMap(role => {
+    const executors = ROLES.flatMap(role => {
       const agent = members.find(member => member.templateId === EXECUTOR_TEMPLATES[role]);
       return agent ? [{ role, agentId: agent.id, name: agent.displayName, emoji: agent.avatar }] : [];
     });
@@ -41,7 +43,7 @@ export class ProjectExecutors implements ExecutorsPort {
 
   async assign(project: { id: string; name: string; description: string; departmentId: string | null }, request: AssignExecutorsRequest): Promise<ProjectExecutorsDto> {
     const existing = this.list(project.id);
-    if (existing.executors.length === 2) return existing;
+    if (existing.executors.length === ROLES.length) return existing;
     if (this.#busy.has(project.id)) throw new ProjectTaskError("task_busy");
     this.#busy.add(project.id);
     const { db, logger } = this.deps;
@@ -55,7 +57,7 @@ export class ProjectExecutors implements ExecutorsPort {
         db.insert(teams).values({ id: teamId, name: `Исполнители: ${project.name}`.slice(0, 120), repoUrl: null, telegramGroupId: null, projectId: project.id, departmentId: project.departmentId }).run();
         teamCreated = true;
       }
-      for (const role of ["qa", "developer"] as const) {
+      for (const role of ROLES) {
         if (existing.executors.some(item => item.role === role)) continue;
         const result = await createJuniorAgent(
           { ...this.deps, team: { id: teamId, binds: [], values: { projectName: project.name, projectBrief: project.description || "—", repoUrl: "—", repoPath: this.deps.sandboxEnabled ? WORK_PATH : "project", docsPath: "—", branch: "—" } } },

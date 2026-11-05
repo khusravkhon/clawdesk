@@ -5,8 +5,9 @@ import type { AutomatedCheckStatus, ProjectCheckRunSummaryDto, ProjectCheckStatu
 // P6.2: work on an approved business rule by the project's executors. QA writes tests that fail on the
 // current code, the developer makes them pass without touching tests, the owner reviews and accepts.
 // Each executor works in its own copy; app/ changes only when the owner accepts a reviewed task.
+// A reviewer agent may read the developer's changes first; its verdict is advice the owner sees.
 
-export type ProjectExecutorRole = "qa" | "developer";
+export type ProjectExecutorRole = "qa" | "developer" | "reviewer";
 export type ProjectExecutorDto = { role: ProjectExecutorRole; agentId: string; name: string; emoji: string | null };
 export type ProjectExecutorsDto = { teamId: string | null; executors: ProjectExecutorDto[]; sandboxed: boolean };
 export const AssignExecutorsRequest = z.object({ requestId: z.uuid(), timezone: z.string().min(1).max(64) });
@@ -20,7 +21,7 @@ export type ProjectFileChange = { name: string; change: "added" | "modified" | "
 export type ProjectTaskReason =
   | "layout" | "no_changes" | "removed_files" | "changed_code" | "tests_missing" | "tests_not_failing" | "tests_flaky"
   | "existing_failing" | "changed_tests" | "tests_failing" | "run_blocked"
-  | "protected_tests_changed" | "shared_test_code_changed" | "tests_unreadable";
+  | "protected_tests_changed" | "shared_test_code_changed" | "tests_unreadable" | "tests_not_separate";
 /** Accepted, but worth the owner's attention in the review. */
 export type ProjectTaskWarning = "shared_test_code_added";
 /** One test added, modified or removed by the task; `rule` — it belongs to the task's rule (P6.3). */
@@ -42,7 +43,13 @@ export type ProjectTaskCheckDto = {
   ignored: string[];
   at: number;
 };
-export type ProjectTaskEventDto = { kind: "created" | "sent" | "qa_checked" | "dev_checked" | "accepted" | "returned" | "cancelled" | "rolled_back"; at: number; note: string };
+export type ProjectTaskEventKind = "created" | "sent" | "qa_checked" | "dev_checked" | "accepted" | "returned" | "cancelled" | "rolled_back" | "review_requested" | "reviewed";
+export type ProjectTaskEventDto = { kind: ProjectTaskEventKind; at: number; note: string };
+/**
+ * The reviewer agent's verdict from REVIEW.md: its first line says "approve" or "changes"; anything else is
+ * "unclear" and left to the owner. `changedFiles` — files the reviewer edited in its copy (never applied).
+ */
+export type ProjectTaskReviewDto = { verdict: "approve" | "changes" | "unclear"; comment: string; changedFiles: string[]; at: number };
 export type ProjectTaskDto = {
   id: string;
   code: string;
@@ -64,6 +71,9 @@ export type ProjectTaskDto = {
   reviewTests: ProjectTestChangeDto[] | null;
   reviewWarnings: ProjectTaskWarning[];
   returnComment: string;
+  /** Review stage: when the reviewer agent was asked (null — not asked for these changes) and its verdict. */
+  reviewRequestedAt: number | null;
+  reviewer: ProjectTaskReviewDto | null;
   /** When the owner returned app/ to the files the task started from. */
   rolledBackAt: number | null;
   /** The latest accepted task, app/ unchanged since and no task active: it can be rolled back. */
@@ -79,7 +89,8 @@ export type CreateProjectTaskRequest = z.infer<typeof CreateProjectTaskRequest>;
 export const ProjectTaskActionRequest = z.object({ requestId: z.uuid(), revision: z.number().int().min(0) });
 export type ProjectTaskActionRequest = z.infer<typeof ProjectTaskActionRequest>;
 /** A change of an implemented rule needs the owner's word on existing data: the panel migrates nothing. */
-export const AcceptProjectTaskRequest = ProjectTaskActionRequest.extend({ confirmData: z.boolean().optional() });
+/** Accepting over the reviewer's "changes" verdict needs the owner's explicit word too. */
+export const AcceptProjectTaskRequest = ProjectTaskActionRequest.extend({ confirmData: z.boolean().optional(), overrideReview: z.boolean().optional() });
 export type AcceptProjectTaskRequest = z.infer<typeof AcceptProjectTaskRequest>;
 export const ReturnProjectTaskRequest = ProjectTaskActionRequest.extend({ comment: z.string().trim().min(1).max(2000) });
 export type ReturnProjectTaskRequest = z.infer<typeof ReturnProjectTaskRequest>;

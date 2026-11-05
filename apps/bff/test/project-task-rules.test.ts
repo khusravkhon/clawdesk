@@ -1,6 +1,7 @@
 import type { ProjectChecksRunResult, ProjectCheckTestDto } from "@clawdesk/shared";
 import { describe, expect, it } from "vitest";
-import { changesBetween, judgeDev, judgeQa, lineDiff, ruleTestsOf } from "../src/company/project-task-rules.js";
+import { changesBetween, judgeDev, judgeQa, lineDiff, ruleTestsOf, separateCapable } from "../src/company/project-task-rules.js";
+import { changedByReviewer, parseReview } from "../src/company/project-tasks-service.js";
 
 const test = (name: string, status: ProjectCheckTestDto["status"] = "passed"): ProjectCheckTestDto => ({ id: `checks.test.mjs::${name}`, file: "checks.test.mjs", name, status, message: status === "failed" ? "201 !== 400" : "", fileHash: "h" });
 const run = (tests: ProjectCheckTestDto[], status: ProjectChecksRunResult["status"] = "completed"): ProjectChecksRunResult => ({ status, reason: status === "blocked" ? "runner_failed" : null, tests, durationMs: 1, filesFingerprint: "f" });
@@ -75,5 +76,23 @@ describe("stage rules", () => {
     expect(lineDiff("a\nb\nc\nd\ne\nf\ng", "a\nb\nc\nX\ne\nf\ng")).toBe("  b\n  c\n- d\n+ X\n  e\n  f");
     expect(lineDiff("1\n2\n3\n4\n5\n6\n7\n8\n9", "0\n1\n2\n3\n4\n5\n6\n7\n8\n9\n10")).toBe("+ 0\n  1\n  2\n…\n  8\n  9\n+ 10");
     expect(changesBetween({ a: "x", b: "y" }, { a: "x", c: "z" }).map(c => [c.name, c.change, c.diff])).toEqual([["b", "removed", null], ["c", "added", "+ z"]]);
+  });
+
+  it("refuses QA tests that would make the app run next to the tests again", () => {
+    const aware = { "server.mjs": "code v1", "checks.test.mjs": PRELUDE + "const base = process.env.CLAWDESK_APP_URL;\n" + t("TB-001 a") };
+    expect(separateCapable(aware)).toBe(true);
+    expect(separateCapable(app)).toBe(false);
+    const next = { ...aware, "rules.test.mjs": PRELUDE + t("BR-001 rejects empty") };
+    const shared = { ...run([test("TB-001 a"), test("BR-001 rejects empty", "failed")]), isolation: "shared" as const };
+    expect(judgeQa({ base: aware, next, ignored: [], run: shared, scope: "BR-001" }).reasons).toEqual(["tests_not_separate"]);
+    // A project that never ran apart keeps working as before.
+    expect(judgeQa({ base: app, next: { ...app, "rules.test.mjs": PRELUDE + t("BR-001 rejects empty") }, ignored: [], run: shared, scope: "BR-001" }).ok).toBe(true);
+  });
+
+  it("reads the reviewer's verdict from the first line and lists the files it touched", () => {
+    expect(parseReview("\n# ОДОБРЕНО.\nПроверил границы", [])).toMatchObject({ verdict: "approve", comment: "Проверил границы" });
+    expect(parseReview("Changes requested\n- x", [])).toMatchObject({ verdict: "changes", comment: "- x" });
+    expect(parseReview("Вроде нормально, но не уверен", ["server.mjs"])).toMatchObject({ verdict: "unclear", comment: "Вроде нормально, но не уверен", changedFiles: ["server.mjs"] });
+    expect(changedByReviewer({ a: "1", b: "2" }, { a: "1", c: "3", "REVIEW.md": "ok", "REVIEW-REQUEST.md": "r" })).toEqual(["b", "c"]);
   });
 });

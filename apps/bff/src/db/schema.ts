@@ -156,6 +156,8 @@ export const projectCheckRuns = sqliteTable("project_check_runs", {
   projectId: text("project_id").notNull().references(() => companyProjects.id, { onDelete: "cascade" }),
   status: text("status", { enum: ["completed", "blocked"] }).notNull(),
   reason: text("reason", { enum: ["runner_failed", "timeout", "no_tests"] }),
+  /** Whether the app ran apart from the tests; null for runs from before the distinction. */
+  isolation: text("isolation", { enum: ["separate", "shared"] }),
   filesFingerprint: text("files_fingerprint").notNull(),
   durationMs: integer("duration_ms").notNull(),
   createdAt: integer("created_at").notNull(),
@@ -207,6 +209,9 @@ export const projectTasks = sqliteTable("project_tasks", {
   returnComment: text("return_comment").notNull().default(""),
   /** P6.3: app/ was returned to baseFiles after the task had been accepted. */
   rolledBackAt: integer("rolled_back_at"),
+  /** The reviewer agent was asked about the current changes; its verdict from REVIEW.md. */
+  reviewRequestedAt: integer("review_requested_at"),
+  reviewer: text("reviewer", { mode: "json" }).$type<import("@clawdesk/shared").ProjectTaskReviewDto | null>(),
   createdAt: integer("created_at").notNull(),
   updatedAt: integer("updated_at").notNull(),
   requestId: text("request_id").notNull(),
@@ -215,7 +220,7 @@ export const projectTasks = sqliteTable("project_tasks", {
 export const projectTaskEvents = sqliteTable("project_task_events", {
   id: integer("id").primaryKey({ autoIncrement: true }),
   taskId: text("task_id").notNull().references(() => projectTasks.id, { onDelete: "cascade" }),
-  kind: text("kind", { enum: ["created", "sent", "qa_checked", "dev_checked", "accepted", "returned", "cancelled", "rolled_back"] }).notNull(),
+  kind: text("kind", { enum: ["created", "sent", "qa_checked", "dev_checked", "accepted", "returned", "cancelled", "rolled_back", "review_requested", "reviewed"] }).notNull(),
   note: text("note").notNull().default(""),
   createdAt: integer("created_at").notNull(),
   requestId: text("request_id").notNull(),

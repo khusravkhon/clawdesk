@@ -7,10 +7,16 @@ export type ProjectCheckStatus = "passed" | "failed" | "flaky" | "skipped";
 /** "blocked": the environment did not produce a trustworthy result (crash, timeout, no tests). */
 export type ProjectCheckRunStatus = "completed" | "blocked";
 export type ProjectCheckBlockedReason = "runner_failed" | "timeout" | "no_tests";
+/**
+ * "separate": the app ran in its own container and the tests, holding only the test files, reached it over
+ * its loopback network; "shared": the tests started the app themselves, so app code ran next to the runner
+ * and could have forged results. Null for runs from before the distinction.
+ */
+export type ProjectCheckIsolation = "separate" | "shared";
 export type ProjectCheckTestDto = { id: string; file: string; name: string; status: ProjectCheckStatus; message: string; fileHash: string | null };
 /** What the bridge returns for one run. */
-export type ProjectChecksRunResult = { status: ProjectCheckRunStatus; reason: ProjectCheckBlockedReason | null; tests: ProjectCheckTestDto[]; durationMs: number; filesFingerprint: string };
-export type ProjectCheckRunSummaryDto = { id: string; status: ProjectCheckRunStatus; reason: ProjectCheckBlockedReason | null; createdAt: number; durationMs: number; counts: Record<ProjectCheckStatus, number> };
+export type ProjectChecksRunResult = { status: ProjectCheckRunStatus; reason: ProjectCheckBlockedReason | null; tests: ProjectCheckTestDto[]; durationMs: number; filesFingerprint: string; isolation?: ProjectCheckIsolation };
+export type ProjectCheckRunSummaryDto = { id: string; status: ProjectCheckRunStatus; reason: ProjectCheckBlockedReason | null; createdAt: number; durationMs: number; counts: Record<ProjectCheckStatus, number>; isolation?: ProjectCheckIsolation | null };
 export type ProjectCheckRunDto = ProjectCheckRunSummaryDto & { tests: ProjectCheckTestDto[] };
 export type ProjectChecksDto = { latest: ProjectCheckRunDto | null; history: ProjectCheckRunSummaryDto[] };
 export const RunProjectChecksRequest = z.object({ requestId: z.uuid() });

@@ -1,5 +1,5 @@
 import { createHash, randomUUID } from "node:crypto";
-import type { AcceptProjectTaskRequest, AssignExecutorsRequest, BusinessRuleFields, CreateProjectTaskRequest, ProjectChecksRunResult, ProjectExecutorRole, ProjectExecutorsDto, ProjectTaskActionRequest, ProjectTaskCheckDto, ProjectTaskDto, ProjectTasksDto, ReturnProjectTaskRequest, RuleChangeImpactDto } from "@clawdesk/shared";
+import type { AcceptProjectTaskRequest, AssignExecutorsRequest, BusinessRuleFields, CreateProjectTaskRequest, ProjectChecksRunResult, ProjectExecutorRole, ProjectExecutorsDto, ProjectFileChange, ProjectTaskActionRequest, ProjectTaskCheckDto, ProjectTaskDto, ProjectTaskReviewDto, ProjectTasksDto, ReturnProjectTaskRequest, RuleChangeImpactDto } from "@clawdesk/shared";
 import { and, asc, desc, eq, inArray, ne } from "drizzle-orm";
 import type { Db } from "../db/client.js";
 import { acceptanceCases, acceptanceRevisions, acceptanceTestLinks, projectCheckResults, projectCheckRuns, projectRules, projectTaskEvents, projectTasks } from "../db/schema.js";
@@ -19,9 +19,13 @@ import type { RuleScope } from "./project-test-units.js";
 // rule's own tests (named with its code or linked to its scenarios), never other tests; accepting needs
 // the owner's word on existing data; a task whose rule changed again cannot be accepted; the latest
 // accepted task can be rolled back to the files it started from.
+//
+// Review: when the project has a reviewer agent, the developer's accepted changes go to its own copy with
+// REVIEW-REQUEST.md (rule, QA's tests, line diff); it writes REVIEW.md, the owner collects the verdict.
+// The verdict is advice: the owner still accepts or returns, but accepting over "changes" needs their word.
 
 export class ProjectTaskError extends Error {
-  constructor(readonly code: "executors_required" | "rule_missing" | "rule_not_approved" | "task_active" | "task_missing" | "task_closed" | "revision_conflict" | "request_conflict" | "task_busy" | "gateway_unavailable" | "work_app_changed" | "rule_outdated" | "data_confirmation_required" | "rollback_unavailable") { super(code); }
+  constructor(readonly code: "executors_required" | "rule_missing" | "rule_not_approved" | "task_active" | "task_missing" | "task_closed" | "revision_conflict" | "request_conflict" | "task_busy" | "gateway_unavailable" | "work_app_changed" | "rule_outdated" | "data_confirmation_required" | "rollback_unavailable" | "review_not_requested" | "review_not_written" | "review_changes_requested") { super(code); }
 }
 
 type Project = { id: string; name: string; description: string; departmentId: string | null };
@@ -34,6 +38,10 @@ const sha = (value: string) => createHash("sha256").update(value).digest("hex");
 const hashes = (files: Record<string, string>) => Object.fromEntries(Object.entries(files).map(([name, data]) => [name, sha(data)]));
 const code = (number: number) => `TASK-${String(number).padStart(3, "0")}`;
 const ruleCode = (number: number) => `BR-${String(number).padStart(3, "0")}`;
+/** The reviewer's copy: the developer's files plus these two, which never count as changes. */
+export const REVIEW_REQUEST_FILE = "REVIEW-REQUEST.md", REVIEW_FILE = "REVIEW.md";
+/** Work copies hold at most this much text (CHECK_PAYLOAD_LIMIT in the bridge). */
+const COPY_LIMIT = 80_000;
 
 export class ProjectTasksService {
   #busy = new Set<string>();
@@ -85,7 +93,7 @@ export class ProjectTasksService {
       lastCheck: row.lastCheck ? { ...row.lastCheck, testChanges: row.lastCheck.testChanges ?? [], warnings: row.lastCheck.warnings ?? [] } : null,
       review: reviewing ? changesBetween(row.baseFiles, row.devFiles ?? {}) : null,
       reviewTests: reviewTests?.tests ?? null, reviewWarnings: reviewTests?.warnings ?? [],
-      returnComment: row.returnComment, rolledBackAt: row.rolledBackAt ?? null, canRollback,
+      returnComment: row.returnComment, reviewRequestedAt: row.reviewRequestedAt ?? null, reviewer: row.reviewer ?? null, rolledBackAt: row.rolledBackAt ?? null, canRollback,
       events: events.map(event => ({ kind: event.kind, at: event.createdAt, note: event.note })), createdAt: row.createdAt, updatedAt: row.updatedAt,
     };
   }
@@ -167,6 +175,10 @@ export class ProjectTasksService {
 
   #one(projectId: string, taskId: string): ProjectTaskDto {
     return this.list(projectId).tasks.find(task => task.id === taskId)!;
+  }
+
+  #hasExecutor(projectId: string, role: ProjectExecutorRole): boolean {
+    return this.deps.executors?.list(projectId).executors.some(item => item.role === role) ?? false;
   }
 
   #executor(projectId: string, role: ProjectExecutorRole) {
@@ -273,7 +285,12 @@ export class ProjectTasksService {
         this.#save(row, { status: "dev", qaTests, lastCheck }, { kind: "qa_checked", note: "ok", requestId: request.requestId });
         await this.#sendStage(projectId, row.id, "developer", this.#executor(projectId, "developer").agentId, devMessage(code(row.number), rule, row.note, verdict, row.previousVersion), send);
       } else {
-        this.#save(row, { status: "review", devFiles: snapshot.files, lastCheck }, { kind: "dev_checked", note: "ok", requestId: request.requestId });
+        this.#save(row, { status: "review", devFiles: snapshot.files, lastCheck, reviewRequestedAt: null, reviewer: null }, { kind: "dev_checked", note: "ok", requestId: request.requestId });
+        // With a reviewer agent the changes go to it at once; if that fails the owner can ask again.
+        if (this.#hasExecutor(projectId, "reviewer")) {
+          const next = this.#task(projectId, row.id);
+          await this.#requestReview(projectId, next, rule, randomUUID()).catch(() => undefined);
+        }
       }
     });
   }
@@ -291,9 +308,45 @@ export class ProjectTasksService {
     });
   }
 
+  /** Sends the developer's accepted changes to the reviewer agent (again, if it was asked before). */
+  askReviewer(projectId: string, taskId: string, request: ProjectTaskActionRequest): Promise<ProjectTaskDto> {
+    return this.#act(projectId, taskId, request, true, async (row) => {
+      if (row.status !== "review" || !row.devFiles) throw new ProjectTaskError("task_closed");
+      const rule = this.deps.rule(projectId, row.ruleId, row.ruleVersion);
+      if (!rule) throw new ProjectTaskError("rule_missing");
+      await this.#requestReview(projectId, row, rule, request.requestId);
+    });
+  }
+
+  async #requestReview(projectId: string, row: TaskRow, rule: Rule, requestId: string): Promise<void> {
+    const { bridge, send } = this.#need();
+    const reviewer = this.#executor(projectId, "reviewer");
+    const files = { ...row.devFiles! };
+    delete files[REVIEW_FILE];
+    files[REVIEW_REQUEST_FILE] = reviewRequest(code(row.number), rule, row, changesBetween(row.baseFiles, row.devFiles!), COPY_LIMIT - Object.values(files).reduce((size, data) => size + Buffer.byteLength(data), 0) - 64);
+    await bridge.prepareProjectWork(reviewer.agentId, files);
+    this.#save(row, { reviewRequestedAt: Date.now(), reviewer: null }, { kind: "review_requested", requestId });
+    await this.#sendStage(projectId, row.id, "reviewer", reviewer.agentId, reviewMessage(code(row.number), rule), send);
+  }
+
+  /** Reads REVIEW.md from the reviewer's copy; files it edited are listed, never applied. */
+  collectReview(projectId: string, taskId: string, request: ProjectTaskActionRequest): Promise<ProjectTaskDto> {
+    return this.#act(projectId, taskId, request, true, async (row) => {
+      if (row.status !== "review" || !row.devFiles) throw new ProjectTaskError("task_closed");
+      if (row.reviewRequestedAt === null) throw new ProjectTaskError("review_not_requested");
+      const { bridge } = this.#need();
+      const snapshot = await bridge.snapshotProjectWork(this.#executor(projectId, "reviewer").agentId);
+      const text = snapshot.files[REVIEW_FILE];
+      if (text === undefined || !text.trim()) throw new ProjectTaskError("review_not_written");
+      const review = parseReview(text, changedByReviewer(row.devFiles, snapshot.files));
+      this.#save(row, { reviewer: review }, { kind: "reviewed", note: review.verdict, requestId: request.requestId });
+    });
+  }
+
   accept(projectId: string, taskId: string, request: AcceptProjectTaskRequest): Promise<ProjectTaskDto> {
     return this.#act(projectId, taskId, request, true, async (row) => {
       if (row.status !== "review" || !row.devFiles) throw new ProjectTaskError("task_closed");
+      if (row.reviewer?.verdict === "changes" && request.overrideReview !== true) throw new ProjectTaskError("review_changes_requested");
       // A newer rule version means this work answers a question nobody asks any more.
       if (this.#outdated(projectId, row)) throw new ProjectTaskError("rule_outdated");
       // The panel changes code, never the app's data: the owner confirms the data still fits the changed rule.
@@ -332,7 +385,7 @@ export class ProjectTasksService {
       const { send } = this.#need();
       const rule = this.deps.rule(projectId, row.ruleId, row.ruleVersion);
       if (!rule) throw new ProjectTaskError("rule_missing");
-      this.#save(row, { status: "dev", returnComment: request.comment, devFiles: null }, { kind: "returned", note: request.comment, requestId: request.requestId });
+      this.#save(row, { status: "dev", returnComment: request.comment, devFiles: null, reviewRequestedAt: null, reviewer: null }, { kind: "returned", note: request.comment, requestId: request.requestId });
       await this.#sendStage(projectId, row.id, "developer", this.#executor(projectId, "developer").agentId, returnMessage(code(row.number), rule, request.comment), send);
     });
   }
@@ -355,7 +408,7 @@ function checkDto(stage: "qa" | "dev", verdict: StageVerdict, run: ProjectChecks
   for (const test of run.tests) counts[test.status]++;
   return {
     stage, ok: verdict.ok, reasons: verdict.reasons, changes: verdict.changes, ruleTests: verdict.ruleTests, otherProblems: verdict.otherProblems, testChanges: verdict.testChanges, warnings: verdict.warnings, ignored,
-    run: { id: "", status: run.status, reason: run.reason, createdAt: Date.now(), durationMs: Math.round(run.durationMs), counts }, at: Date.now(),
+    run: { id: "", status: run.status, reason: run.reason, createdAt: Date.now(), durationMs: Math.round(run.durationMs), counts, isolation: run.isolation ?? null }, at: Date.now(),
   };
 }
 
@@ -418,6 +471,50 @@ function devMessage(task: string, rule: Rule, note: string, verdict: StageVerdic
   ].filter((line): line is string => typeof line === "string").join("\n");
 }
 
+/** REVIEW-REQUEST.md: the rule, QA's tests and the changes line by line, cut to fit the copy. */
+export function reviewRequest(task: string, rule: Rule, row: Pick<TaskRow, "qaTests" | "previousVersion">, changes: ProjectFileChange[], limit: number): string {
+  const head = [
+    `# Ревью задачи ${task}`, "",
+    row.previousVersion !== null ? `Изменение правила: версия ${row.previousVersion} → ${rule.version}.` : "Реализация нового правила.",
+    "", ruleText(rule), "",
+    `Тесты QA: ${Object.keys(row.qaTests ?? {}).sort().join(", ") || "—"}. Все тесты проекта проходят.`, "",
+    "## Изменения", "",
+  ].join("\n");
+  const body = changes.map(change => `### ${change.name} — ${change.change === "added" ? "добавлен" : change.change === "removed" ? "удалён" : "изменён"}\n${change.diff === null ? (change.change === "removed" ? "" : "(слишком большой для построчного сравнения — читай файл целиком)") : "```diff\n" + change.diff + "\n```"}`).join("\n\n");
+  const full = head + body + "\n";
+  if (Buffer.byteLength(full) <= limit) return full;
+  const note = "\n\n… изменения обрезаны: остальное смотри в файлах копии.\n";
+  let cut = full.slice(0, Math.max(0, limit - Buffer.byteLength(note)));
+  while (cut && Buffer.byteLength(cut) > limit - Buffer.byteLength(note)) cut = cut.slice(0, -100);
+  return cut + note;
+}
+
+function reviewMessage(task: string, rule: Rule): string {
+  return [
+    `Задача ${task} — ревью изменений по правилу ${rule.code} «${rule.fields.title}».`,
+    `В твоей рабочей копии файлы приложения после изменений разработчика и ${REVIEW_REQUEST_FILE} — правило, тесты QA и изменения построчно. Все тесты проходят.`,
+    `Прочитай изменения и запиши отзыв в ${REVIEW_FILE}: первая строка — ОДОБРЕНО или НУЖНЫ ИЗМЕНЕНИЯ, дальше замечания (файл, что не так, почему важно). Код и тесты не меняй.`,
+    "Когда закончишь, ответь одной фразой с вердиктом.",
+  ].join("\n");
+}
+
+/** The verdict from the first non-empty line of REVIEW.md; anything but the two phrases is "unclear". */
+export function parseReview(text: string, changedFiles: string[]): ProjectTaskReviewDto {
+  const lines = text.replace(/\r/g, "").split("\n");
+  const first = lines.findIndex(line => line.trim());
+  const head = (lines[first] ?? "").trim().replace(/^[#*\s]+|[*.!:\s]+$/g, "").toUpperCase();
+  const verdict = /^(ОДОБРЕНО|APPROVED?)$/.test(head) ? "approve" : /^(НУЖНЫ ИЗМЕНЕНИЯ|CHANGES REQUESTED|CHANGES)$/.test(head) ? "changes" : "unclear";
+  const comment = (verdict === "unclear" ? lines.slice(first) : lines.slice(first + 1)).join("\n").trim().slice(0, 4000);
+  return { verdict, comment, changedFiles, at: Date.now() };
+}
+
+/** Files the reviewer added, changed or removed in its copy, besides the two review files. */
+export function changedByReviewer(devFiles: Record<string, string>, copy: Record<string, string>): string[] {
+  const skip = new Set([REVIEW_FILE, REVIEW_REQUEST_FILE]);
+  const names = new Set([...Object.keys(devFiles), ...Object.keys(copy)].filter(name => !skip.has(name)));
+  return [...names].filter(name => devFiles[name] !== copy[name]).sort();
+}
+
 function returnMessage(task: string, rule: Rule, comment: string): string {
   return [`Задача ${task}: владелец вернул работу по правилу ${rule.code}.`, `Комментарий: ${comment}`, "Исправь это в своей рабочей копии, тесты не меняй, и кратко опиши изменения."].join("\n");
 }
@@ -437,6 +534,7 @@ const REASON_TEXT: Record<string, string> = {
   protected_tests_changed: "изменены или удалены тесты других правил — их менять нельзя",
   shared_test_code_changed: "изменён общий код тестов (импорты, помощники, before/after) — его менять нельзя, новый добавлять можно",
   tests_unreadable: "файл тестов не разбирается как JavaScript-модуль",
+  tests_not_separate: "тесты запускают приложение сами — бери адрес приложения из CLAWDESK_APP_URL, как в checks.test.mjs, чтобы панель запускала его отдельно",
 };
 
 function findingsMessage(task: string, rule: Rule, check: ProjectTaskCheckDto | null): string {

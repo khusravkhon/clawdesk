@@ -401,7 +401,7 @@ export const api = {
     createProjectTask: (id: string, body: CreateProjectTaskRequest) => post<ProjectTaskDto>(`/api/company/projects/${encodeURIComponent(id)}/tasks`, body),
     ruleImpact: (id: string, ruleId: string, version: number) => request<RuleChangeImpactDto>(`/api/company/projects/${encodeURIComponent(id)}/rules/${encodeURIComponent(ruleId)}/impact?version=${version}`),
     acceptProjectTask: (id: string, taskId: string, body: AcceptProjectTaskRequest) => post<ProjectTaskDto>(`/api/company/projects/${encodeURIComponent(id)}/tasks/${encodeURIComponent(taskId)}/accept`, body),
-    projectTaskAction: (id: string, taskId: string, action: "check" | "resend" | "cancel" | "rollback", body: ProjectTaskActionRequest) => post<ProjectTaskDto>(`/api/company/projects/${encodeURIComponent(id)}/tasks/${encodeURIComponent(taskId)}/${action}`, body),
+    projectTaskAction: (id: string, taskId: string, action: "check" | "resend" | "cancel" | "rollback" | "review" | "review-collect", body: ProjectTaskActionRequest) => post<ProjectTaskDto>(`/api/company/projects/${encodeURIComponent(id)}/tasks/${encodeURIComponent(taskId)}/${action}`, body),
     returnProjectTask: (id: string, taskId: string, body: ReturnProjectTaskRequest) => post<ProjectTaskDto>(`/api/company/projects/${encodeURIComponent(id)}/tasks/${encodeURIComponent(taskId)}/return`, body),
     projectChecks: (id: string) => request<ProjectChecksDto>(`/api/company/projects/${encodeURIComponent(id)}/checks`),
     runProjectChecks: (id: string, body: RunProjectChecksRequest) => post<ProjectCheckRunDto>(`/api/company/projects/${encodeURIComponent(id)}/checks/run`, body),

@@ -45,7 +45,7 @@ export class ProjectChecksService {
       const hashes = files ? testHashes(files, result.tests) : new Map<string, string | null>();
       const id = randomUUID();
       this.deps.db.transaction((tx) => {
-        tx.insert(projectCheckRuns).values({ id, projectId, status: result.status, reason: result.reason, filesFingerprint: result.filesFingerprint, durationMs: Math.max(0, Math.round(result.durationMs)), createdAt: Date.now(), requestId: request.requestId }).run();
+        tx.insert(projectCheckRuns).values({ id, projectId, status: result.status, reason: result.reason, isolation: result.isolation ?? null, filesFingerprint: result.filesFingerprint, durationMs: Math.max(0, Math.round(result.durationMs)), createdAt: Date.now(), requestId: request.requestId }).run();
         for (const test of result.tests) tx.insert(projectCheckResults).values({ runId: id, testId: test.id.slice(0, 1000), file: test.file.slice(0, 200), name: test.name.slice(0, 800), status: test.status, message: test.message.slice(0, 1000), fileHash: test.fileHash, testHash: hashes.get(test.id) ?? null }).onConflictDoNothing().run();
       });
       return this.#runDto(id);
@@ -62,7 +62,7 @@ export class ProjectChecksService {
 function summary(run: typeof projectCheckRuns.$inferSelect, results: (typeof projectCheckResults.$inferSelect)[]): ProjectCheckRunSummaryDto {
   const counts = emptyCounts();
   for (const result of results) counts[result.status]++;
-  return { id: run.id, status: run.status, reason: run.reason, createdAt: run.createdAt, durationMs: run.durationMs, counts };
+  return { id: run.id, status: run.status, reason: run.reason, createdAt: run.createdAt, durationMs: run.durationMs, counts, isolation: run.isolation ?? null };
 }
 const testDto = (row: typeof projectCheckResults.$inferSelect) => ({ id: row.testId, file: row.file, name: row.name, status: row.status, message: row.message, fileHash: row.fileHash });
 

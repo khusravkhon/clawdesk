@@ -1761,7 +1761,7 @@
     "run_blocked": "Environment blocked",
     "history": "Previous runs",
     "failed": "Could not run the checks.",
-    "limits": "A test that fails and then passes on the retry is marked flaky. Tests run in the same sandbox as the app's code: the result relies on that code not forging the checks' output. Available for apps created by the builder.",
+    "limits": "A test that fails and then passes on the retry is marked flaky. When the tests take the app's address from CLAWDESK_APP_URL, the app runs in a separate container for each test file and the tests see only its network. Available for apps created by the builder.",
     "status": {
       "passed": "passed",
       "failed": "failed",
@@ -1780,18 +1780,23 @@
       "checks_busy": "Checks of this project are already running.",
       "workspace_required": "Choose a working folder and create the app files first.",
       "preview_unavailable": "Could not start the check container. Check the local environment."
+    },
+    "isolation": {
+      "separate": "The app ran in its own container and the tests in another, without the app's code: the code could not forge the result.",
+      "shared": "The tests started the app themselves, so its code ran next to the checks and could in theory forge the result. To run them apart, the tests must take the app's address from CLAWDESK_APP_URL, as in the template."
     }
   },
   "projectTasks": {
     "title": "Rule tasks",
     "intro": "The project's executors implement an approved rule through checks: QA writes tests that fail on the current code, the developer makes them pass without touching the tests, and you review the changes and accept them into the app. If the rule is already implemented and you approved a new version, the task becomes a change: QA rewrites this rule's tests, other rules' tests stay as they were. Each works in its own copy; the app itself changes only when you accept.",
     "executors": "Executors",
-    "noExecutors": "No executors yet. Two agents will be created — QA and a developer — with the main agent's model. Each gets access to its own copy of the app only.",
+    "noExecutors": "No executors yet. Three agents will be created — QA, developer and reviewer — with the main agent's model. Each gets access only to its own copy of the app.",
     "assign": "Assign executors",
     "executorsHint": "An agent's answer appears in its chat. When it is done, come back here and press the check button.",
     "roles": {
       "qa": "QA",
-      "developer": "developer"
+      "developer": "developer",
+      "reviewer": "reviewer"
     },
     "newTask": "New task",
     "noApprovedRules": "No approved rules. Approve a rule in “Business rules”.",
@@ -1807,7 +1812,7 @@
     "now": {
       "qa": "{name} is writing tests for the rule. When the agent answers in its chat, press “Check QA's work”.",
       "dev": "{name} is implementing the rule. When the agent answers in its chat, press “Check the developer's work”.",
-      "review": "The work passed the checks. Review the changes and accept them into the app, or return them to the developer with a comment.",
+      "review": "The work passed the checks. Look at the changes and the reviewer's verdict, then accept them into the app or return them to the developer with a comment.",
       "done": "Accepted.",
       "cancelled": "Cancelled."
     },
@@ -1848,7 +1853,7 @@
       "rolled_back": "rolled back"
     },
     "failed": "Could not complete the action.",
-    "limits": "You do the review: there is no reviewer agent yet. A stage ends with your button — the panel does not guess that an agent has finished. Tests run in the same sandbox as the app's code; that is why the developer may not change tests and QA may not change other rules' tests or the existing shared test code, and you see the changes before accepting. A test belongs to a rule if its name starts with the rule's code or it is linked to one of the rule's scenarios. Only the latest accepted task can be rolled back, and only while the app has not changed since. One task per project at a time.",
+    "limits": "Accepting the work is your decision: the reviewer's verdict is advice, but accepting over \"changes requested\" takes a separate tick. Finishing a stage is confirmed with a button — the panel does not guess that an agent is done. The app and the tests run in separate containers when the tests take the app's address from CLAWDESK_APP_URL (as in the template); in older projects the tests start the app themselves, in one isolation with its code, and the card warns about it. The developer may not change tests, and QA may not change other rules' tests or the existing shared test code. A test belongs to a rule if its name starts with the rule's code or it is linked to one of its scenarios. Only the latest accepted task can be rolled back, and only while the app has not changed since. A project has one task at a time.",
     "reasons": {
       "layout": "The work copy has subfolders or links — files must stay flat.",
       "no_changes": "Nothing changed.",
@@ -1863,7 +1868,8 @@
       "run_blocked": "The check run produced no result (environment failure or timeout).",
       "protected_tests_changed": "Tests of other rules were changed or removed — they must stay as they are.",
       "shared_test_code_changed": "Existing shared test code (imports, helpers, before/after) was changed — it affects every test. Adding new shared code is fine, changing existing code is not.",
-      "tests_unreadable": "A test file does not parse as a JavaScript module — the panel cannot compare it test by test."
+      "tests_unreadable": "A test file does not parse as a JavaScript module — the panel cannot compare it test by test.",
+      "tests_not_separate": "the tests start the app themselves — the panel could no longer run it apart from the tests. Tests must take the app's address from CLAWDESK_APP_URL, like checks.test.mjs"
     },
     "errors": {
       "executors_required": "Assign the project's executors first.",
@@ -1881,7 +1887,10 @@
       "work_layout": "The work copy is damaged.",
       "rule_outdated": "The rule has a newer version. A task can be started and accepted only on the current version.",
       "data_confirmation_required": "Confirm that the app's existing data fits the new rule version.",
-      "rollback_unavailable": "Only the latest accepted task can be rolled back, and only when the project has no unfinished task."
+      "rollback_unavailable": "Only the latest accepted task can be rolled back, and only when the project has no unfinished task.",
+      "review_not_requested": "The reviewer has not been asked about these changes yet.",
+      "review_not_written": "The reviewer has not written REVIEW.md yet. Wait for its answer in the chat.",
+      "review_changes_requested": "The reviewer asks for changes. Return the task to the developer or tick that you accept despite the review."
     },
     "createChange": "Start a change task",
     "changeTag": "change: version {from} → {to}",
@@ -1915,7 +1924,25 @@
     },
     "confirmData": "I checked that the data the app already has fits the new rule version (the panel does not migrate data).",
     "rollback": "Restore the previous version",
-    "rollbackConfirm": "The app returns to the files it had before task {task}. The app's data does not change. Continue?"
+    "rollbackConfirm": "The app returns to the files it had before task {task}. The app's data does not change. Continue?",
+    "noReviewer": "This project has no reviewer yet. It reads the developer's changes before you and writes a review; QA and the developer stay as they are.",
+    "addReviewer": "Add a reviewer",
+    "reviewer": {
+      "title": "Reviewer's verdict ({name})",
+      "notAsked": "The reviewer has not been asked about these changes yet.",
+      "waiting": "{name} is reading the changes. When the agent answers in the chat, press \"Get the reviewer's verdict\".",
+      "verdict": {
+        "approve": "The reviewer approved the changes",
+        "changes": "The reviewer asks for changes",
+        "unclear": "Verdict not recognised — read the review"
+      },
+      "changedFiles": "The reviewer changed files in its copy: {files}. These edits never reach the app.",
+      "collect": "Get the reviewer's verdict",
+      "ask": "Ask the reviewer",
+      "askAgain": "Ask again",
+      "useComment": "Use the remarks as the comment",
+      "override": "I accept despite the reviewer's verdict"
+    }
   },
   "requests": {
     "title": "Requests",

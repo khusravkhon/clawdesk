@@ -5,7 +5,11 @@ import { spawn } from "node:child_process";
 import { ProjectFolderError } from "./clawdesk-project-folders.mjs";
 import { withDirectoryWithin, withChildDirectoryWithin } from "./clawdesk-file-sync.mjs";
 import { resetGateway } from "./clawdesk-backup.mjs";
-import { CHECKS_BOOTSTRAP, CHECK_ARGUMENT_LIMIT, CHECK_FILE, CHECK_PAYLOAD_LIMIT, filesFingerprint, parseCheckOutput, selectCheckFiles } from "./clawdesk-project-checks.mjs";
+import { APP_BOOTSTRAP, CHECKS_BOOTSTRAP, attemptOf, CHECK_ARGUMENT_LIMIT, CHECK_FILE, CHECK_PAYLOAD_LIMIT, checkIsolation, filesFingerprint, joinRuns, parseCheckOutput, selectCheckFiles } from "./clawdesk-project-checks.mjs";
+/** Hardening shared by every checks container: no network of its own, read-only root, no capabilities, a fixed user. */
+const HARDENED = ["--read-only", "--cap-drop", "ALL", "--security-opt", "no-new-privileges", "--user", "1000:1000"];
+/** The whole separate run (all files, both attempts) stays within this, like one shared run. */
+const SEPARATE_BUDGET_MS = 150000;
 const hash = value => createHash("sha256").update(value).digest("hex");
 export const PROJECT_TEMPLATE_FILES = ["server.mjs", "index.html", "checks.test.mjs", "package.json", "README.md", "PROJECT-REQUIREMENTS.json", "LICENSE", ".clawdesk-build.json"];
 /** Files a build record covers: projects created before a template version keep their own list. */
@@ -315,9 +319,10 @@ export class ProjectBuilder {
         });
     }
     /**
-     * Runs the project's own checks (node --test) in a throwaway container: no network, read-only root,
+     * Runs the project's own checks (node --test) in throwaway containers: no network, read-only root,
      * a copy of the current files (not the template's: changed code is what checks are for). Only projects
      * created by the builder qualify. Files are read under the folder lock; the run itself is outside it.
+     * Where the tests allow it the app and the tests run in separate containers (see checkIsolation).
      */
     async checks(id, request = {}) {
         // Files given by the panel (an executor's work copy) or the app's own; either way the project must qualify.
@@ -329,19 +334,57 @@ export class ProjectBuilder {
         if (!/^(sha256:)?[a-f0-9]{64}$/.test(gateway.Image))
             fail("preview_image_unavailable");
         const install = gateway.Config.Labels["com.docker.compose.project"];
-        const name = `clawdesk-checks-${hash(install).slice(0, 12)}-${this.#key(id)}`;
+        const name = `clawdesk-checks-${hash(install).slice(0, 12)}-${this.#key(id)}`, appName = `clawdesk-checks-app-${hash(install).slice(0, 12)}-${this.#key(id)}`;
         await this.#removeChecks(name, install);
+        await this.#removeChecks(appName, install);
         const nonce = randomUUID().replace(/-/g, "");
         const started = Date.now();
-        let stdout;
+        const isolation = checkIsolation(files);
+        const labels = ["--label", `clawdesk.checks.install=${install}`, "--label", `clawdesk.checks.project=${this.#key(id)}`];
+        const runner = (network, extra, args, timeoutMs) => this.command(["run", "--rm", "--pull=never", "--name", name, ...labels, "--network", network, ...HARDENED, "--pids-limit", "128", "--memory", "256m", "--cpus", "1", "--tmpfs", "/project:rw,noexec,nosuid,size=4194304,uid=1000,gid=1000", "--tmpfs", "/runner:rw,noexec,nosuid,size=1048576,uid=1000,gid=1000", "--tmpfs", "/tmp:rw,noexec,nosuid,size=33554432", ...extra, "--workdir", "/project", "--entrypoint", "node", gateway.Image, "--input-type=module", "-e", CHECKS_BOOTSTRAP, ...args], { timeoutMs });
+        const result = run => ({ ...run, isolation: isolation.mode, durationMs: Date.now() - started, filesFingerprint: filesFingerprint(files) });
+        const blocked = reason => result({ status: "blocked", reason, tests: [] });
+        if (isolation.mode === "shared") {
+            let stdout;
+            try {
+                stdout = await runner("none", [], [payload, nonce], 120000);
+            }
+            catch {
+                await this.#removeChecks(name, install).catch(() => { });
+                return blocked("runner_failed");
+            }
+            return result(parseCheckOutput(stdout, nonce, files));
+        }
+        const appPayload = Buffer.from(JSON.stringify(isolation.app)).toString("base64"), testPayload = Buffer.from(JSON.stringify(isolation.tests)).toString("base64");
+        const runs = [];
         try {
-            stdout = await this.command(["run", "--rm", "--pull=never", "--name", name, "--label", `clawdesk.checks.install=${install}`, "--label", `clawdesk.checks.project=${this.#key(id)}`, "--network", "none", "--read-only", "--cap-drop", "ALL", "--security-opt", "no-new-privileges", "--pids-limit", "128", "--memory", "256m", "--cpus", "1", "--user", "1000:1000", "--tmpfs", "/project:rw,noexec,nosuid,size=4194304,uid=1000,gid=1000", "--tmpfs", "/runner:rw,noexec,nosuid,size=1048576,uid=1000,gid=1000", "--tmpfs", "/tmp:rw,noexec,nosuid,size=33554432", "--workdir", "/project", "--entrypoint", "node", gateway.Image, "--input-type=module", "-e", CHECKS_BOOTSTRAP, payload, nonce], { timeoutMs: 120000 });
+            for (const attempt of [1, 2]) {
+                let failed = false;
+                for (const file of isolation.testFiles) {
+                    if (Date.now() - started > SEPARATE_BUDGET_MS)
+                        return blocked("timeout");
+                    // A fresh app per test file: its own container, sharing only its loopback network with the tests.
+                    await this.command(["run", "-d", "--pull=never", "--name", appName, ...labels, "--label", "clawdesk.checks.role=app", "--network", "none", ...HARDENED, "--pids-limit", "64", "--memory", "192m", "--cpus", "0.5", "--tmpfs", "/data:rw,noexec,nosuid,size=16777216,uid=1000,gid=1000", "--tmpfs", "/tmp:rw,noexec,nosuid,size=8388608", "--tmpfs", "/project:rw,noexec,nosuid,size=4194304,uid=1000,gid=1000", "--env", "DATA_FILE=/data/tasks.sqlite", "--env", "PORT=3000", "--workdir", "/project", "--entrypoint", "node", gateway.Image, "--input-type=module", "-e", APP_BOOTSTRAP, appPayload]);
+                    try {
+                        const stdout = await runner(`container:${appName}`, ["--env", "CLAWDESK_APP_URL=http://127.0.0.1:3000"], [testPayload, nonce, String(attempt), file], 60000);
+                        runs.push({ stdout });
+                        if (attemptOf(stdout, nonce)?.code !== 0)
+                            failed = true;
+                    }
+                    finally {
+                        await this.#removeChecks(appName, install).catch(() => { });
+                    }
+                }
+                if (!failed)
+                    break;
+            }
         }
         catch {
             await this.#removeChecks(name, install).catch(() => { });
-            return { status: "blocked", reason: "runner_failed", tests: [], durationMs: Date.now() - started, filesFingerprint: filesFingerprint(files) };
+            await this.#removeChecks(appName, install).catch(() => { });
+            return blocked("runner_failed");
         }
-        return { ...parseCheckOutput(stdout, nonce, files), durationMs: Date.now() - started, filesFingerprint: filesFingerprint(files) };
+        return result(parseCheckOutput(joinRuns(runs, nonce), nonce, files));
     }
     /** The app's current flat files (see selectCheckFiles), for checks, executors' work copies and reviews. */
     appFiles(id) {

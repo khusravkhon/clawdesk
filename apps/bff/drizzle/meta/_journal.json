@@ -169,6 +169,13 @@
       "when": 1792353000000,
       "tag": "0023_work_items",
       "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "6",
+      "when": 1792354000000,
+      "tag": "0024_project_reviewer",
+      "breakpoints": true
     }
   ]
 }

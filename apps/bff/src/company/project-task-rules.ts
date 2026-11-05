@@ -62,6 +62,15 @@ export function lineDiff(before: string, after: string): string | null {
   return lines.join("\n");
 }
 
+/**
+ * Whether the panel can run these files' tests apart from the app (mirrors checkIsolation in the bridge): the
+ * app has server.mjs and every test file reads the app URL the panel gives it, at most 10 test files.
+ */
+export function separateCapable(files: Record<string, string>): boolean {
+  const tests = Object.keys(files).filter(isTestFile);
+  return Object.hasOwn(files, "server.mjs") && tests.length > 0 && tests.length <= 10 && tests.every(name => files[name]!.includes("CLAWDESK_APP_URL"));
+}
+
 type StageInput = { base: Record<string, string>; next: Record<string, string>; ignored: string[]; run: ProjectChecksRunResult; scope: RuleScope | string };
 export type StageVerdict = { ok: boolean; reasons: ProjectTaskReason[]; changes: ProjectFileChange[]; ruleTests: ProjectCheckTestDto[]; otherProblems: ProjectCheckTestDto[]; testChanges: ProjectTestChangeDto[]; warnings: ProjectTaskWarning[] };
 
@@ -84,6 +93,8 @@ export function judgeQa({ base, next, ignored, run, scope: given }: StageInput):
   if (tests.unreadable.length) reasons.add("tests_unreadable");
   if (tests.tests.some(change => !change.rule && change.change !== "added")) reasons.add("protected_tests_changed");
   if (tests.sharedChanged.length) reasons.add("shared_test_code_changed");
+  // QA's tests must keep the app in its own container where the project's tests already allowed it.
+  if (run.isolation === "shared" && separateCapable(base)) reasons.add("tests_not_separate");
   const ruleTests = run.status === "completed" ? ruleTestsOf(run.tests, scope) : [];
   const otherProblems = run.status === "completed" ? run.tests.filter(test => !ruleTests.includes(test) && test.status !== "passed" && test.status !== "skipped") : [];
   if (run.status !== "completed") reasons.add("run_blocked");
