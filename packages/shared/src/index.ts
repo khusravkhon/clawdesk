@@ -21,6 +21,7 @@ export * from "./project-tasks.js";
 export * from "./work-requests.js";
 export * from "./work-items.js";
 export * from "./project-github.js";
+export * from "./activity.js";
 export * from "./project-acceptance.js";
 export * from "./audit.js";
 export * from "./usage.js";

@@ -2199,5 +2199,116 @@
     "importUrl": "Repository address",
     "importFolder": "New folder name",
     "import": "Clone and connect"
+  },
+  "activity": {
+    "title": "Activity",
+    "office": "Interactive office",
+    "scope": "What each company agent is doing now. “Working” only while the Gateway reported a run; waiting and blocks come from requests and tasks. Without events an agent is not shown as working, and a run with no news for 10 minutes stops counting.",
+    "noGateway": "No connection to the Gateway: states are unknown and not shown as work.",
+    "notLive": "The update stream is reconnecting; the last snapshot is shown.",
+    "counts": {
+      "working": "working: {n}",
+      "idle": "free: {n}",
+      "waiting": "waiting: {n}",
+      "blocked": "blocked: {n}",
+      "error": "errors: {n}",
+      "offline": "offline: {n}"
+    },
+    "filter": "Which states to show",
+    "filters": {
+      "all": "All",
+      "working": "Working",
+      "waiting": "Waiting",
+      "problems": "Problems"
+    },
+    "search": "Search by name, team, department",
+    "empty": "Nobody matches the filter.",
+    "columns": {
+      "agent": "Agent",
+      "state": "State",
+      "detail": "What and why",
+      "last": "Last event"
+    },
+    "state": {
+      "idle": "free",
+      "queued": "queued",
+      "working": "working",
+      "waiting_for_agent": "waiting for a colleague",
+      "waiting_for_owner": "waiting for the owner",
+      "blocked": "blocked",
+      "error": "error",
+      "offline": "offline",
+      "unknown": "unknown"
+    },
+    "roles": {
+      "main": "main agent",
+      "specialist": "agent",
+      "team_member": "team member"
+    },
+    "positions": {
+      "developer": "developer",
+      "reviewer": "reviewer",
+      "pm": "PM",
+      "qa": "QA",
+      "manager": "manager",
+      "project-qa": "project QA",
+      "project-developer": "project developer"
+    },
+    "action": "tool: {tool}",
+    "inbox": "waiting for its answer: {n}",
+    "limits": "States come from Gateway events and the panel's database; the list polls no agents and runs no models. An exact action (“Running a command”) is shown only from a tool the run reported."
+  },
+  "office": {
+    "title": "Interactive office",
+    "toList": "List",
+    "demoTitle": "Demonstration — not monitoring",
+    "demo": "Test data to check the design; it is not connected to your agents.",
+    "demoSwitch": "Demo data",
+    "counts": {
+      "working": "working: {n}",
+      "idle": "free: {n}",
+      "waiting": "waiting for decisions: {n}",
+      "problems": "errors and offline: {n}"
+    },
+    "scope": "Whom to show",
+    "scopeAll": "Whole company",
+    "department": "Department",
+    "team": "Team",
+    "motion": "Motion",
+    "zoomIn": "Larger",
+    "zoomOut": "Smaller",
+    "tooMany": "{n} agents in this scope; the scene holds {max}. Choose a department or team.",
+    "failed": "The scene could not be drawn in this browser. All data is in the list:",
+    "narrow": "On a small screen the list comes first. You can open the office and pan and zoom the scene.",
+    "open": "Open the office",
+    "empty": "No agents in this scope. Add an agent or choose another scope.",
+    "hint": "Click a character to open its card; drag to move the scene.",
+    "close": "Close the card",
+    "task": "Task",
+    "request": "Request",
+    "chat": "Open chat",
+    "people": "Characters in the scene",
+    "actions": {
+      "task": "Working on a task",
+      "read": "Reading",
+      "write": "Writing a file",
+      "exec": "Running a command",
+      "web": "Searching the web",
+      "request": "Writing a request",
+      "report": "Handing in a result",
+      "tool": "Using a tool"
+    },
+    "short": {
+      "idle": "Free",
+      "queued": "Queued",
+      "waiting_for_agent": "Waiting for a colleague",
+      "waiting_for_owner": "Waiting for a decision",
+      "blocked": "Blocked",
+      "error": "Error",
+      "offline": "Offline",
+      "unknown": "Unknown",
+      "working": "Working on a task"
+    },
+    "limits": "The scene is drawn in the browser and spends no tokens; it polls no agents and updates from the same source as the list. Motion turns off with the switch and with the reduce-motion setting. Characters and furniture are drawn by the panel's code."
   }
 }

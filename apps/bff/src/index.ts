@@ -31,6 +31,7 @@ import { liveAgentIds, repairAgentCommunication } from "./provision/agent-commun
 import { WorkRequestsService } from "./company/work-requests-service.js";
 import { AccessService } from "./company/access-service.js";
 import { WorkItemsService } from "./company/work-items-service.js";
+import { ActivityService, RunTracker } from "./company/activity-service.js";
 import { getConfig } from "./gateway/config-patch.js";
 import { syncRequestTools } from "./company/work-requests-config.js";
 import { mainSessionKey } from "./chat/chat-service.js";
@@ -85,6 +86,21 @@ const workItems = new WorkItemsService({
   db, companyMode: () => space.mode() === "company",
   send: async (agentId, message, idempotencyKey) => { await gateway.request("chat.send", { sessionKey: mainSessionKey(agentId), agentId, message, idempotencyKey }); },
 });
+// Stage 9: runs from the Gateway's events plus tasks and requests → one state per agent (list and office).
+const runTracker = new RunTracker();
+const activityListeners = new Set<() => void>();
+gateway.onEvent((event) => { if (runTracker.handle(event as { event: string; payload?: unknown })) for (const listener of activityListeners) listener(); });
+let liveCache: { at: number; ids: Set<string> } | null = null;
+const activity = new ActivityService({
+  db, tracker: runTracker, gatewayConnected: () => gateway.status.state === "connected", generation: () => gateway.generation,
+  // The agent list changes rarely; asking the Gateway on every snapshot would cost an RPC per update.
+  liveAgents: async () => {
+    if (liveCache && Date.now() - liveCache.at < 15_000) return liveCache.ids;
+    liveCache = { at: Date.now(), ids: await liveAgentIds(gateway) };
+    return liveCache.ids;
+  },
+});
+const onActivity = (listener: () => void) => { activityListeners.add(listener); return () => activityListeners.delete(listener); };
 // Stage 6: requests up the company structure, filed by agents through the clawdesk-requests plugin.
 const requests = new WorkRequestsService({
   db, bridge, companyMode: () => space.mode() === "company", liveAgents: () => liveAgentIds(gateway),
@@ -93,7 +109,7 @@ const requests = new WorkRequestsService({
   send: async (agentId, message, idempotencyKey) => { await gateway.request("chat.send", { sessionKey: mainSessionKey(agentId), agentId, message, idempotencyKey }); },
 });
 
-const app = await buildApp({ logger, gateway, db, aiSetup, signIn, telegram, freeModels, sources, skills, mcp, approvals, assistant, auth, backups, bridge, space, teams, audit, video, videoDir: config.videoDir, library, budget, notes, reminders, requests, access, workItems, sandboxEnabled: config.sandboxEnabled, webDist: config.webDist, trustProxy: config.trustProxy });
+const app = await buildApp({ logger, gateway, db, aiSetup, signIn, telegram, freeModels, sources, skills, mcp, approvals, assistant, auth, backups, bridge, space, teams, audit, video, videoDir: config.videoDir, library, budget, notes, reminders, requests, access, workItems, activity, onActivity, sandboxEnabled: config.sandboxEnabled, webDist: config.webDist, trustProxy: config.trustProxy });
 
 gateway.start();
 await app.listen({ host: config.host, port: config.port });

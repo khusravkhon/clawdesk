@@ -54,6 +54,8 @@ import { registerSpaceRoutes } from "./routes/space.js";
 import { registerTeamRoutes } from "./routes/teams.js";
 import { registerWorkRequestRoutes } from "./routes/work-requests.js";
 import { registerWorkItemRoutes } from "./routes/work-items.js";
+import { registerActivityRoutes } from "./routes/activity.js";
+import type { ActivityService } from "./company/activity-service.js";
 import type { WorkItemsService } from "./company/work-items-service.js";
 import type { WorkRequestsService } from "./company/work-requests-service.js";
 import type { AccessService } from "./company/access-service.js";
@@ -100,6 +102,9 @@ export type AppDeps = {
   access?: AccessService;
   /** Stage 6, part 2: company tasks. */
   workItems?: WorkItemsService;
+  /** Stage 9: agents' activity for the work list and the office, and a way to hear about changes. */
+  activity?: ActivityService;
+  onActivity?: (listener: () => void) => () => void;
   audit: AuditService;
   webDist: string | undefined;
   /** Fastify trustProxy: client address and HTTPS come from the proxy's headers (Caddy). */
@@ -158,6 +163,7 @@ export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
   registerTeamRoutes(app, deps);
   registerWorkRequestRoutes(app, deps);
   registerWorkItemRoutes(app, deps);
+  registerActivityRoutes(app, deps);
   registerCompanyRoutes(app, new CompanyService(deps));
   registerAuditRoutes(app, deps);
   registerUsageRoutes(app, { usage: new UsageService(deps) });
