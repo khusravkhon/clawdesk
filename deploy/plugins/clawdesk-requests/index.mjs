@@ -121,6 +121,8 @@ export function registerRequests(api, { spoolDir = path.join(process.env.OPENCLA
 
   api.registerTool(tool(REPORT, "Report a company task", "Report the result of a company task WI-… assigned to you: status done with what was done and where to see it (it goes to the owner's acceptance), or failed with the reason. Done without a result is not accepted. Only the task's executor can report.", reportParameters, "task_report"), { names: [REPORT], optional: true });
 
+  registerOwnerCommand(api, { spoolDir, now });
+
   // Stage 8: the owner's buttons on a request in Telegram ("cdreq:<token>"). OpenClaw hands the press to
   // this handler, never to a model, with the pressing user's numeric ID. The handler only files it; the
   // panel checks that the owner pressed it and that the token is unused, current and for an open request.
@@ -146,6 +148,38 @@ export function registerRequests(api, { spoolDir = path.join(process.env.OPENCLA
     });
   }
 }
+
+/**
+ * Stage 8: the owner answers a request with text in Telegram — "/req REQ-003 ответ <текст>", "отказ <причина>"
+ * or "уточни <вопрос>" (answer / deny / clarify also work). A plugin command bypasses the model; it files the
+ * command with the sender's numeric ID, and the panel acts only if that is the owner.
+ */
+export function registerOwnerCommand(api, { spoolDir, now }) {
+  if (typeof api.registerCommand !== "function") return;
+  api.registerCommand({
+    name: "req",
+    description: "Answer a company request: /req REQ-003 ответ|отказ|уточни <текст>",
+    acceptsArgs: true,
+    handler: async (ctx) => {
+      if (ctx?.channel !== "telegram") return { text: "Команда работает только в Telegram." };
+      const senderId = typeof ctx.senderId === "string" ? ctx.senderId.trim() : String(ctx.senderId ?? "");
+      const match = /^\s*(REQ-\d{1,6})\s+(\S+)\s+([\s\S]{1,4000})$/iu.exec(typeof ctx.args === "string" ? ctx.args : "");
+      const action = match ? OWNER_ACTIONS[match[2].toLocaleLowerCase()] : undefined;
+      if (!/^[0-9]{1,20}$/.test(senderId) || !match || !action || !match[3].trim()) return { text: "Формат: /req REQ-003 ответ <текст> (или отказ <причина>, уточни <вопрос>)." };
+      const requestId = match[1].toUpperCase(), text = match[3].trim();
+      const id = createHash("sha256").update(JSON.stringify(["owner_text", senderId, requestId, action, text, Math.floor(now() / 60_000)])).digest("hex").slice(0, 32);
+      try {
+        await fs.mkdir(spoolDir, { recursive: true, mode: 0o700 });
+        if ((await fs.readdir(spoolDir)).length >= MAX_SPOOL) return { text: "Очередь панели переполнена, попробуйте позже." };
+        await fs.writeFile(path.join(spoolDir, `${id}.json`), JSON.stringify({ id, type: "owner_text", agentId: "telegram", senderId, requestId, action, text, at: now() }), { flag: "wx", mode: 0o600 });
+      } catch (error) {
+        if (error?.code !== "EEXIST") return { text: "Панель сейчас недоступна, ответ не принят." };
+      }
+      return { text: `Принято: ${requestId}. Панель проверит и пришлёт итог.` };
+    },
+  });
+}
+const OWNER_ACTIONS = { "ответ": "answer", answer: "answer", "отказ": "deny", deny: "deny", "уточни": "clarify", "уточнить": "clarify", clarify: "clarify" };
 
 export const BUTTONS = "cdreq";
 const TOKEN = /^[A-Za-z0-9_-]{16,40}$/;

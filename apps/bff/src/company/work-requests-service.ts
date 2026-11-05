@@ -46,6 +46,8 @@ export type RequestsBridge = { requestsSpool(): Promise<{ entries: SpoolEntry[];
 
 export const REQUEST_TTL_MS = 24 * 60 * 60_000;
 export const MAX_HOPS = 4;
+/** The owner gets one reminder this long before the deadline (stage 8). */
+export const REMIND_BEFORE_MS = 4 * 60 * 60_000;
 const MAX_ACTIVE_PER_AGENT = 5;
 const MAX_ATTEMPTS = 8;
 const AGENT = /^[a-z0-9][a-z0-9_-]{0,79}$/;
@@ -144,9 +146,9 @@ export class WorkRequestsService {
     for (const entry of entries) {
       const id = typeof entry.id === "string" && /^[a-f0-9]{32}$/.test(entry.id) ? entry.id : null;
       if (!id) continue;
-      if (entry.type === "owner_button") {
+      if (entry.type === "owner_button" || entry.type === "owner_text") {
         if (!this.deps.db.select().from(workRequestSpool).where(eq(workRequestSpool.id, id)).get()) {
-          const outcome = await this.#button(entry);
+          const outcome = entry.type === "owner_button" ? await this.#button(entry) : this.#ownerText(id, entry);
           this.deps.db.insert(workRequestSpool).values({ id, agentId: "telegram", outcome, notifyText: null, createdAt: this.#now() }).onConflictDoNothing().run();
         }
         done.push(id);
@@ -357,6 +359,30 @@ export class WorkRequestsService {
    * A press on the owner's Telegram button: acts only for the owner's numeric ID, an unused token and a
    * request still open; the token is the idempotency key, so a repeated press never acts twice.
    */
+  /**
+   * The owner's "/req REQ-003 ответ|отказ|уточни <текст>" in Telegram: acts only for the owner's numeric ID and
+   * a request still open; the spool entry is the idempotency key. The owner always gets the outcome there.
+   */
+  #ownerText(spoolId: string, entry: SpoolEntry): string {
+    const { db } = this.deps;
+    const owner = this.deps.telegram?.ownerUserId();
+    if (!owner || entry.senderId !== owner) return "not_owner";
+    const match = typeof entry.requestId === "string" ? /^REQ-(\d{1,6})$/.exec(entry.requestId) : null;
+    const action = entry.action === "answer" || entry.action === "deny" || entry.action === "clarify" ? entry.action : null;
+    const text = str(entry.text, 4000);
+    const row = match ? db.select().from(workRequests).where(eq(workRequests.number, Number(match[1]))).get() : undefined;
+    const tell = (id: string, message: string) => db.transaction((tx) => { this.#event(tx, id, "notified", "panel", message, { owner: true, text: message }); });
+    if (!row || !action || !text) return "invalid";
+    const label = code(row.number);
+    if (row.status !== "open" && row.status !== "clarify") { tell(row.id, `${label}: уже решено (${row.status}); ответ не нужен.`); return `stale:${label}`; }
+    const told = !!db.select({ id: workRequestEvents.id }).from(workRequestEvents).where(and(eq(workRequestEvents.requestId, row.id), eq(workRequestEvents.notifyOwner, true))).get();
+    try { this.ownerAct(row.id, { requestId: `telegram-text:${spoolId}`, revision: row.revision, action, text }); }
+    catch (error) { tell(row.id, `${label}: не выполнено (${(error as { code?: string }).code ?? "error"}); посмотрите в панели.`); return `failed:${label}`; }
+    // A clarification does not close the request, and a request decided before it reached the owner had no message yet.
+    if (action === "clarify" || !told) tell(row.id, `${label}: ${action === "clarify" ? "вопрос отправлен автору" : "принято"}.`);
+    return `${action}:${label}`;
+  }
+
   async #button(entry: SpoolEntry): Promise<string> {
     const { db } = this.deps;
     const token = typeof entry.token === "string" ? entry.token : "";
@@ -393,6 +419,13 @@ export class WorkRequestsService {
   expire(): number {
     const now = this.#now();
     return this.deps.db.transaction((tx) => {
+      // One reminder to the owner REMIND_BEFORE_MS before the deadline, only for a request still waiting for the owner.
+      for (const row of tx.select().from(workRequests).where(and(eq(workRequests.status, "open"), lt(workRequests.deadlineAt, now + REMIND_BEFORE_MS))).all()) {
+        if (row.deadlineAt < now || row.route[row.level]?.agentId !== null) continue;
+        const events = tx.select().from(workRequestEvents).where(and(eq(workRequestEvents.requestId, row.id), eq(workRequestEvents.notifyOwner, true))).all();
+        if (!events.length || events.some((event) => event.actor === "reminder")) continue;
+        this.#event(tx, row.id, "notified", "reminder", "напоминание", { owner: true, text: `Напоминание: ${code(row.number)} («${row.subject}») ждёт вашего решения, срок — ${new Date(row.deadlineAt).toISOString().slice(0, 16).replace("T", " ")} UTC. /req ${code(row.number)} ответ <текст> или кнопки в первом сообщении.` });
+      }
       const overdue = tx.select().from(workRequests).where(and(inArray(workRequests.status, ["open", "clarify"]), lt(workRequests.deadlineAt, now))).all();
       for (const row of overdue) {
         this.#set(tx, row, { status: "expired" });
@@ -451,7 +484,8 @@ function ownerMessage(label: string, from: string, row: Row, passed: string[]): 
     row.taskRef ? `Задача: ${row.taskRef}` : null,
     passed.length ? `Прошло: ${passed.join(" → ")} → вы` : null,
     `Срок: ${new Date(row.deadlineAt).toISOString().slice(0, 16).replace("T", " ")} UTC`,
-    row.kind === "access" ? "Кнопки ниже — выдать (панель проверит доступ) или отказать." : "Ответить текстом можно в панели: «Компания → Обращения».",
+    row.kind === "access" ? "Кнопки ниже — выдать (панель проверит доступ) или отказать." : null,
+    `Ответить текстом: /req ${label} ответ <текст> (или отказ <причина>, уточни <вопрос>), либо в панели «Компания → Обращения».`,
   ].filter((line): line is string => typeof line === "string").join("\n");
 }
 

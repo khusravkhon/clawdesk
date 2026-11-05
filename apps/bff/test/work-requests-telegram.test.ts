@@ -3,7 +3,7 @@ import os from "node:os";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { WorkRequestsService } from "../src/company/work-requests-service.js";
+import { REMIND_BEFORE_MS, REQUEST_TTL_MS, WorkRequestsService } from "../src/company/work-requests-service.js";
 import { openDb, type Db } from "../src/db/client.js";
 import { agents } from "../src/db/schema.js";
 
@@ -12,6 +12,7 @@ import { agents } from "../src/db/schema.js";
 
 describe("company requests in the owner's Telegram", () => {
   let root: string, db: Db, close: () => void, service: WorkRequestsService;
+  let clock = 1_000;
   let spool: Record<string, unknown>[], toOwner: { text: string; buttons: { label: string; data: string }[]; key: string }[], granted: string[], owner: string | null, n: number;
   const add = (entry: Record<string, unknown>) => { const id = (++n).toString(16).padStart(32, "0"); spool.push({ id, ...entry }); return id; };
   const press = (data: string, senderId = "4242") => add({ type: "owner_button", agentId: "telegram", token: data.slice("cdreq:".length), senderId, accountId: "default" });
@@ -19,10 +20,10 @@ describe("company requests in the owner's Telegram", () => {
   beforeEach(() => {
     root = fs.mkdtempSync(path.join(os.tmpdir(), "clawdesk-requests-tg-"));
     ({ db, close } = openDb(path.join(root, "panel.sqlite")));
-    spool = []; toOwner = []; granted = []; owner = "4242"; n = 0;
+    spool = []; toOwner = []; granted = []; owner = "4242"; n = 0; clock = 1_000;
     db.insert(agents).values({ id: "analyst", role: "specialist", displayName: "Аналитик" }).run();
     service = new WorkRequestsService({
-      db, companyMode: () => true, liveAgents: async () => new Set(["main", "analyst"]),
+      db, companyMode: () => true, now: () => clock, liveAgents: async () => new Set(["main", "analyst"]),
       bridge: { requestsSpool: async () => ({ entries: [...spool], rejected: [] }), requestsAck: async (ids) => { spool = spool.filter((item) => !ids.includes(item.id as string)); } },
       send: async () => undefined,
       telegram: { ownerUserId: () => owner, sendToOwnerWithButtons: async (text, buttons, key) => { toOwner.push({ text, buttons, key }); } },
@@ -96,5 +97,39 @@ describe("company requests in the owner's Telegram", () => {
     await service.tick();
     expect(service.list().requests[0]).toMatchObject({ status: "denied", answer: { text: "Отказано владельцем в Telegram." } });
     expect(granted).toEqual([]);
+  });
+
+  it("the owner answers with /req text from Telegram; a stranger's command does nothing", async () => {
+    await toTheOwner("question");
+    expect(toOwner[0]!.text).toContain("/req REQ-001 ответ <текст>");
+    add({ type: "owner_text", agentId: "telegram", senderId: "999", requestId: "REQ-001", action: "answer", text: "чужой ответ" });
+    await service.tick();
+    expect(service.list().requests[0]!.status).toBe("open");
+    add({ type: "owner_text", agentId: "telegram", senderId: "4242", requestId: "REQ-001", action: "clarify", text: "За какой месяц?" });
+    await service.tick();
+    expect(service.list().requests[0]!.status).toBe("clarify");
+    expect(toOwner.at(-1)!.text).toBe("REQ-001: вопрос отправлен автору.");
+    add({ type: "owner_text", agentId: "telegram", senderId: "4242", requestId: "REQ-001", action: "answer", text: "Отчёт в папке Sales" });
+    await service.tick();
+    expect(service.list().requests[0]).toMatchObject({ status: "answered", answer: { by: "owner", text: "Отчёт в папке Sales" } });
+    expect(toOwner.at(-1)!.text).toBe("REQ-001 («Финансы»): ответил Владелец: Отчёт в папке Sales");
+    add({ type: "owner_text", agentId: "telegram", senderId: "4242", requestId: "REQ-001", action: "deny", text: "поздно" });
+    await service.tick();
+    expect(toOwner.at(-1)!.text).toBe("REQ-001: уже решено (answered); ответ не нужен.");
+  });
+
+  it("reminds the owner once shortly before the deadline", async () => {
+    await toTheOwner("question");
+    const before = toOwner.length;
+    clock = 1_000 + REQUEST_TTL_MS - REMIND_BEFORE_MS - 1;
+    await service.tick();
+    expect(toOwner).toHaveLength(before);
+    clock += 2;
+    await service.tick();
+    await service.tick();
+    expect(toOwner.slice(before).map((message) => message.text.slice(0, 26))).toEqual(["Напоминание: REQ-001 («Фин"]);
+    clock = 1_000 + REQUEST_TTL_MS + 1;
+    await service.tick();
+    expect(toOwner.at(-1)!.text).toContain("срок истёк без ответа");
   });
 });

@@ -112,3 +112,22 @@ test("an executor's task report is filed once with its identity; malformed repor
   const [filed] = await f.spool();
   assert.deepEqual([filed.type, filed.agentId, filed.taskId, filed.status], ["task_report", "dev", "WI-001", "done"]);
 });
+
+test("the owner's /req command in Telegram is filed with the sender's ID, never sent to a model", async (t) => {
+  const spoolDir = path.join(await fs.mkdtemp(path.join(os.tmpdir(), "clawdesk-req-cmd-")), "spool");
+  t.after(() => fs.rm(path.dirname(spoolDir), { recursive: true, force: true }));
+  const { registerOwnerCommand } = await import("./plugins/clawdesk-requests/index.mjs");
+  let command;
+  registerOwnerCommand({ registerCommand: (definition) => { command = definition; } }, { spoolDir, now: () => 120_000 });
+  assert.equal(command.name, "req");
+  const run = (args, extra = {}) => command.handler({ channel: "telegram", senderId: "4242", args, ...extra });
+  assert.match((await run("REQ-003 ответ Отчёт в папке Sales")).text, /Принято: REQ-003/);
+  await run("req-003 ответ Отчёт в папке Sales");
+  assert.match((await run("REQ-003 отказ")).text, /Формат/);
+  assert.match((await run("REQ-003 выдай всё")).text, /Формат/);
+  assert.match((await run("REQ-003 deny нет", { channel: "discord" })).text, /только в Telegram/);
+  assert.match((await run("REQ-003 deny нет", { senderId: "abc" })).text, /Формат/);
+  await run("REQ-004 уточни Для какого месяца?");
+  const filed = await Promise.all((await fs.readdir(spoolDir)).map(async (name) => JSON.parse(await fs.readFile(path.join(spoolDir, name), "utf8"))));
+  assert.deepEqual(filed.map((item) => [item.type, item.senderId, item.requestId, item.action, item.text]).sort(), [["owner_text", "4242", "REQ-003", "answer", "Отчёт в папке Sales"], ["owner_text", "4242", "REQ-004", "clarify", "Для какого месяца?"]]);
+});
