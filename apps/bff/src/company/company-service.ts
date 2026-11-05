@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import type { AssignAgentDepartmentRequest, AssignTeamDepartmentRequest, AssignTeamProjectRequest, CompanyDto, CreateDepartmentRequest, CreateProjectRequest, DepartmentDto, UpdateDepartmentRequest, UpdateProjectRequest } from "@clawdesk/shared";
+import type { AssignAgentDepartmentRequest, AssignTeamDepartmentRequest, AssignTeamLeadRequest, AssignTeamProjectRequest, CompanyDto, CreateDepartmentRequest, CreateProjectRequest, DepartmentDto, UpdateDepartmentRequest, UpdateProjectRequest } from "@clawdesk/shared";
 import { eq } from "drizzle-orm";
 import type { Db } from "../db/client.js";
 import { agents, companyAgentAssignments, companyProjects, departmentManagers, departments, teams } from "../db/schema.js";
@@ -21,7 +21,7 @@ import type { Logger } from "pino";
 import { randomUUID as newId } from "node:crypto";
 
 export class CompanyError extends Error {
-  constructor(readonly code: "company_only" | "department_missing" | "team_missing" | "revision_conflict" | "manager_invalid" | "manager_assigned" | "agent_invalid" | "agent_assigned" | "department_archived" | "gateway_unavailable" | "request_conflict" | "project_missing" | "project_archived" | "project_department_mismatch" | "team_project_assigned") { super(code); }
+  constructor(readonly code: "company_only" | "department_missing" | "team_missing" | "revision_conflict" | "manager_invalid" | "manager_assigned" | "agent_invalid" | "agent_assigned" | "department_archived" | "gateway_unavailable" | "request_conflict" | "project_missing" | "project_archived" | "project_department_mismatch" | "team_project_assigned" | "lead_not_eligible") { super(code); }
 }
 
 /** Organizational metadata only: assigning a manager grants no tools or data access. */
@@ -161,7 +161,14 @@ export class CompanyService {
         available: agent.status === "ready" && !!live?.has(agent.id),
       })),
       projects: db.select().from(companyProjects).all().map((project) => ({ id: project.id, name: project.name, description: project.description, departmentId: project.departmentId, status: project.status, revision: project.revision })).sort((a, b) => Number(a.status === "archived") - Number(b.status === "archived") || a.name.localeCompare(b.name)),
-      teams: db.select().from(teams).all().map((team) => ({ id: team.id, name: team.name, departmentId: team.departmentId, projectId: team.projectId, revision: team.organizationRevision })),
+      teams: db.select().from(teams).all().map((team) => {
+        const lead = team.leadAgentId ? metadata.find((agent) => agent.id === team.leadAgentId) : undefined;
+        return {
+          id: team.id, name: team.name, departmentId: team.departmentId, projectId: team.projectId, revision: team.organizationRevision,
+          leadAgentId: lead ? lead.id : null, leadName: lead?.displayName ?? null,
+          members: metadata.filter((agent) => agent.teamId === team.id).map((agent) => ({ id: agent.id, name: agent.displayName })),
+        };
+      }),
     };
   }
 
@@ -288,6 +295,25 @@ export class CompanyService {
       if (before.departmentId !== req.departmentId) this.#projectDepartment(req.departmentId);
       if (req.departmentId && tx.select().from(teams).where(eq(teams.projectId, id)).all().some((team) => team.departmentId !== req.departmentId)) throw new CompanyError("project_department_mismatch");
       tx.update(companyProjects).set({ name: req.name, description: req.description, departmentId: req.departmentId, status: req.status, revision: req.revision + 1 }).where(eq(companyProjects.id, id)).run();
+    });
+  }
+
+  /**
+   * Stage 4: makes an agent the team's lead (or removes the lead). The lead is a member of this team or a
+   * standalone agent, never the main agent or another team's member; requests of the team go to it first.
+   */
+  assignTeamLead(id: string, req: AssignTeamLeadRequest): void {
+    this.#company();
+    this.deps.db.transaction((tx) => {
+      const team = tx.select().from(teams).where(eq(teams.id, id)).get();
+      if (!team) throw new CompanyError("team_missing");
+      if (team.organizationRevision !== req.revision) throw new CompanyError("revision_conflict");
+      if (req.agentId) {
+        const agent = tx.select().from(agents).where(eq(agents.id, req.agentId)).get();
+        if (!agent || agent.id === "main") throw new CompanyError("agent_invalid");
+        if (agent.teamId ? agent.teamId !== id : agent.role !== "specialist") throw new CompanyError("lead_not_eligible");
+      }
+      tx.update(teams).set({ leadAgentId: req.agentId, organizationRevision: team.organizationRevision + 1 }).where(eq(teams.id, id)).run();
     });
   }
 

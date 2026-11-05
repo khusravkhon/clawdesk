@@ -1,4 +1,4 @@
-import { AssignAgentDepartmentRequest, AssignTeamDepartmentRequest, AssignTeamProjectRequest, CreateDepartmentRequest, CreateProjectRequest, UpdateDepartmentRequest, UpdateProjectRequest } from "@clawdesk/shared";
+import { AssignAgentDepartmentRequest, AssignTeamDepartmentRequest, AssignTeamLeadRequest, AssignTeamProjectRequest, CreateDepartmentRequest, CreateProjectRequest, UpdateDepartmentRequest, UpdateProjectRequest } from "@clawdesk/shared";
 import type { FastifyInstance } from "fastify";
 import { z, ZodError } from "zod";
 import { CompanyError, type CompanyService } from "../company/company-service.js";
@@ -126,6 +126,10 @@ export function registerCompanyRoutes(app: FastifyInstance, company: CompanyServ
     scope.post("/api/company/projects/:id/workspace", (request) => company.prepareProjectWorkspace(Params.parse(request.params).id, PrepareProjectWorkspaceRequest.parse(request.body)));
     scope.put("/api/company/projects/:id", async (request) => {
       company.updateProject(Params.parse(request.params).id, UpdateProjectRequest.parse(request.body));
+      return { ok: true };
+    });
+    scope.put("/api/company/teams/:id/lead", async (request) => {
+      company.assignTeamLead(Params.parse(request.params).id, AssignTeamLeadRequest.parse(request.body));
       return { ok: true };
     });
     scope.put("/api/company/teams/:id/project", async (request) => {

@@ -68,6 +68,18 @@ async function assign(id: string, departmentId: string | null, revision: number)
   finally { saving.value = false; }
 }
 
+/** Stage 4: the team's lead — one of its members or a standalone agent; requests of the team reach it first. */
+const leadOptions = (team: CompanyDto["teams"][number]) => [
+  ...team.members.map((member) => ({ label: member.name, value: member.id })),
+  ...(data.value?.agents ?? []).filter((agent) => !team.departmentId || agent.departmentId === team.departmentId).map((agent) => ({ label: `${agent.name} · ${t("company.standaloneAgent")}`, value: agent.id })),
+];
+async function assignLead(id: string, agentId: string | null, revision: number): Promise<void> {
+  saving.value = true;
+  try { await api.company.assignTeamLead(id, { agentId, revision }); await load(); }
+  catch (e) { message.error(errorText(e)); await load(); }
+  finally { saving.value = false; }
+}
+
 async function assignAgent(id: string, departmentId: string | null, revision: number): Promise<void> {
   saving.value = true;
   try { await api.company.assignAgent(id, { departmentId, revision }); addingAgent.value = false; await load(); }
@@ -143,7 +155,10 @@ onMounted(load);
         <template #header-extra><n-button text @click="router.push('/teams')">{{ t('company.allTeams') }}</n-button></template>
         <n-empty v-if="!visibleTeams.length" :description="t('company.noTeams')" />
         <div v-for="team in visibleTeams" :key="team.id" class="team">
-          <span>{{ team.name }}</span>
+          <div class="team-name">
+            <span>{{ team.name }}</span>
+            <n-select size="small" :value="team.leadAgentId" :options="leadOptions(team)" clearable :placeholder="t('company.noLead')" :aria-label="t('company.teamLead', { name: team.name })" :disabled="saving" @update:value="value => assignLead(team.id, value, team.revision)" />
+          </div>
           <n-select :value="team.departmentId" :options="teamOptions" clearable :placeholder="t('company.unassigned')" :aria-label="t('company.teamDepartment', { name: team.name })" :disabled="saving" @update:value="value => assign(team.id, value, team.revision)" />
         </div>
       </n-card>
@@ -193,6 +208,7 @@ onMounted(load);
 .departments { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 320px), 1fr)); gap: 16px; margin-bottom: 18px; }
 .description { white-space: pre-wrap; overflow-wrap: anywhere; }
 .muted { color: var(--text-2); font-size: 13px; line-height: 1.6; }
+.team-name { display: grid; gap: 6px; min-width: 0; }
 .team { display: grid; grid-template-columns: minmax(0, 1fr) minmax(160px, 300px); gap: 12px; align-items: center; padding: 12px 0; }
 @media (max-width: 600px) { .team { grid-template-columns: 1fr; } }
 </style>

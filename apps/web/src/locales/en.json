@@ -120,8 +120,12 @@
       "acceptance_missing": "Scenario not found for this rule.",
       "rule_version_missing": "Rule version not found.",
       "acceptance_unchanged": "Scenario unchanged; no new version was created.",
-      "rule_not_approved": "Approve the current rule version first."
-    }
+      "rule_not_approved": "Approve the current rule version first.",
+      "lead_not_eligible": "The team lead must be a member of this team or a standalone agent."
+    },
+    "standaloneAgent": "standalone agent",
+    "noLead": "No team lead",
+    "teamLead": "Team lead of {name}"
   },
   "storage": {
     "title": "Storage",
@@ -2279,7 +2283,8 @@
       "qa": "QA",
       "manager": "manager",
       "project-qa": "project QA",
-      "project-developer": "project developer"
+      "project-developer": "project developer",
+      "team-lead": "team lead"
     },
     "action": "tool: {tool}",
     "inbox": "waiting for its answer: {n}",

@@ -27,6 +27,9 @@ export type CreateProjectRequest = z.infer<typeof CreateProjectRequest>;
 export const UpdateProjectRequest = ProjectFields.extend({ revision: z.number().int().min(0) });
 export type UpdateProjectRequest = z.infer<typeof UpdateProjectRequest>;
 export const AssignTeamProjectRequest = z.object({ projectId: EntityId.nullable(), revision: z.number().int().min(0) });
+/** Stage 4: the team lead is one of the team's members or a standalone agent; null removes the lead. */
+export const AssignTeamLeadRequest = z.object({ agentId: z.string().min(1).max(80).nullable(), revision: z.number().int().min(0) });
+export type AssignTeamLeadRequest = z.infer<typeof AssignTeamLeadRequest>;
 export type AssignTeamProjectRequest = z.infer<typeof AssignTeamProjectRequest>;
 export type ProjectDto = z.infer<typeof ProjectFields> & { id: string; revision: number };
 const BriefText = z.string().trim().max(4000).default("");
@@ -80,5 +83,5 @@ export type CompanyDto = {
   projects: ProjectDto[];
   managers: { id: string; name: string; departmentId: string | null }[];
   agents: { id: string; name: string; departmentId: string | null; revision: number; managerOf: string | null; available: boolean }[];
-  teams: { id: string; name: string; departmentId: string | null; projectId: string | null; revision: number }[];
+  teams: { id: string; name: string; departmentId: string | null; projectId: string | null; revision: number; leadAgentId: string | null; leadName: string | null; members: { id: string; name: string }[] }[];
 };

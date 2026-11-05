@@ -81,9 +81,9 @@ export class WorkRequestsService {
   }
 
   /**
-   * The levels above an agent: the manager of its department (its own assignment, else its team's, else
-   * its team's project's), the main agent, the owner. Archived departments, a manager asking itself and
-   * missing levels are left out; the team lead level does not exist yet (stage 4).
+   * The levels above an agent: its team's lead, the manager of its department (its own assignment, else its
+   * team's, else its team's project's), the main agent, the owner. Archived departments, an agent asking
+   * itself, a lead that is also the manager and missing levels are left out.
    */
   route(agentId: string): Level[] {
     const { db } = this.deps;
@@ -95,6 +95,8 @@ export class WorkRequestsService {
       const departmentId = db.select().from(companyAgentAssignments).where(eq(companyAgentAssignments.agentId, agentId)).get()?.departmentId ?? team?.departmentId ?? project?.departmentId ?? null;
       const department = departmentId ? db.select().from(departments).where(eq(departments.id, departmentId)).get() : undefined;
       const manager = department && !department.archived ? db.select().from(departmentManagers).where(eq(departmentManagers.departmentId, department.id)).get()?.agentId : undefined;
+      const lead = team?.leadAgentId && team.leadAgentId !== agentId && team.leadAgentId !== "main" && db.select({ id: agents.id }).from(agents).where(eq(agents.id, team.leadAgentId)).get() ? team.leadAgentId : undefined;
+      if (lead && lead !== manager) levels.push({ kind: "lead", agentId: lead });
       if (manager && manager !== agentId) levels.push({ kind: "manager", agentId: manager });
       levels.push({ kind: "main", agentId: "main" });
     }

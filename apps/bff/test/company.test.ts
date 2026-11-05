@@ -111,6 +111,25 @@ describe("company organization", () => {
     expect(db.select().from(teams).get()?.departmentId).toBeNull();
   });
 
+  it("makes a team member or a standalone agent the team lead, with revision checks", async () => {
+    db.insert(teams).values({ id: "other-team", name: "Other team" }).run();
+    db.insert(agents).values({ id: "stranger", role: "team_member", teamId: "other-team", displayName: "Stranger" }).run();
+    company.assignTeamLead("existing-team", { agentId: "dev", revision: 0 });
+    let team = (await company.list()).teams.find(item => item.id === "existing-team")!;
+    expect(team).toMatchObject({ leadAgentId: "dev", leadName: "Developer", revision: 1, members: [{ id: "dev", name: "Developer" }] });
+    expect(() => company.assignTeamLead("existing-team", { agentId: "boss", revision: 0 })).toThrow("revision_conflict");
+    expect(() => company.assignTeamLead("existing-team", { agentId: "stranger", revision: 1 })).toThrow("lead_not_eligible");
+    expect(() => company.assignTeamLead("existing-team", { agentId: "main", revision: 1 })).toThrow("agent_invalid");
+    expect(() => company.assignTeamLead("nope", { agentId: null, revision: 0 })).toThrow("team_missing");
+    company.assignTeamLead("existing-team", { agentId: "boss", revision: 1 });
+    // The lead was deleted: the team shows no lead.
+    db.delete(agents).where(eq(agents.id, "boss")).run();
+    team = (await company.list()).teams.find(item => item.id === "existing-team")!;
+    expect(team).toMatchObject({ leadAgentId: null, leadName: null });
+    company.assignTeamLead("existing-team", { agentId: null, revision: 2 });
+    expect(db.select().from(teams).where(eq(teams.id, "existing-team")).get()?.leadAgentId).toBeNull();
+  });
+
   it("keeps organization readable offline without inventing manager availability", async () => {
     const { id } = await company.create(create({ managerAgentId: "boss" }));
     online = false;

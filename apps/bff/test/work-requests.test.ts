@@ -83,6 +83,24 @@ describe("company requests", () => {
     expect(messagesTo("main").at(-1)).toContain("REQ-001 уже закрыто");
   });
 
+  it("puts the team lead first, skips it for its own request and when it is also the manager", async () => {
+    db.insert(agents).values([{ id: "lead", role: "team_member", teamId: "shop", templateId: "pm", displayName: "Тимлид" }]).run();
+    db.update(teams).set({ leadAgentId: "lead" }).run();
+    expect(service.route("dev").map((level) => [level.kind, level.agentId])).toEqual([["lead", "lead"], ["manager", "it-head"], ["main", "main"], ["owner", null]]);
+    expect(service.route("lead").map((level) => level.kind)).toEqual(["manager", "main", "owner"]);
+    db.update(teams).set({ leadAgentId: "it-head" }).run();
+    expect(service.route("dev").map((level) => level.kind)).toEqual(["manager", "main", "owner"]);
+    // A lead that no longer exists counts as none.
+    db.update(teams).set({ leadAgentId: "gone" }).run();
+    expect(service.route("dev").map((level) => level.kind)).toEqual(["manager", "main", "owner"]);
+    // A request goes to the lead first, and the lead's escalation reaches the manager.
+    db.update(teams).set({ leadAgentId: "lead" }).run();
+    live.add("lead");
+    up("dev", "Какой API?");
+    await tick();
+    expect(messagesTo("lead").at(-1)).toContain("Какой API?");
+  });
+
   it("skips a level that is not running, asks for clarification and accepts only the requester's reply", async () => {
     live.delete("it-head");
     up("dev", "Какой формат даты?");

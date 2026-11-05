@@ -233,6 +233,11 @@ export const teams = sqliteTable("teams", {
   telegramGroupId: text("telegram_group_id"),
   departmentId: text("department_id").references(() => departments.id),
   projectId: text("project_id").references(() => companyProjects.id),
+  /**
+   * Stage 4: the team's lead — a member of this team or a standalone agent; an assignment, not a template.
+   * No foreign key (SQLite cannot drop such a column): a lead that no longer exists counts as none.
+   */
+  leadAgentId: text("lead_agent_id"),
   organizationRevision: integer("organization_revision").notNull().default(0),
   createdAt: createdAt(),
 }, (t) => [index("teams_department_idx").on(t.departmentId), index("teams_project_idx").on(t.projectId)]);
@@ -551,7 +556,7 @@ export const workRequests = sqliteTable("work_requests", {
   resource: text("resource"),
   access: text("access", { enum: ["read", "write"] }),
   status: text("status", { enum: ["open", "clarify", "answered", "denied", "expired", "cancelled"] }).notNull(),
-  route: text("route", { mode: "json" }).$type<{ kind: "manager" | "main" | "owner"; agentId: string | null }[]>().notNull(),
+  route: text("route", { mode: "json" }).$type<{ kind: "lead" | "manager" | "main" | "owner"; agentId: string | null }[]>().notNull(),
   level: integer("level").notNull().default(0),
   /** Organizational transitions so far (first routing included); limited to four. */
   hops: integer("hops").notNull().default(0),
