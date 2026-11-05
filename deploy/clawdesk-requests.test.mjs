@@ -71,3 +71,15 @@ test("the spool is read oldest first without following links, and acknowledged e
   await assert.rejects(ackRequestsSpool(f.spoolDir, ["../x"]));
   assert.deepEqual(await readRequestsSpool(path.join(f.spoolDir, "missing")), { entries: [], rejected: [] });
 });
+
+test("an access request names its resource and level; other kinds may not", async (t) => {
+  const f = await fixture(t);
+  const up = f.tool(UP);
+  assert.equal((await up.execute("a1", { kind: "access", subject: "Нужна папка", details: "Для отчёта", resource: "folder:Finance", access: "read" })).details.status, "filed");
+  assert.equal((await up.execute("a2", { kind: "access", subject: "x", details: "y" })).details.code, "invalid_arguments");
+  assert.equal((await up.execute("a3", { kind: "question", subject: "x", details: "y", resource: "folder:Finance", access: "read" })).details.code, "invalid_arguments");
+  assert.equal((await up.execute("a4", { kind: "access", subject: "x", details: "y", resource: "disk:/etc", access: "read" })).details.code, "invalid_arguments");
+  assert.equal((await up.execute("a5", { kind: "access", subject: "x", details: "y", resource: "mcp:notion", access: "admin" })).details.code, "invalid_arguments");
+  const [filed] = await f.spool();
+  assert.deepEqual([filed.kind, filed.resource, filed.access], ["access", "folder:Finance", "read"]);
+});

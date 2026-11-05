@@ -29,6 +29,8 @@ import { ReminderService } from "./schedules/reminder-service.js";
 import { repairAgentFolders } from "./provision/agent-folders.js";
 import { liveAgentIds, repairAgentCommunication } from "./provision/agent-communication.js";
 import { WorkRequestsService } from "./company/work-requests-service.js";
+import { AccessService } from "./company/access-service.js";
+import { getConfig } from "./gateway/config-patch.js";
 import { syncRequestTools } from "./company/work-requests-config.js";
 import { mainSessionKey } from "./chat/chat-service.js";
 
@@ -71,13 +73,19 @@ const video = new VideoService({ db, bridge, chat: new ChatService(gateway, libr
 video.recover();
 const reminders = new ReminderService({ db, gateway, telegram, mode: () => space.mode(), timeZone: () => space.get()?.timezone ?? "UTC" });
 reminders.recover();
+// Stage 5: what company agents can reach; grants are applied and checked where they are enforced.
+const access = new AccessService({
+  db, bridge, companyMode: () => space.mode() === "company",
+  setMcpAgents: (server, agentIds) => mcp.setAgents(server, agentIds),
+  config: async () => (await getConfig<Record<string, never>>(gateway)).config,
+});
 // Stage 6: requests up the company structure, filed by agents through the clawdesk-requests plugin.
 const requests = new WorkRequestsService({
   db, bridge, companyMode: () => space.mode() === "company", liveAgents: () => liveAgentIds(gateway),
   send: async (agentId, message, idempotencyKey) => { await gateway.request("chat.send", { sessionKey: mainSessionKey(agentId), agentId, message, idempotencyKey }); },
 });
 
-const app = await buildApp({ logger, gateway, db, aiSetup, signIn, telegram, freeModels, sources, skills, mcp, approvals, assistant, auth, backups, bridge, space, teams, audit, video, videoDir: config.videoDir, library, budget, notes, reminders, requests, sandboxEnabled: config.sandboxEnabled, webDist: config.webDist, trustProxy: config.trustProxy });
+const app = await buildApp({ logger, gateway, db, aiSetup, signIn, telegram, freeModels, sources, skills, mcp, approvals, assistant, auth, backups, bridge, space, teams, audit, video, videoDir: config.videoDir, library, budget, notes, reminders, requests, access, sandboxEnabled: config.sandboxEnabled, webDist: config.webDist, trustProxy: config.trustProxy });
 
 gateway.start();
 await app.listen({ host: config.host, port: config.port });

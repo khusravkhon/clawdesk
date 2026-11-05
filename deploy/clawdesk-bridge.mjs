@@ -504,6 +504,11 @@ async function handle(req) {
     }
   }
 
+  // Folders in the shared files folder (names only), for granting one to an agent.
+  if (req.method === "GET" && url.pathname === "/files/folders") {
+    const entries = await fs.readdir(FILES_IN_GATEWAY, { withFileTypes: true }).catch(() => []);
+    return { status: 200, body: { folders: entries.filter((entry) => entry.isDirectory() && FOLDER.test(entry.name)).map((entry) => entry.name).sort() } };
+  }
   if (req.method === "GET" && url.pathname === "/files/sync-status") {
     try { return { status: 200, body: await agentFolders.statuses() }; }
     catch { return { status: 503, body: { error: "folder_sync_unavailable", message: "folder sync status is unavailable" } }; }
@@ -588,6 +593,10 @@ async function handle(req) {
   }
   if (url.pathname === "/freellmapi/reset") return freellmapiReset(body);
   if (url.pathname === "/files/folder") return ensureFolder(body);
+  if (url.pathname === "/files/agent-folder/remove") {
+    agentFolders.validate(body);
+    return { status: 200, body: await agentFolders.unregister(body.agentId, body.name, { dir: body.dir }) };
+  }
   if (url.pathname === "/files/agent-folder") {
     agentFolders.validate(body);
     const folder = await ensureFolder(body);

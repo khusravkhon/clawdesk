@@ -18,7 +18,7 @@ const safeIssue = (issue) => ({
 function publicStatus(item) {
   const status = item.status ?? {};
   return {
-    agentId: item.agentId, folder: item.name,
+    agentId: item.agentId, folder: item.name, dir: item.dir ?? null, readOnly: item.readOnly === true,
     state: ["ready", "partial", "error"].includes(status.state) ? status.state : "pending",
     lastAttempt: timestamp(status.lastAttempt), lastSuccess: timestamp(status.lastSuccess),
     conflicts: count(status.conflicts), skipped: count(status.skipped),
@@ -131,6 +131,34 @@ export class AgentFolders {
       this.record(item, result, lastAttempt);
       await this.save(registry);
       return { gatewayPath: managed, conflicts: result.conflicts };
+    });
+  }
+
+  /**
+   * Stops synchronizing a folder for an agent and deletes the agent's copy, so revoked files are gone from
+   * its workspace, not just no longer updated. The shared folder itself is never touched.
+   */
+  unregister(agentId, name, { dir } = {}) {
+    return this.serial(async () => {
+      this.validate({ agentId, name, dir });
+      const config = JSON.parse(await fs.readFile(this.configPath, "utf8"));
+      const registry = await this.load();
+      const item = registry.folders.find((folder) => folder.agentId === agentId && folder.name === name && (dir === undefined || (folder.dir ?? undefined) === dir));
+      if (item) {
+        registry.folders = registry.folders.filter((folder) => folder !== item);
+        await this.save(registry);
+      }
+      const workspace = config.agents?.entries?.[agentId]?.workspace;
+      if (workspace) {
+        const relative = path.relative(this.stateDir, path.resolve(workspace));
+        if (relative && !relative.startsWith("..") && !path.isAbsolute(relative)) {
+          const copy = path.join(this.stateDir, relative, AgentFolders.workspaceDir(item ?? { name, dir }));
+          // lstat: a link put in place of the copy is removed itself, never followed.
+          const stat = await fs.lstat(copy).catch(() => null);
+          if (stat) await fs.rm(copy, { recursive: true, force: true });
+        }
+      }
+      return { removed: !!item };
     });
   }
 

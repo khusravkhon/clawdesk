@@ -3,7 +3,7 @@ import type { Db } from "../db/client.js";
 import { agents } from "../db/schema.js";
 import { patchConfig } from "../gateway/config-patch.js";
 import type { GatewayService } from "../gateway/gateway-service.js";
-import { communicationReplacePaths, liveAgentIds } from "../provision/agent-communication.js";
+import { communicationReplacePaths, liveAgentIds, sandboxPluginGate } from "../provision/agent-communication.js";
 
 // Which agents get the request tools (clawdesk-requests plugin): in company mode the main agent and every
 // company agent the Gateway runs; in personal mode nobody. The plugin's own allowlist is the gate (its tool
@@ -48,21 +48,13 @@ export function requestsPluginPatch(config: Config, granted: string[], companyMo
   const allow = config.plugins?.allow ? [...new Set([...config.plugins.allow, REQUESTS_PLUGIN])] : undefined;
   const pluginSame = current?.enabled === true && JSON.stringify(current.config?.allowedAgentIds) === JSON.stringify(allowedAgentIds)
     && JSON.stringify(config.plugins?.load?.paths) === JSON.stringify(paths) && (!allow || JSON.stringify(config.plugins?.allow) === JSON.stringify(allow));
-  const gate = allowedAgentIds.length ? sandboxGate(config.tools?.sandbox?.tools) : null;
+  const gate = allowedAgentIds.length ? sandboxPluginGate(config.tools?.sandbox?.tools, REQUESTS_PLUGIN) : null;
   if (pluginSame && !Object.keys(entries).length && !gate) return null;
   return {
     ...(gate ? { tools: { sandbox: { tools: gate } } } : {}),
     ...(pluginSame ? {} : { plugins: { load: { paths }, ...(allow ? { allow } : {}), entries: { [REQUESTS_PLUGIN]: { enabled: true, config: { allowedAgentIds } } } } }),
     ...(Object.keys(entries).length ? { agents: { entries } } : {}),
   };
-}
-
-/** Adds the plugin to the sandbox tool gate (never removes it, and never overrides a deny). */
-function sandboxGate(policy: Policy = {}): Policy | null {
-  if (policy.deny?.includes(REQUESTS_PLUGIN)) return null;
-  const key = policy.allow?.length ? "allow" : "alsoAllow";
-  const current = policy[key] ?? [];
-  return current.includes(REQUESTS_PLUGIN) || current.includes("group:plugins") ? null : { [key]: [...current, REQUESTS_PLUGIN] };
 }
 
 /** Company agents with the request tools: main plus specialists and team members the Gateway runs. */

@@ -260,6 +260,16 @@ export class BridgeClient {
     return this.#call("POST", "/files/agent-folder", { agentId, name, ...options }, 120_000);
   }
 
+  /** Stops synchronizing a folder for an agent and deletes the agent's copy (stage 5 revocation). */
+  removeAgentFolder(agentId: string, name: string, options: { dir?: "docs" } = {}): Promise<{ removed: boolean }> {
+    return this.#call("POST", "/files/agent-folder/remove", { agentId, name, ...options }, 60_000);
+  }
+
+  /** Folder names in the shared files folder. */
+  sharedFolders(): Promise<{ folders: string[] }> {
+    return this.#call("GET", "/files/folders");
+  }
+
   async folderSyncStatus(): Promise<FolderSyncStatusesDto> {
     return FolderSyncStatusesDto.parse(await this.#call("GET", "/files/sync-status", undefined, 5_000));
   }

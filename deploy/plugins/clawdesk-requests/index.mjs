@@ -17,10 +17,12 @@ const text = (min, max) => ({ type: "string", minLength: min, maxLength: max });
 const upParameters = {
   type: "object", additionalProperties: false, required: ["kind", "subject", "details"],
   properties: {
-    kind: { type: "string", enum: ["question", "decision"] },
+    kind: { type: "string", enum: ["question", "decision", "access"] },
     subject: text(1, 200),
     details: text(1, 4000),
     taskRef: text(1, 200),
+    resource: { type: "string", pattern: "^(folder|mcp):.{1,80}$" },
+    access: { type: "string", enum: ["read", "write"] },
   },
 };
 const replyParameters = {
@@ -75,6 +77,8 @@ function validArgs(args, schema) {
 
 export function registerRequests(api, { spoolDir = path.join(process.env.OPENCLAW_STATE_DIR || "/var/lib/clawdesk/openclaw", "clawdesk", "requests"), now = Date.now } = {}) {
   async function file(owner, toolCallId, type, args) {
+    // An access request names its resource and level; other kinds do not.
+    if (type === "up" && (args.kind === "access") !== (args.resource !== undefined && args.access !== undefined)) return result("error", "invalid_arguments");
     if (typeof toolCallId !== "string" || !toolCallId || toolCallId.length > 256) return result("error", "invalid_request_id");
     const id = createHash("sha256").update(JSON.stringify([owner.agentId, owner.sessionKey, toolCallId])).digest("hex").slice(0, 32);
     const target = path.join(spoolDir, `${id}.json`);
@@ -103,7 +107,7 @@ export function registerRequests(api, { spoolDir = path.join(process.env.OPENCLA
     };
   };
 
-  api.registerTool(tool(UP, "Ask up the company", "File a request to your supervisor in the company (department manager, then the main agent, then the owner). kind: question (you need information) or decision (you need someone to decide). The panel delivers the answer to your chat; until then the work it blocks waits. This never grants access by itself.", upParameters, "up"), { names: [UP], optional: true });
+  api.registerTool(tool(UP, "Ask up the company", "File a request to your supervisor in the company (department manager, then the main agent, then the owner). kind: question (you need information), decision (you need someone to decide) or access (you need a resource: set resource to folder:<shared folder name> or mcp:<server name>, and access to read or write). The panel delivers the answer to your chat; until then the work it blocks waits. Only the owner grants access, and the panel checks it before telling you.", upParameters, "up"), { names: [UP], optional: true });
   api.registerTool(tool(REPLY, "Reply to a company request", "Reply to a request REQ-… addressed to you: answer (give the information or decision), deny (with the reason), clarify (ask the requester a question), escalate (pass it to the next level). The requester uses reply to answer a clarification. Only the current addressee can act; a text answer never grants access.", replyParameters, "reply"), { names: [REPLY], optional: true });
 }
 

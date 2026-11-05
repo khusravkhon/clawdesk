@@ -54,6 +54,7 @@ import { registerSpaceRoutes } from "./routes/space.js";
 import { registerTeamRoutes } from "./routes/teams.js";
 import { registerWorkRequestRoutes } from "./routes/work-requests.js";
 import type { WorkRequestsService } from "./company/work-requests-service.js";
+import type { AccessService } from "./company/access-service.js";
 import { registerAuditRoutes } from "./routes/audit.js";
 import { registerUsageRoutes } from "./routes/usage.js";
 import { UsageService } from "./dashboard/usage-service.js";
@@ -93,6 +94,8 @@ export type AppDeps = {
   teams: TeamService;
   /** Stage 6 requests up the company structure; absent in tests that do not need them. */
   requests?: WorkRequestsService;
+  /** Stage 5: agents' access to shared folders and MCP servers. */
+  access?: AccessService;
   audit: AuditService;
   webDist: string | undefined;
   /** Fastify trustProxy: client address and HTTPS come from the proxy's headers (Caddy). */

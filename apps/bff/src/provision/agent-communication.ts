@@ -5,7 +5,7 @@ import { patchConfig } from "../gateway/config-patch.js";
 import type { GatewayService } from "../gateway/gateway-service.js";
 
 export type CommunicationConfig = {
-  tools?: { agentToAgent?: { enabled?: boolean; allow?: string[] }; sessions?: { visibility?: string } };
+  tools?: { agentToAgent?: { enabled?: boolean; allow?: string[] }; sessions?: { visibility?: string }; sandbox?: { tools?: AgentTools } };
   agents?: {
     defaults?: { sandbox?: { sessionToolsVisibility?: string } };
     entries?: Record<string, { tools?: AgentTools }>;
@@ -51,15 +51,32 @@ export function agentCommunicationPatch(config: CommunicationConfig, personal: {
   };
 }
 
+/**
+ * Sandboxed sessions see a plugin's tools only when tools.sandbox.tools names the plugin (or group:plugins).
+ * Adds it, never removes it and never overrides a deny.
+ */
+export function sandboxPluginGate(policy: AgentTools = {}, pluginId: string): AgentTools | null {
+  if (policy.deny?.includes(pluginId)) return null;
+  const key = policy.allow?.length ? "allow" : "alsoAllow";
+  const current = policy[key] ?? [];
+  return current.includes(pluginId) || current.includes("group:plugins") ? null : { [key]: [...current, pluginId] };
+}
+
 export function mainPluginPatch(config: CommunicationConfig, personal: { id: string; canAskMain: boolean }[], existing: ReadonlySet<string>) {
   const allowedAgentIds = personal.filter(({ id, canAskMain }) => canAskMain && existing.has(id)).map(({ id }) => id).sort();
   const current = config.plugins?.entries?.[ASK_MAIN_PLUGIN];
   if (!personal.length && !current) return null;
   const paths = [...new Set([...(config.plugins?.load?.paths ?? []), ASK_MAIN_PATH])];
   const allow = config.plugins?.allow ? [...new Set([...config.plugins.allow, ASK_MAIN_PLUGIN])] : undefined;
-  if (current?.enabled === true && JSON.stringify(current.config?.allowedAgentIds) === JSON.stringify(allowedAgentIds)
-    && JSON.stringify(config.plugins?.load?.paths) === JSON.stringify(paths) && (!allow || JSON.stringify(config.plugins?.allow) === JSON.stringify(allow))) return null;
-  return { plugins: { load: { paths }, ...(allow ? { allow } : {}), entries: { [ASK_MAIN_PLUGIN]: { enabled: true, config: { allowedAgentIds } } } } };
+  // Personal juniors run sandboxed: without the gate the granted tool is invisible to them.
+  const gate = allowedAgentIds.length ? sandboxPluginGate(config.tools?.sandbox?.tools, ASK_MAIN_PLUGIN) : null;
+  const same = current?.enabled === true && JSON.stringify(current.config?.allowedAgentIds) === JSON.stringify(allowedAgentIds)
+    && JSON.stringify(config.plugins?.load?.paths) === JSON.stringify(paths) && (!allow || JSON.stringify(config.plugins?.allow) === JSON.stringify(allow));
+  if (same && !gate) return null;
+  return {
+    ...(gate ? { tools: { sandbox: { tools: gate } } } : {}),
+    ...(same ? {} : { plugins: { load: { paths }, ...(allow ? { allow } : {}), entries: { [ASK_MAIN_PLUGIN]: { enabled: true, config: { allowedAgentIds } } } } }),
+  };
 }
 
 export const communicationReplacePaths = (_config: unknown, patch: Record<string, unknown>): string[] => {

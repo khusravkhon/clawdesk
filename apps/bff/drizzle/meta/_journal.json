@@ -148,6 +148,13 @@
       "when": 1792350000000,
       "tag": "0020_work_requests",
       "breakpoints": true
+    },
+    {
+      "idx": 21,
+      "version": "6",
+      "when": 1792351000000,
+      "tag": "0021_resource_grants",
+      "breakpoints": true
     }
   ]
 }

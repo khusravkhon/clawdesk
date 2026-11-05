@@ -2,7 +2,7 @@
 // Stage 6: requests agents filed up the company structure. Each shows its route and history; the owner
 // answers, denies, asks to clarify or closes a request at any level. Agents answer in their own chats.
 import type { WorkRequestDto, WorkRequestStatus } from "@clawdesk/shared";
-import { NAlert, NButton, NCard, NEmpty, NInput, NRadioButton, NRadioGroup, NSpace, NTag } from "naive-ui";
+import { NAlert, NButton, NCard, NEmpty, NInput, NPopconfirm, NRadioButton, NRadioGroup, NSpace, NTag } from "naive-ui";
 import { computed, onBeforeUnmount, onMounted, ref } from "vue";
 import { useI18n } from "vue-i18n";
 import { useRouter } from "vue-router";
@@ -34,9 +34,9 @@ async function load(): Promise<void> {
   catch (e) { error.value = explain(e); }
   finally { loading.value = false; }
 }
-async function act(request: WorkRequestDto, action: "answer" | "deny" | "clarify" | "cancel"): Promise<void> {
-  const text = (drafts.value[request.id] ?? "").trim();
-  if (busy.value || (action !== "cancel" && !text)) return;
+async function act(request: WorkRequestDto, action: "answer" | "deny" | "clarify" | "cancel" | "grant"): Promise<void> {
+  const text = action === "grant" ? "" : (drafts.value[request.id] ?? "").trim();
+  if (busy.value || (action !== "cancel" && action !== "grant" && !text)) return;
   busy.value = request.id; error.value = null;
   try {
     await api.company.actOnRequest(request.id, { requestId: requestId(`${request.id}:${request.revision}:${action}:${text}`), revision: request.revision, action, text });
@@ -69,6 +69,7 @@ onBeforeUnmount(() => clearInterval(timer));
       <p class="meta">{{ t(`requests.kind.${request.kind}`) }} · {{ t('requests.from') }}: {{ request.from.name }} ({{ request.from.agentId }}) · {{ time(request.createdAt) }}<template v-if="active(request.status)"> · {{ t('requests.deadline') }}: {{ time(request.deadlineAt) }}</template></p>
       <p class="text">{{ request.details }}</p>
       <p v-if="request.taskRef" class="meta">{{ t('requests.task') }}: {{ request.taskRef }}</p>
+      <p v-if="request.resource" class="meta">{{ t('requests.resource') }}: <code>{{ request.resource }}</code> · {{ t(`access.level.${request.access}`) }}</p>
       <p class="meta">
         {{ t('requests.route') }}:
         <template v-for="(level, index) in request.route" :key="index"><span :class="{ current: active(request.status) && index === request.level }">{{ level.name }}</span><span v-if="index < request.route.length - 1"> → </span></template>
@@ -87,7 +88,11 @@ onBeforeUnmount(() => clearInterval(timer));
         <n-input v-model:value="drafts[request.id]" type="textarea" class="block" :maxlength="4000" :autosize="{ minRows: 2, maxRows: 6 }" :placeholder="t('requests.answerPlaceholder')" :aria-label="t('requests.answerPlaceholder')" :disabled="busy === request.id" />
         <p v-if="!atOwner(request)" class="meta">{{ t('requests.notYours', { name: request.route[request.level]?.name ?? '' }) }}</p>
         <n-space class="block">
-          <n-button type="primary" :loading="busy === request.id" :disabled="!drafts[request.id]?.trim()" @click="act(request, 'answer')">{{ t('requests.actions.answer') }}</n-button>
+          <n-popconfirm v-if="request.kind === 'access'" @positive-click="act(request, 'grant')">
+            <template #trigger><n-button type="primary" :loading="busy === request.id">{{ t('requests.actions.grant') }}</n-button></template>
+            <span class="confirm">{{ t('requests.grantConfirm', { resource: request.resource, name: request.from.name }) }}</span>
+          </n-popconfirm>
+          <n-button :type="request.kind === 'access' ? 'default' : 'primary'" :loading="busy === request.id && request.kind !== 'access'" :disabled="!drafts[request.id]?.trim()" @click="act(request, 'answer')">{{ t('requests.actions.answer') }}</n-button>
           <n-button :disabled="busy === request.id || !drafts[request.id]?.trim()" @click="act(request, 'clarify')">{{ t('requests.actions.clarify') }}</n-button>
           <n-button :disabled="busy === request.id || !drafts[request.id]?.trim()" @click="act(request, 'deny')">{{ t('requests.actions.deny') }}</n-button>
           <n-button quaternary :disabled="busy === request.id" @click="act(request, 'cancel')">{{ t('requests.actions.cancel') }}</n-button>
@@ -103,4 +108,5 @@ onBeforeUnmount(() => clearInterval(timer));
 .meta { opacity: 0.75; font-size: 0.92em; line-height: 1.6; overflow-wrap: anywhere; }
 .text { white-space: pre-wrap; overflow-wrap: anywhere; line-height: 1.6; }
 .current { font-weight: 600; text-decoration: underline; }
+.confirm { display: inline-block; max-width: min(340px, 75vw); white-space: normal; }
 </style>

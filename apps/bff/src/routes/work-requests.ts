@@ -1,22 +1,32 @@
-import { OwnerRequestAction } from "@clawdesk/shared";
+import { GrantResourceRequest, OwnerRequestAction, RevokeResourceRequest } from "@clawdesk/shared";
 import type { FastifyInstance } from "fastify";
 import { z, ZodError } from "zod";
+import { AccessError, type AccessService } from "../company/access-service.js";
 import { WorkRequestError, type WorkRequestsService } from "../company/work-requests-service.js";
 
 const Params = z.object({ id: z.uuid() });
 
-/** Stage 6: the owner's view of requests up the company structure and the owner's answers. */
-export function registerWorkRequestRoutes(app: FastifyInstance, deps: { requests?: WorkRequestsService }): void {
-  const service = deps.requests;
-  if (!service) return;
+/** Stages 5–6: requests up the company structure, the owner's answers and grants, and agents' access. */
+export function registerWorkRequestRoutes(app: FastifyInstance, deps: { requests?: WorkRequestsService; access?: AccessService }): void {
+  const { requests, access } = deps;
+  if (!requests) return;
   app.register(async (scope) => {
     scope.setErrorHandler((error, _request, reply) => {
       if (error instanceof ZodError) return reply.status(400).send({ error: "invalid_request", message: "request validation failed" });
-      if (!(error instanceof WorkRequestError)) throw error;
-      const status = error.code === "request_missing" ? 404 : error.code === "company_only" ? 404 : 409;
+      if (!(error instanceof WorkRequestError) && !(error instanceof AccessError)) throw error;
+      const status = error.code === "request_missing" || error.code === "company_only" || error.code === "agent_missing" || error.code === "resource_missing" ? 404 : 409;
       return reply.status(status).send({ error: error.code, message: error.code });
     });
-    scope.get("/api/company/requests", () => service.list());
-    scope.post("/api/company/requests/:id/act", (request) => service.ownerAct(Params.parse(request.params).id, OwnerRequestAction.parse(request.body)));
+    scope.get("/api/company/requests", () => requests.list());
+    scope.post("/api/company/requests/:id/act", (request) => {
+      const id = Params.parse(request.params).id, body = OwnerRequestAction.parse(request.body);
+      if (body.action !== "grant") return requests.ownerAct(id, { ...body, action: body.action });
+      if (!access) throw new WorkRequestError("not_access");
+      return requests.ownerGrant(id, body, (grant, by) => access.grant(grant, by));
+    });
+    if (!access) return;
+    scope.get("/api/company/access", () => access.list());
+    scope.post("/api/company/access/grant", async (request) => { await access.grant(GrantResourceRequest.parse(request.body), "owner"); return access.list(); });
+    scope.post("/api/company/access/revoke", async (request) => { await access.revoke(RevokeResourceRequest.parse(request.body), "owner"); return access.list(); });
   });
 }

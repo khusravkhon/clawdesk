@@ -536,12 +536,15 @@ export const workRequests = sqliteTable("work_requests", {
   id: text("id").primaryKey(),
   number: integer("number").notNull().unique(),
   fromAgentId: text("from_agent_id").notNull(),
-  kind: text("kind", { enum: ["question", "decision"] }).notNull(),
+  kind: text("kind", { enum: ["question", "decision", "access"] }).notNull(),
   subject: text("subject").notNull(),
   /** Lower-case subject without extra spaces: one active request of a kind per subject and requester. */
   subjectKey: text("subject_key").notNull(),
   details: text("details").notNull(),
   taskRef: text("task_ref").notNull().default(""),
+  /** An access request: "folder:<name>" or "mcp:<server>", and the level asked for. */
+  resource: text("resource"),
+  access: text("access", { enum: ["read", "write"] }),
   status: text("status", { enum: ["open", "clarify", "answered", "denied", "expired", "cancelled"] }).notNull(),
   route: text("route", { mode: "json" }).$type<{ kind: "manager" | "main" | "owner"; agentId: string | null }[]>().notNull(),
   level: integer("level").notNull().default(0),
@@ -560,7 +563,7 @@ export const workRequests = sqliteTable("work_requests", {
 export const workRequestEvents = sqliteTable("work_request_events", {
   id: integer("id").primaryKey({ autoIncrement: true }),
   requestId: text("request_id").notNull().references(() => workRequests.id, { onDelete: "cascade" }),
-  kind: text("kind", { enum: ["created", "routed", "skipped", "escalated", "clarify", "reply", "answered", "denied", "expired", "cancelled", "refused"] }).notNull(),
+  kind: text("kind", { enum: ["created", "routed", "skipped", "escalated", "clarify", "reply", "answered", "denied", "expired", "cancelled", "refused", "granted"] }).notNull(),
   actor: text("actor").notNull(),
   text: text("text").notNull().default(""),
   notifyAgentId: text("notify_agent_id"),
@@ -583,3 +586,16 @@ export const workRequestSpool = sqliteTable("work_request_spool", {
   attempts: integer("attempts").notNull().default(0),
   createdAt: integer("created_at").notNull(),
 });
+
+/** Stage 5: the owner's grants and revocations (the record). Enforcement is the bridge's folder sync and the MCP denies. */
+export const resourceGrants = sqliteTable("resource_grants", {
+  id: text("id").primaryKey(),
+  agentId: text("agent_id").notNull(),
+  resource: text("resource").notNull(),
+  access: text("access", { enum: ["read", "write"] }).notNull(),
+  /** "owner" or the request it answered (REQ-…). */
+  grantedBy: text("granted_by").notNull(),
+  createdAt: integer("created_at").notNull(),
+  revokedAt: integer("revoked_at"),
+  revokedBy: text("revoked_by"),
+}, (t) => [index("resource_grants_agent_idx").on(t.agentId, t.resource)]);

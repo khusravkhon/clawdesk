@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import type { OwnerRequestAction, WorkRequestDto, WorkRequestEventDto, WorkRequestLevelKind, WorkRequestsDto } from "@clawdesk/shared";
+import { ResourceRef, type GrantResourceRequest, type OwnerRequestAction, type ResourceAccess, type WorkRequestDto, type WorkRequestEventDto, type WorkRequestLevelKind, type WorkRequestsDto } from "@clawdesk/shared";
 import { and, asc, desc, eq, inArray, isNull, lt } from "drizzle-orm";
 import type { Db } from "../db/client.js";
 import { agents, companyAgentAssignments, companyProjects, departmentManagers, departments, teams, workRequestEvents, workRequests, workRequestSpool } from "../db/schema.js";
@@ -14,13 +14,15 @@ import { agents, companyAgentAssignments, companyProjects, departmentManagers, d
 // they grant nothing (access is the policy service's, stage 5).
 
 export class WorkRequestError extends Error {
-  constructor(readonly code: "company_only" | "request_missing" | "request_closed" | "revision_conflict" | "request_conflict") { super(code); }
+  constructor(readonly code: "company_only" | "request_missing" | "request_closed" | "revision_conflict" | "request_conflict" | "not_access") { super(code); }
 }
 
 type Level = { kind: WorkRequestLevelKind; agentId: string | null };
 type Row = typeof workRequests.$inferSelect;
 type Tx = Pick<Db, "select" | "insert" | "update">;
-type SpoolEntry = { id?: unknown; type?: unknown; agentId?: unknown; kind?: unknown; subject?: unknown; details?: unknown; taskRef?: unknown; requestId?: unknown; action?: unknown; text?: unknown };
+type SpoolEntry = { id?: unknown; type?: unknown; agentId?: unknown; kind?: unknown; subject?: unknown; details?: unknown; taskRef?: unknown; resource?: unknown; access?: unknown; requestId?: unknown; action?: unknown; text?: unknown };
+/** Applies and checks a grant (AccessService.grant); returns where the agent finds the resource. */
+export type GrantPort = (request: GrantResourceRequest, by: string) => Promise<{ resource: string; access: ResourceAccess; path: string | null }>;
 export type RequestsBridge = { requestsSpool(): Promise<{ entries: SpoolEntry[]; rejected: string[] }>; requestsAck(ids: string[]): Promise<unknown> };
 
 export const REQUEST_TTL_MS = 24 * 60 * 60_000;
@@ -83,7 +85,7 @@ export class WorkRequestsService {
   #dto(row: Row, events: (typeof workRequestEvents.$inferSelect)[]): WorkRequestDto {
     return {
       id: row.id, code: code(row.number), from: { agentId: row.fromAgentId, name: this.#name(row.fromAgentId) }, kind: row.kind,
-      subject: row.subject, details: row.details, taskRef: row.taskRef, status: row.status, revision: row.revision,
+      subject: row.subject, details: row.details, taskRef: row.taskRef, resource: row.resource ?? null, access: row.access ?? null, status: row.status, revision: row.revision,
       route: row.route.map((level) => ({ ...level, name: this.#name(level.agentId) })), level: row.level,
       answer: row.answerText !== null ? { by: row.answeredBy ?? "", name: this.#name(row.answeredBy === "owner" ? null : row.answeredBy), text: row.answerText } : null,
       deadlineAt: row.deadlineAt, createdAt: row.createdAt, updatedAt: row.updatedAt,
@@ -135,10 +137,14 @@ export class WorkRequestsService {
   /** A new request: validated, deduplicated, routed to the first available level. */
   #file(tx: Tx, spoolId: string, agentId: string, entry: SpoolEntry, live: Set<string> | undefined): { outcome: string; notify: string | null } {
     if (!this.#known(agentId)) return { outcome: "unknown_agent", notify: null };
-    const kind = entry.kind === "question" || entry.kind === "decision" ? entry.kind : null;
+    const kind = entry.kind === "question" || entry.kind === "decision" || entry.kind === "access" ? entry.kind : null;
     const subject = str(entry.subject, 200), details = str(entry.details, 4000);
     const taskRef = entry.taskRef === undefined ? "" : str(entry.taskRef, 200);
     if (!kind || !subject || !details || taskRef === null) return { outcome: "invalid", notify: "Обращение не принято: неверные поля." };
+    // An access request names exactly one resource and a level; nothing else does.
+    const resource = kind === "access" && ResourceRef.safeParse(entry.resource).success ? entry.resource as string : null;
+    const access = kind === "access" && (entry.access === "read" || entry.access === "write") ? entry.access : null;
+    if (kind === "access" ? !resource || !access : entry.resource !== undefined || entry.access !== undefined) return { outcome: "invalid", notify: "Обращение не принято: для доступа укажи resource (folder:<папка> или mcp:<сервер>) и access (read или write)." };
     const key = subjectKey(subject);
     const active = tx.select().from(workRequests).where(and(eq(workRequests.fromAgentId, agentId), inArray(workRequests.status, ["open", "clarify"]))).all();
     const same = active.find((row) => row.kind === kind && row.subjectKey === key);
@@ -147,7 +153,7 @@ export class WorkRequestsService {
     const route = this.route(agentId);
     const now = this.#now();
     const last = tx.select({ number: workRequests.number }).from(workRequests).orderBy(desc(workRequests.number)).get();
-    const row: typeof workRequests.$inferInsert = { id: randomUUID(), number: (last?.number ?? 0) + 1, fromAgentId: agentId, kind, subject, subjectKey: key, details, taskRef, status: "open", route, level: 0, hops: 0, deadlineAt: now + REQUEST_TTL_MS, createdAt: now, updatedAt: now, spoolId };
+    const row: typeof workRequests.$inferInsert = { id: randomUUID(), number: (last?.number ?? 0) + 1, fromAgentId: agentId, kind, subject, subjectKey: key, details, taskRef, resource, access, status: "open", route, level: 0, hops: 0, deadlineAt: now + REQUEST_TTL_MS, createdAt: now, updatedAt: now, spoolId };
     tx.insert(workRequests).values(row).run();
     this.#event(tx, row.id!, "created", agentId, "");
     const created = tx.select().from(workRequests).where(eq(workRequests.id, row.id!)).get()!;
@@ -199,6 +205,8 @@ export class WorkRequestsService {
       return { outcome: `reply:${label}`, notify: null };
     }
     if (agentId !== addressee || row.status !== "open") return { outcome: `refused:${label}`, notify: `Ты не можешь отвечать по ${label}: сейчас его адресат — ${this.#name(addressee)}.` };
+    // No agent has delegated authority to grant yet: an access request is answered only by a grant from the owner.
+    if (row.kind === "access" && action === "answer") return { outcome: `refused:${label}`, notify: `${label} — запрос доступа: его выдаёт только владелец. Ты можешь отказать (deny), уточнить (clarify) или передать выше (escalate).` };
     if (action === "escalate") {
       if (row.hops >= MAX_HOPS) return { outcome: `hop_limit:${label}`, notify: `${label} нельзя передать выше: достигнут предел в ${MAX_HOPS} перехода. Ответь или откажи.` };
       this.#event(tx, row.id, "escalated", agentId, text);
@@ -232,7 +240,38 @@ export class WorkRequestsService {
 
   // --- The owner ----------------------------------------------------------------------------------
 
-  ownerAct(id: string, request: OwnerRequestAction): WorkRequestDto {
+  /**
+   * The owner grants what an access request asks for: the panel applies and checks it (GrantPort), and only
+   * then closes the request and tells the requester where to find the resource. A failed check leaves the
+   * request open; the same requestId does not grant twice.
+   */
+  async ownerGrant(id: string, request: OwnerRequestAction, grant: GrantPort): Promise<WorkRequestDto> {
+    if (!this.deps.companyMode()) throw new WorkRequestError("company_only");
+    const { db } = this.deps;
+    const row = db.select().from(workRequests).where(eq(workRequests.id, id)).get();
+    if (!row) throw new WorkRequestError("request_missing");
+    const previous = db.select().from(workRequestEvents).where(and(eq(workRequestEvents.requestId, id), eq(workRequestEvents.requestKey, request.requestId))).get();
+    if (previous) {
+      if (previous.kind !== "granted") throw new WorkRequestError("request_conflict");
+      return db.transaction((tx) => this.#one(tx, id));
+    }
+    if (row.revision !== request.revision) throw new WorkRequestError("revision_conflict");
+    if (row.status !== "open" && row.status !== "clarify") throw new WorkRequestError("request_closed");
+    if (row.kind !== "access" || !row.resource || !row.access) throw new WorkRequestError("not_access");
+    const label = code(row.number);
+    const granted = await grant({ agentId: row.fromAgentId, resource: row.resource, access: row.access }, label);
+    const level = granted.access === "read" ? "только чтение" : "чтение и запись";
+    const where = granted.path ? ` Он у тебя в ${granted.path}.` : "";
+    return db.transaction((tx) => {
+      const current = tx.select().from(workRequests).where(eq(workRequests.id, id)).get()!;
+      const text = `Доступ выдан и проверен: ${granted.resource} (${level})${granted.path ? `, в песочнице: ${granted.path}` : ""}.`;
+      this.#set(tx, current, { status: "answered", answerText: text, answeredBy: "owner" });
+      this.#event(tx, id, "granted", "owner", text, { agentId: row.fromAgentId, text: `Владелец выдал доступ по ${label} («${row.subject}»): ${granted.resource}, ${level}.${where} Продолжай работу, которую блокировало обращение.` }, request.requestId);
+      return this.#one(tx, id);
+    });
+  }
+
+  ownerAct(id: string, request: OwnerRequestAction & { action: "answer" | "deny" | "clarify" | "cancel" }): WorkRequestDto {
     if (!this.deps.companyMode()) throw new WorkRequestError("company_only");
     return this.deps.db.transaction((tx) => {
       const row = tx.select().from(workRequests).where(eq(workRequests.id, id)).get();
@@ -299,6 +338,15 @@ export class WorkRequestsService {
 }
 
 function addresseeMessage(label: string, from: string, row: Row, next: string | null): string {
+  if (row.kind === "access") return [
+    `Обращение ${label} от ${from} (${row.fromAgentId}) — нужен доступ: ${row.resource}, ${row.access === "read" ? "чтение" : "чтение и запись"}.`,
+    `Тема: ${row.subject}`,
+    `Зачем: ${row.details}`,
+    row.taskRef ? `Задача: ${row.taskRef}` : null,
+    "",
+    `Доступ выдаёт только владелец. Ответь инструментом clawdesk_request_reply с requestId «${label}»: deny — отказать с причиной; clarify — спросить автора, зачем и в каком объёме${next ? `; escalate — передать выше (${next})` : ""}.`,
+    "Не пересылай автору материалы из этого ресурса вместо доступа: ответ текстом не заменяет проверенный доступ.",
+  ].filter((line): line is string => typeof line === "string").join("\n");
   return [
     `Обращение ${label} от ${from} (${row.fromAgentId}) — ${row.kind === "question" ? "нужны сведения" : "нужно решение"}.`,
     `Тема: ${row.subject}`,

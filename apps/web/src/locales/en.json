@@ -1941,7 +1941,8 @@
     },
     "kind": {
       "question": "Needs information",
-      "decision": "Needs a decision"
+      "decision": "Needs a decision",
+      "access": "Needs access"
     },
     "from": "From",
     "deadline": "Deadline",
@@ -1963,7 +1964,8 @@
       "denied": "denied",
       "expired": "expired",
       "cancelled": "closed by the owner",
-      "refused": "refused"
+      "refused": "refused",
+      "granted": "access granted"
     },
     "delivery": {
       "pending": "message to the agent not delivered yet",
@@ -1975,7 +1977,8 @@
       "answer": "Answer",
       "clarify": "Ask the requester",
       "deny": "Deny",
-      "cancel": "Close without answer"
+      "cancel": "Close without answer",
+      "grant": "Grant access"
     },
     "limits": "First version limits: no team lead level yet; at most four transitions; one open request of a kind per subject and up to five open per agent; one day to answer, after which the work stays blocked. Requests do not grant access to documents or services yet. Telegram messages come in a later stage.",
     "failed": "The action failed.",
@@ -1985,7 +1988,61 @@
       "revision_conflict": "The request changed — refresh the page and try again.",
       "request_conflict": "A repeated request with different content.",
       "company_only": "Requests are available in company mode only.",
-      "invalid_request": "Enter the answer text."
+      "invalid_request": "Enter the answer text.",
+      "not_access": "This is not an access request.",
+      "not_applied": "The access did not hold when checked; the request stays open.",
+      "resource_missing": "The requested folder or server does not exist."
+    },
+    "resource": "Resource",
+    "grantConfirm": "Grant {resource} to “{name}”? The panel applies the access, checks it, and only then closes the request."
+  },
+  "access": {
+    "title": "Access",
+    "scope": "What each company agent can actually reach: shared folders and team docs (a copy in its sandbox), MCP servers, the team's repository and work copy. The state is read where access is enforced; a grant or revocation counts only once the panel has checked the result. Revoking a folder deletes its copy from the agent's sandbox.",
+    "grantTitle": "Grant access",
+    "agent": "Agent",
+    "resource": "Resource",
+    "levelLabel": "Access level",
+    "grant": "Grant and check",
+    "mcpAll": "An MCP server is granted whole: all its tools, with no read/write split.",
+    "granted": "Access granted and checked.",
+    "revoked": "Access revoked and checked.",
+    "sandboxed": "sandboxed",
+    "notSandboxed": "no sandbox",
+    "mainNote": "The main agent runs without a sandbox and sees the whole shared folder. Only its MCP servers are managed here.",
+    "notSandboxedNote": "An agent without a sandbox sees more of the Gateway's files than shown here: folder limits do not apply to it.",
+    "none": "No separate access.",
+    "kind": {
+      "folder": "folder",
+      "team-docs": "team docs",
+      "mcp": "MCP",
+      "team-repo": "team repository",
+      "project-copy": "project copy"
+    },
+    "level": {
+      "read": "read",
+      "write": "read and write"
+    },
+    "state": {
+      "partial": "partly synchronized",
+      "error": "synchronization error"
+    },
+    "revoke": "Revoke",
+    "revokeFolder": "Folder “{name}” stops synchronizing and its copy is deleted from the sandbox of “{agent}”. The shared folder does not change. Continue?",
+    "revokeMcp": "The tools of server “{name}” become unavailable to “{agent}”. Continue?",
+    "viaTeam": "changed through the team",
+    "history": "Grants and revocations",
+    "by": "granted by: {by}",
+    "revokedAt": "revoked {at}",
+    "limits": "First version: only the owner grants and revokes (no delegation to managers); folders only from the shared folder; an MCP server as a whole. Google documents and agents' memory are not split by team yet. An agent without a sandbox is not bound by these rules.",
+    "failed": "Could not change access.",
+    "errors": {
+      "agent_missing": "Agent not found.",
+      "resource_missing": "No such folder or server (or no access to take away).",
+      "not_applied": "The change did not hold when checked — access not counted. Refresh the page and check the state.",
+      "main_folders": "The main agent sees the whole shared folder; there is nothing to grant.",
+      "company_only": "Access is managed in company mode.",
+      "invalid_request": "Invalid resource."
     }
   }
 }
