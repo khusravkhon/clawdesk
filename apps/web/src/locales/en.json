@@ -2573,5 +2573,40 @@
     },
     "notGenerated": "The panel does not create these automatically: they are directions for separate development, not ready templates.",
     "acknowledge": "I understand: the listed needs will not be in the first version"
+  },
+  "projectTransfer": {
+    "title": "Move to another installation",
+    "lead": "The project's folder is on the machine this installation runs on: a server does not see a computer's folder, nor the other way round. To continue the project on another installation, download it as a file and upload it there under Projects → Upload a project file.",
+    "show": "Show what the file will hold",
+    "summary": "It holds: {files} files ({size}), {rules} business rules, the project brief.",
+    "folder": "Folder: \"{name}\".",
+    "files": "Files",
+    "excluded": "Left out ({count})",
+    "reasons": {
+      "secret_or_local": "a secret or local data",
+      "looks_like_secret": "looks like a key or token",
+      "version_control": "git history (connect GitHub on the new installation)",
+      "generated": "dependencies or build output",
+      "link": "a link",
+      "too_large": "over 5 MB",
+      "too_deep": "nested too deep"
+    },
+    "notCarried": "Not carried: acceptance scenarios, tasks, check runs, executors and the GitHub link — they stay with this installation.",
+    "download": "Download the project file",
+    "downloaded": "\"{name}\" downloaded. Upload it on the other installation.",
+    "import": "Upload a project file",
+    "imported": "Project \"{name}\" uploaded: folder \"{folder}\", {files} files, {rules} rules.",
+    "importedAgain": "This file was uploaded before — the same project \"{name}\" is open.",
+    "importFolderFailed": "Project \"{name}\" was created but its files were not written. Upload the same file again — the move continues without duplicates.",
+    "kb": "{n} KB",
+    "mb": "{n} MB",
+    "failed": "The move failed.",
+    "errors": {
+      "invalid_package": "This is not a ClawDesk project file, or it is damaged.",
+      "package_too_large": "The project file is too large (over 20 MB of files).",
+      "transfer_too_large": "The project is too large to move as a file (over 20 MB or 2000 files). Move it through GitHub.",
+      "gateway_unavailable": "No connection to the Gateway.",
+      "workspace_required": "The project has no folder."
+    }
   }
 }

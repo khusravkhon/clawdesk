@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import type { CompanyDto, ProjectDto } from "@clawdesk/shared";
+import type { CompanyDto, ProjectDto, ProjectImportDto } from "@clawdesk/shared";
 import { NAlert, NButton, NCard, NEmpty, NFormItem, NInput, NModal, NPopconfirm, NSelect, NSkeleton, NSpace, NTag, useMessage } from "naive-ui";
 import { computed, onMounted, reactive, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
@@ -13,6 +13,7 @@ import ProjectBuilderCard from "../components/ProjectBuilderCard.vue";
 import ProjectChecksCard from "../components/ProjectChecksCard.vue";
 import ProjectTasksCard from "../components/ProjectTasksCard.vue";
 import ProjectGitHubCard from "../components/ProjectGitHubCard.vue";
+import ProjectTransferCard from "../components/ProjectTransferCard.vue";
 
 const { t, te } = useI18n();
 const route = useRoute();
@@ -90,6 +91,25 @@ async function openTeamPicker(): Promise<void> {
   if (!error.value && canAdd.value) addingTeam.value = true;
 }
 
+/** P8: a project carried here from another installation as a .clawdesk-project file. */
+const packageInput = ref<HTMLInputElement | null>(null), importing = ref(false), imported = ref<ProjectImportDto | null>(null);
+const pickPackage = () => packageInput.value?.click();
+async function importPackage(event: Event): Promise<void> {
+  const input = event.target as HTMLInputElement, chosen = input.files?.[0];
+  input.value = "";
+  if (!chosen) return;
+  importing.value = true; error.value = null; imported.value = null;
+  try {
+    const bytes = new Uint8Array(await chosen.arrayBuffer());
+    let binary = "";
+    for (let index = 0; index < bytes.length; index += 0x8000) binary += String.fromCharCode(...bytes.subarray(index, index + 0x8000));
+    imported.value = await api.company.importProject({ data: btoa(binary) });
+    await load();
+    if (imported.value.state === "imported") await router.push(`/company/projects/${imported.value.projectId}`);
+  } catch (e) { error.value = e instanceof ApiError && te(`projectTransfer.errors.${e.body.error}`) ? t(`projectTransfer.errors.${e.body.error}`) : t("projectTransfer.failed"); }
+  finally { importing.value = false; }
+}
+
 watch(() => route.query.departmentId, (value) => { filter.value = typeof value === "string" ? value : null; });
 onMounted(async () => {
   await load();
@@ -108,10 +128,13 @@ onMounted(async () => {
         <n-button key="company" @click="router.push(project?.departmentId ? `/company/departments/${project.departmentId}` : '/company')">{{ t('projects.toCompany') }}</n-button>
         <n-button v-if="projectId" key="catalog" @click="router.push('/company/projects')">{{ t('projects.catalog') }}</n-button>
         <n-button key="refresh" :loading="loading" :disabled="saving" @click="load">{{ t('company.refresh') }}</n-button>
+        <n-button v-if="!projectId" key="import" :loading="importing" :disabled="!data || saving" @click="pickPackage">{{ t('projectTransfer.import') }}</n-button>
         <n-button v-if="!projectId" key="create" type="primary" :disabled="!data || saving" @click="edit()">{{ t('projects.create') }}</n-button>
       </n-space>
     </page-header>
+    <input ref="packageInput" type="file" accept=".clawdesk-project,application/gzip" class="hidden-input" @change="importPackage" />
     <n-alert type="info" :bordered="false" class="block">{{ t('projects.scope') }}</n-alert>
+    <n-alert v-if="imported" :type="imported.state === 'imported' ? 'success' : 'warning'" class="block">{{ t(imported.state === 'imported' ? (imported.repeated ? 'projectTransfer.importedAgain' : 'projectTransfer.imported') : 'projectTransfer.importFolderFailed', { name: imported.name, folder: imported.folder ?? '—', files: imported.files, rules: imported.rules }) }}</n-alert>
     <n-alert v-if="error" type="error" class="block">{{ error }}</n-alert>
     <n-skeleton v-if="loading && !data" height="180px" />
     <template v-if="data">
@@ -139,6 +162,7 @@ onMounted(async () => {
         <project-brief-card :key="`brief-${project.id}`" :project-id="project.id" :disabled="!canAdd || saving" :refresh-token="briefRefreshToken" @changed="builderRefreshToken++" />
         <project-rules-card :key="`rules-${project.id}`" :project-id="project.id" :disabled="!canAdd || saving" @changed="builderRefreshToken++" />
         <project-workspace-card :key="project.id" :project-id="project.id" :disabled="!canAdd || saving" @changed="builderRefreshToken++" />
+        <project-transfer-card :key="`transfer-${project.id}`" :project-id="project.id" />
         <n-card :title="t('projects.teams')" class="block">
           <template #header-extra><n-button v-if="canAdd" text :disabled="saving || loading" @click="openTeamPicker">{{ t('projects.addTeam') }}</n-button></template>
           <n-empty v-if="!projectTeams.length" :description="t('projects.noTeams')" />
@@ -176,6 +200,7 @@ onMounted(async () => {
 </template>
 
 <style scoped>
+.hidden-input { display: none; }
 .block { margin-bottom: 18px; }
 .project-row { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 12px 0; border-bottom: 1px solid var(--border); }
 .project-row:last-child { border-bottom: 0; }

@@ -25,10 +25,10 @@ const MAX_FILES = 2000, MAX_FILE = 5 * 1024 * 1024, MAX_TOTAL = 50 * 1024 * 1024
 const READ = constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK;
 const UNTRUSTED = ["-c", "core.fsmonitor=false", "-c", "core.hooksPath=/dev/null"];
 /** Left out by name: version control, the panel's own files, dependencies, local data, secrets. */
-const SKIP_DIRS = new Set([".git", "node_modules", ".venv", "venv", "__pycache__", "dist", "build", ".next", ".cache"]);
-const SKIP_FILE = /(^\.env(\..*)?$)|(\.sqlite(-wal|-shm|-journal)?$)|(\.db$)|(\.pem$)|(\.key$)|(^id_(rsa|ed25519|ecdsa)(\.pub)?$)|(\.p12$)|(\.pfx$)|(^\.clawdesk)|(\.log$)/i;
+export const SKIP_DIRS = new Set([".git", "node_modules", ".venv", "venv", "__pycache__", "dist", "build", ".next", ".cache"]);
+export const SKIP_FILE = /(^\.env(\..*)?$)|(\.sqlite(-wal|-shm|-journal)?$)|(\.db$)|(\.pem$)|(\.key$)|(^id_(rsa|ed25519|ecdsa)(\.pub)?$)|(\.p12$)|(\.pfx$)|(^\.clawdesk)|(\.log$)/i;
 /** Left out by content: things that look like credentials. */
-const SECRET = [/-----BEGIN [A-Z ]*PRIVATE KEY-----/, /\bgh[pousr]_[A-Za-z0-9]{30,}/, /\bgithub_pat_[A-Za-z0-9_]{30,}/, /\bsk-[A-Za-z0-9]{20,}/, /\bAKIA[0-9A-Z]{16}\b/, /\bxox[baprs]-[A-Za-z0-9-]{10,}/];
+export const SECRET = [/-----BEGIN [A-Z ]*PRIVATE KEY-----/, /\bgh[pousr]_[A-Za-z0-9]{30,}/, /\bgithub_pat_[A-Za-z0-9_]{30,}/, /\bsk-[A-Za-z0-9]{20,}/, /\bAKIA[0-9A-Z]{16}\b/, /\bxox[baprs]-[A-Za-z0-9-]{10,}/];
 export const GITIGNORE = [".env", ".env.*", "*.sqlite", "*.sqlite-*", "*.db", "*.pem", "*.key", "node_modules/", "dist/", "build/", ".clawdesk*", "*.log", ""].join("\n");
 
 const fail = (code, status = 409) => { throw new ProjectFolderError(code, status); };

@@ -734,3 +734,11 @@ export const projectRuleConflicts = sqliteTable("project_rule_conflicts", {
   createdAt: integer("created_at").notNull(),
   decidedAt: integer("decided_at"),
 }, (t) => [index("project_rule_conflicts_project_idx").on(t.projectId, t.status)]);
+
+/** P8: packages imported here; the same package uploaded again finishes or returns the same project. */
+export const projectImports = sqliteTable("project_imports", {
+  packageId: text("package_id").primaryKey(),
+  projectId: text("project_id").notNull().references(() => companyProjects.id, { onDelete: "cascade" }),
+  state: text("state", { enum: ["imported", "folder_failed"] }).notNull(),
+  createdAt: integer("created_at").notNull(),
+});

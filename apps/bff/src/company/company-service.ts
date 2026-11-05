@@ -18,6 +18,7 @@ import { ProjectTasksService, type TaskBridge } from "./project-tasks-service.js
 import { ProjectGitHubService, type ProjectGitHubBridge } from "./project-github-service.js";
 import { ProjectInterviewService } from "./project-interview-service.js";
 import { ProjectRuleAuditService } from "./project-rule-audit-service.js";
+import { ProjectTransferService, type TransferBridge } from "./project-transfer-service.js";
 import type { OneShot } from "../chat/one-shot.js";
 import { mainSessionKey } from "../chat/chat-service.js";
 import type { Logger } from "pino";
@@ -37,8 +38,9 @@ export class CompanyService {
   readonly github: ProjectGitHubService;
   readonly interview: ProjectInterviewService;
   readonly audit: ProjectRuleAuditService;
+  readonly transfer: ProjectTransferService;
 
-  constructor(private readonly deps: { db: Db; gateway: GatewayService; space: SpaceService; logger?: Logger; sandboxEnabled?: boolean; model?: OneShot; bridge?: Pick<BridgeClient, "projectWorkspace" | "prepareProjectWorkspace"> & Partial<ProjectBuilderBridge> & Partial<ProjectChecksBridge> & Partial<TaskBridge> & Partial<Pick<BridgeClient, "ensureProjectWork">> & Partial<ProjectGitHubBridge> }) {
+  constructor(private readonly deps: { db: Db; gateway: GatewayService; space: SpaceService; logger?: Logger; sandboxEnabled?: boolean; model?: OneShot; bridge?: Pick<BridgeClient, "projectWorkspace" | "prepareProjectWorkspace"> & Partial<ProjectBuilderBridge> & Partial<ProjectChecksBridge> & Partial<TaskBridge> & Partial<Pick<BridgeClient, "ensureProjectWork">> & Partial<ProjectGitHubBridge> & Partial<Pick<BridgeClient, "projectTransferRead" | "projectTransferWrite">> }) {
     this.rules = new ProjectRulesService({ db: deps.db, checkProject: (id, writing) => this.#briefProject(id, writing) });
     this.audit = new ProjectRuleAuditService({ db: deps.db, checkProject: (id, writing) => this.#briefProject(id, writing), rules: (id) => this.rules.list(id).rules, model: deps.model });
     this.acceptance = new ProjectAcceptanceService({ db: deps.db, checkProject: (id, writing) => this.#briefProject(id, writing) });
@@ -60,6 +62,12 @@ export class CompanyService {
     });
     this.github = new ProjectGitHubService({ checkProject: (id, writing) => this.#briefProject(id, writing), bridge: bridge?.projectGitHub ? bridge as ProjectGitHubBridge : undefined });
     this.interview = new ProjectInterviewService({ db: deps.db, checkProject: (id, writing) => this.#briefProject(id, writing), brief: id => this.projectBrief(id), saveBrief: (id, request) => this.saveProjectBrief(id, request), model: deps.model });
+    this.transfer = new ProjectTransferService({
+      db: deps.db, project: (id) => { const project = this.#briefProject(id); return { id: project.id, name: project.name, description: project.description }; },
+      brief: id => this.projectBrief(id), saveBrief: (id, request) => this.saveProjectBrief(id, request), rules: this.rules,
+      createProject: (request) => this.createProject(request),
+      bridge: bridge?.projectTransferRead && bridge.projectTransferWrite ? bridge as unknown as TransferBridge : undefined,
+    });
     this.builder = new ProjectBuilderService({ db: deps.db, checkProject: (id, writing) => this.#briefProject(id, writing), brief: id => this.projectBrief(id), saveBrief: (id, request) => this.saveProjectBrief(id, request), rules: id => this.rules.list(id).rules, bridge: deps.bridge?.builderStatus ? deps.bridge as ProjectBuilderBridge : undefined });
   }
 

@@ -270,6 +270,14 @@ export class BridgeClient {
     return this.#call("GET", "/files/folders");
   }
 
+  /** P8: a project's files for a transfer package (base64 with hashes), and a package's files into a new folder. */
+  projectTransferRead(projectId: string): Promise<{ files: { path: string; size: number; sha256: string; data: string }[]; excluded: { path: string; reason: string }[]; mode: string }> {
+    return this.#call("POST", "/projects/transfer/read", { projectId }, 120_000);
+  }
+  projectTransferWrite(projectId: string, files: { path: string; size: number; sha256: string; data: string }[]): Promise<{ written: number; bytes: number }> {
+    return this.#call("POST", "/projects/transfer/write", { projectId, files }, 180_000);
+  }
+
   /** Stage 7: one Google Doc as a read-only copy in the agent's workspace (google/<id>.md), exported with the owner's account. */
   googleDocCopy(agentId: string, docId: string, account: string): Promise<{ docId: string; title: string; revision: string | null; copiedAt: number; sha: string; path: string }> {
     return this.#call("POST", "/google/doc/copy", { agentId, docId, account }, 120_000);

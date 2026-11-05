@@ -6,6 +6,8 @@ import { PrepareProjectWorkspaceRequest } from "@clawdesk/shared";
 import { SaveProjectBriefRequest, InterviewAnswerRequest, InterviewAskRequest } from "@clawdesk/shared";
 import { InterviewError } from "../company/project-interview-service.js";
 import { RuleAuditError } from "../company/project-rule-audit-service.js";
+import { ProjectTransferError } from "../company/project-transfer-service.js";
+import { ImportProjectRequest } from "@clawdesk/shared";
 import { DismissRuleConflictRequest, RuleAuditCheckRequest, RuleSearchQuery } from "@clawdesk/shared";
 import { ApproveBusinessRuleRequest, CreateBusinessRuleRequest, UpdateBusinessRuleRequest } from "@clawdesk/shared";
 import { BridgeError } from "../gateway/bridge-client.js";
@@ -35,7 +37,7 @@ export function registerCompanyRoutes(app: FastifyInstance, company: CompanyServ
         const code = known.has(error.code) ? error.code : "workspace_unavailable";
         return reply.status(code.startsWith("invalid_") ? 400 : code === "workspace_unavailable" ? 503 : 409).send({ error: code, message: code });
       }
-      if (!(error instanceof CompanyError) && !(error instanceof ProjectRuleError) && !(error instanceof AcceptanceError) && !(error instanceof ProjectBuilderError) && !(error instanceof ProjectChecksError) && !(error instanceof ProjectTaskError) && !(error instanceof ProjectGitHubError) && !(error instanceof InterviewError) && !(error instanceof RuleAuditError)) throw error;
+      if (!(error instanceof CompanyError) && !(error instanceof ProjectRuleError) && !(error instanceof AcceptanceError) && !(error instanceof ProjectBuilderError) && !(error instanceof ProjectChecksError) && !(error instanceof ProjectTaskError) && !(error instanceof ProjectGitHubError) && !(error instanceof InterviewError) && !(error instanceof RuleAuditError) && !(error instanceof ProjectTransferError)) throw error;
       const status = error.code === "company_only" || error.code.endsWith("_missing") ? 404 : error.code === "gateway_unavailable" || error.code === "model_missing" ? 503 : 409;
       return reply.status(status).send({ error: error.code, message: error.code });
     });
@@ -55,6 +57,10 @@ export function registerCompanyRoutes(app: FastifyInstance, company: CompanyServ
     });
     scope.post("/api/company/projects", async (request, reply) => reply.status(201).send(company.createProject(CreateProjectRequest.parse(request.body))));
     scope.get("/api/company/projects/:id/brief", (request) => company.projectBrief(Params.parse(request.params).id));
+    // P8: a project carried to another installation as a file.
+    scope.get("/api/company/projects/:id/transfer", (request) => company.transfer.preview(Params.parse(request.params).id));
+    scope.post("/api/company/projects/:id/transfer/export", (request) => company.transfer.export(Params.parse(request.params).id));
+    scope.post("/api/company/projects/import", { bodyLimit: 45 * 1024 * 1024 }, (request) => company.transfer.import(ImportProjectRequest.parse(request.body).data));
     // P3: contradictions between rules, and a rule by the owner's phrase.
     scope.get("/api/company/projects/:id/rules-audit", (request) => company.audit.get(Params.parse(request.params).id));
     scope.post("/api/company/projects/:id/rules-audit/check", (request) => company.audit.check(Params.parse(request.params).id, RuleAuditCheckRequest.parse(request.body)));

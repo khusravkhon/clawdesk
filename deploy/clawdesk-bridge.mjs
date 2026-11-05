@@ -60,6 +60,7 @@ import { ProjectFolders, ProjectFolderError } from "./clawdesk-project-folders.m
 import { ProjectBuilder } from "./clawdesk-project-builder.mjs";
 import { ProjectWork } from "./clawdesk-project-work.mjs";
 import { GoogleDocCopies } from "./clawdesk-google-docs.mjs";
+import { ProjectTransfer } from "./clawdesk-project-transfer.mjs";
 import { sharedFolderSource } from "./clawdesk-shared-folder.mjs";
 import { composeServiceContainer } from "./clawdesk-containers.mjs";
 
@@ -257,6 +258,7 @@ async function googleRemove(body) {
 const FILES_IN_GATEWAY = path.join(process.env.OPENCLAW_STATE_DIR || "/var/lib/clawdesk/openclaw", "workspace", "files");
 const projectFolders = new ProjectFolders({ stateDir: process.env.OPENCLAW_STATE_DIR || "/var/lib/clawdesk/openclaw" });
 const projectWork = new ProjectWork({ stateDir: process.env.OPENCLAW_STATE_DIR || "/var/lib/clawdesk/openclaw", configPath: process.env.OPENCLAW_CONFIG_PATH || "/var/lib/clawdesk/openclaw/openclaw.json" });
+const projectTransfer = new ProjectTransfer({ folders: projectFolders });
 const googleDocs = new GoogleDocCopies({ stateDir: process.env.OPENCLAW_STATE_DIR || "/var/lib/clawdesk/openclaw", configPath: process.env.OPENCLAW_CONFIG_PATH || "/var/lib/clawdesk/openclaw/openclaw.json", gog: (args) => runGog(args, { timeoutMs: 90_000 }) });
 const projectGitHub = new ProjectGitHub({ folders: projectFolders, stateDir: process.env.OPENCLAW_STATE_DIR || "/var/lib/clawdesk/openclaw" });
 const projectBuilder = new ProjectBuilder({ folders: projectFolders, stateDir: process.env.OPENCLAW_STATE_DIR || "/var/lib/clawdesk/openclaw" });
@@ -365,12 +367,13 @@ async function freellmapiReset(body) {
   return { status: 200, body: { ok: true } };
 }
 
-function readJson(req) {
+/** A JSON body; most routes take small ones, project files (checks, work copies, transfer) larger. */
+function readJson(req, limit = 32_768) {
   return new Promise((resolve, reject) => {
     let raw = "";
     req.on("data", (chunk) => {
       raw += chunk;
-      if (raw.length > 32_768) reject(new Error("body too large"));
+      if (raw.length > limit) reject(new Error("body too large"));
     });
     req.on("end", () => {
       try {
@@ -437,7 +440,7 @@ async function handle(req) {
       if (req.method === "GET" && url.pathname === "/projects/builder/files") return { status: 200, body: { files: await projectBuilder.appFiles(url.searchParams.get("projectId")) } };
       if (req.method === "GET" && url.pathname === "/projects/builder/analyze") return { status: 200, body: await projectBuilder.analyze(url.searchParams.get("projectId")) };
       if (req.method === "POST") {
-        const { projectId, ...body } = await readJson(req);
+        const { projectId, ...body } = await readJson(req, 512 * 1024);
         const operation = { "/projects/builder/prepare": "prepare", "/projects/builder/start": "start", "/projects/builder/stop": "stop", "/projects/builder/request": "request", "/projects/builder/checks": "checks", "/projects/builder/apply": "apply" }[url.pathname];
         if (operation) return { status: 200, body: await projectBuilder[operation](projectId, body) };
       }
@@ -464,12 +467,26 @@ async function handle(req) {
       return { status: error instanceof ProjectFolderError ? error.status : 503, body: { error: code, message: code } };
     }
   }
+  // P8: a project's files for a transfer package, and a package's files into a new project folder.
+  if (url.pathname.startsWith("/projects/transfer/")) {
+    if (spaceMode() !== "company") return { status: 409, body: { error: "company_only" } };
+    try {
+      if (req.method !== "POST") return { status: 404, body: { error: "not_found" } };
+      const { projectId, files } = await readJson(req, 40 * 1024 * 1024);
+      if (url.pathname === "/projects/transfer/read") return { status: 200, body: await projectTransfer.read(projectId) };
+      if (url.pathname === "/projects/transfer/write") return { status: 200, body: await projectTransfer.write(projectId, files) };
+      return { status: 404, body: { error: "not_found" } };
+    } catch (error) {
+      const code = error instanceof ProjectFolderError ? error.code : "transfer_unavailable";
+      return { status: error instanceof ProjectFolderError ? error.status : 503, body: { error: code, message: code } };
+    }
+  }
   // Executors' work copies (P6.2): created, refilled and read by the panel only.
   if (url.pathname.startsWith("/projects/work/")) {
     if (spaceMode() !== "company") return { status: 409, body: { error: "company_only" } };
     try {
       if (req.method !== "POST") return { status: 404, body: { error: "not_found" } };
-      const { agentId, files } = await readJson(req);
+      const { agentId, files } = await readJson(req, 512 * 1024);
       if (url.pathname === "/projects/work/ensure") return { status: 200, body: await projectWork.ensure(agentId) };
       if (url.pathname === "/projects/work/prepare") return { status: 200, body: await projectWork.prepare(agentId, files) };
       if (url.pathname === "/projects/work/snapshot") return { status: 200, body: await projectWork.snapshot(agentId) };

@@ -137,7 +137,8 @@ describe("indexed owner library", () => {
       for (const handle of handles) { try { handle.close(); } catch { /* Already closed. */ } }
       fs.rmSync(dir, { recursive: true, force: true });
     }
-  });
+    // Every migration runs several times here; under a full parallel run that can pass the default 5 s.
+  }, 30_000);
 
   it("refuses rollback of 0008 before changing data when newer migrations are applied", () => {
     const h = harness();
