@@ -257,3 +257,31 @@ test("metadata cache requires personal-mode opt-in and discards cached data when
   personal = true;
   assert.notEqual(manager.syncOptions().cache, first);
 });
+
+test("a team member's docs: a fixed workspace folder, and read-only members never write back", async (t) => {
+  const { root, host } = await fixture(t);
+  const stateDir = path.join(root, "state"), pm = path.join(stateDir, "workspace", "shop-pm"), dev = path.join(stateDir, "workspace", "shop-developer");
+  await fs.mkdir(pm, { recursive: true }); await fs.mkdir(dev, { recursive: true });
+  const configPath = path.join(stateDir, "openclaw.json");
+  await fs.writeFile(configPath, JSON.stringify({ agents: { defaults: { workspace: path.join(stateDir, "workspace") }, entries: { "shop-pm": { workspace: pm }, "shop-developer": { workspace: dev } } } }));
+  await fs.mkdir(path.join(host, "Shop"));
+  await fs.writeFile(path.join(host, "Shop", "spec.md"), "v1");
+  const manager = new AgentFolders({ stateDir, filesDir: host, configPath });
+  assert.equal((await manager.register("shop-pm", "Shop", { dir: "docs" })).gatewayPath, path.join(pm, "docs"));
+  assert.equal((await manager.register("shop-developer", "Shop", { dir: "docs", readOnly: true })).gatewayPath, path.join(dev, "docs"));
+  assert.equal(await fs.readFile(path.join(dev, "docs", "spec.md"), "utf8"), "v1");
+  // The PM's edit reaches the shared folder and the developer; the developer's edits stay in its workspace.
+  await fs.writeFile(path.join(pm, "docs", "spec.md"), "v2");
+  await fs.writeFile(path.join(dev, "docs", "notes.md"), "mine");
+  await manager.syncAll();
+  await manager.syncAll();
+  assert.equal(await fs.readFile(path.join(host, "Shop", "spec.md"), "utf8"), "v2");
+  assert.equal(await fs.readFile(path.join(dev, "docs", "spec.md"), "utf8"), "v2");
+  await assert.rejects(fs.stat(path.join(host, "Shop", "notes.md")), { code: "ENOENT" });
+  await fs.writeFile(path.join(dev, "docs", "spec.md"), "tampered");
+  await manager.syncAll();
+  assert.equal(await fs.readFile(path.join(host, "Shop", "spec.md"), "utf8"), "v2");
+  assert.equal(await fs.readFile(path.join(dev, "docs", "spec.md"), "utf8"), "v2");
+  await assert.rejects(manager.register("shop-pm", "Shop", { dir: "../x" }));
+  await assert.rejects(manager.register("shop-pm", "Shop", { readOnly: "yes" }));
+});

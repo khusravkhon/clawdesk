@@ -217,8 +217,12 @@ async function transfer(from, to, relative, expectedSource, expectedTarget, metr
   }
 }
 
-/** No delete propagation; simultaneous edits keep both versions instead of losing either one. */
-export async function syncFolders(hostRoot, agentRoot, previous = {}, { cache } = {}) {
+/**
+ * No delete propagation; simultaneous edits keep both versions instead of losing either one.
+ * readOnly: the shared folder wins — its files overwrite the agent's copies, nothing travels back,
+ * and a file only the agent has stays in its workspace.
+ */
+export async function syncFolders(hostRoot, agentRoot, previous = {}, { cache, readOnly = false } = {}) {
   const started = performance.now();
   const metrics = { bytesRead: 0, bytesHashed: 0, cacheHits: 0, durationMs: 0 };
   const hostScan = await scan(hostRoot, cache, metrics);
@@ -236,7 +240,10 @@ export async function syncFolders(hostRoot, agentRoot, previous = {}, { cache } 
     if (left === right) { next[file] = left; continue; }
     const baseline = Object.hasOwn(previous, file) ? previous[file] : undefined;
     try {
-      if (!right || (left && baseline === right)) {
+      if (readOnly) {
+        if (!left) continue;
+        if (await transfer(hostRoot, agentRoot, file, left, right, metrics)) next[file] = left;
+      } else if (!right || (left && baseline === right)) {
         if (await transfer(hostRoot, agentRoot, file, left, right, metrics)) next[file] = left;
       } else if (!left || baseline === left) {
         if (await transfer(agentRoot, hostRoot, file, right, left, metrics)) next[file] = right;

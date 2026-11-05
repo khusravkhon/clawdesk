@@ -5,6 +5,8 @@ import { directoryIdentityWithin, ensureDirectoryWithin, FolderSyncError, SyncMe
 
 const NAME = /^[\p{L}\p{N}][\p{L}\p{N} ._-]{0,59}$/u;
 const AGENT = /^[a-z0-9][a-z0-9_-]{0,79}$/;
+/** A team member's docs live at <workspace>/docs (the path its instructions name), not under folders/. */
+const DIRS = new Set(["docs"]);
 const CODES = new Set(["file_too_large", "unsupported_file", "file_unavailable", "file_changed", "folder_depth_limit", "folder_entry_limit", "folder_size_limit", "conflict_requires_review", "folder_unavailable"]);
 const timestamp = (value) => Number.isSafeInteger(value) && value > 0 && value <= 8_640_000_000_000_000 ? value : null;
 const count = (value) => Number.isSafeInteger(value) && value >= 0 ? value : 0;
@@ -56,8 +58,14 @@ export class AgentFolders {
     }
   }
 
-  validate({ agentId, name }) {
+  validate({ agentId, name, dir, readOnly }) {
     if (agentId === "main" || !AGENT.test(agentId ?? "") || !NAME.test(name ?? "")) throw new Error("invalid managed agent folder");
+    if ((dir !== undefined && !DIRS.has(dir)) || (readOnly !== undefined && typeof readOnly !== "boolean")) throw new Error("invalid managed agent folder");
+  }
+
+  /** The folder inside the agent's workspace: folders/<name>, or a fixed one such as docs. */
+  static workspaceDir(item) {
+    return item.dir ?? `folders/${item.name}`;
   }
 
   async save(registry) {
@@ -95,14 +103,18 @@ export class AgentFolders {
       item.hashes = {};
     }
     item.workspaceIdentity = identity;
-    const managed = await ensureDirectoryWithin(this.stateDir, `${relative.split(path.sep).join("/")}/folders/${item.name}`);
+    const managed = await ensureDirectoryWithin(this.stateDir, `${relative.split(path.sep).join("/")}/${AgentFolders.workspaceDir(item)}`);
     const shared = await ensureDirectoryWithin(this.filesDir, item.name);
     return { managed, shared };
   }
 
-  register(agentId, name) {
+  /**
+   * Starts (or keeps) synchronizing a shared folder into the agent's workspace. `dir` places it at a fixed
+   * workspace folder; `readOnly` mirrors the shared folder into the workspace and never copies back.
+   */
+  register(agentId, name, { dir, readOnly } = {}) {
     return this.serial(async () => {
-      this.validate({ agentId, name });
+      this.validate({ agentId, name, dir, readOnly });
       const config = JSON.parse(await fs.readFile(this.configPath, "utf8"));
       const registry = await this.load();
       let item = registry.folders.find((folder) => folder.agentId === agentId && folder.name === name);
@@ -110,9 +122,11 @@ export class AgentFolders {
         if (registry.folders.length >= 1000) throw new Error("managed folder limit exceeded");
         registry.folders.push(item = { agentId, name, hashes: {} });
       }
+      if (dir !== undefined && (item.dir ?? undefined) !== dir) { item.dir = dir; item.hashes = {}; }
+      if (readOnly !== undefined) item.readOnly = readOnly;
       const { shared, managed } = await this.paths(item, config, true);
       const lastAttempt = Date.now();
-      const result = await syncFolders(shared, managed, item.hashes, this.syncOptions());
+      const result = await syncFolders(shared, managed, item.hashes, { ...this.syncOptions(), readOnly: item.readOnly === true });
       item.hashes = result.hashes;
       this.record(item, result, lastAttempt);
       await this.save(registry);
@@ -131,7 +145,7 @@ export class AgentFolders {
         const lastAttempt = Date.now();
         try {
           const { shared, managed } = await this.paths(item, config);
-          const result = await syncFolders(shared, managed, item.hashes, this.syncOptions());
+          const result = await syncFolders(shared, managed, item.hashes, { ...this.syncOptions(), readOnly: item.readOnly === true });
           item.hashes = result.hashes;
           this.record(item, result, lastAttempt);
         } catch (error) {

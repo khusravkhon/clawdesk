@@ -23,7 +23,8 @@
 //   POST /freellmapi/reset   { newPassword }   recover FreeLLMAPI's account (code from its log)
 //   POST /files/folder       { name }        a junior agent's folder in the shared files folder → { hostPath, gatewayPath }
 //   POST /teams/clone        { teamId, repoUrl, token }   project team repository (see clawdesk-teams.mjs)
-//   POST /teams/fetch | /teams/push { teamId, … }  GET /teams/status?teamId=…  POST /teams/remove { teamId }
+//   POST /teams/member { teamId, agentId, role }  a member's copy at <its workspace>/repo
+//   POST /teams/fetch | /teams/push { teamId, … }  GET /teams/status?teamId=…&developer=…  POST /teams/remove { teamId }
 //   GET  /backup/list                       → { backups: [{ name, kind, createdAt, size }] }
 //   POST /backup/create      { kind }        daily | manual | before-reset | before-update (see clawdesk-backup.mjs)
 //   POST /backup/delete      { name, confirm: true }   delete one completed archive
@@ -41,7 +42,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { BackupError, createBackup, deleteBackup, listBackups, startReset } from "./clawdesk-backup.mjs";
-import { cloneTeamRepo, fetchTeamRepo, pushTeamBranch, removeTeamRepo, TeamError, teamRepoStatus } from "./clawdesk-teams.mjs";
+import { cloneTeamRepo, fetchTeamRepo, prepareMemberRepo, pushTeamBranch, removeTeamRepo, TeamError, teamRepoStatus } from "./clawdesk-teams.mjs";
 import { isAuthorizationCode, mcpLoginArgs } from "./clawdesk-oauth.mjs";
 import { AudioSetupError, audioSettings, audioStatus, saveAudioKey, verifyAudioKey } from "./clawdesk-audio.mjs";
 import { AgentFolders } from "./clawdesk-agent-folders.mjs";
@@ -403,7 +404,7 @@ const storage = new StorageManager({
       const relative = path.relative(agentFolders.stateDir, path.resolve(workspace));
       if (!relative || relative.startsWith("..") || path.isAbsolute(relative)) throw new StorageError("storage_unavailable", 503);
       if (!item.workspaceIdentity || await directoryIdentityWithin(agentFolders.stateDir, relative.split(path.sep).join("/")) !== item.workspaceIdentity) throw new StorageError("storage_unavailable", 503);
-      roots.push(path.join(FILES_IN_GATEWAY, item.name), path.join(agentFolders.stateDir, relative, "folders", item.name));
+      roots.push(path.join(FILES_IN_GATEWAY, item.name), path.join(agentFolders.stateDir, relative, AgentFolders.workspaceDir(item)));
     }
     return roots;
   },
@@ -544,7 +545,7 @@ async function handle(req) {
 
   if (req.method === "GET" && url.pathname === "/google/status") return googleStatus();
   if (req.method === "GET" && url.pathname === "/backup/list") return { status: 200, body: { backups: await listBackups() } };
-  if (req.method === "GET" && url.pathname === "/teams/status") return teamCall(() => teamRepoStatus({ teamId: url.searchParams.get("teamId") }));
+  if (req.method === "GET" && url.pathname === "/teams/status") return teamCall(() => teamRepoStatus({ teamId: url.searchParams.get("teamId"), developer: url.searchParams.get("developer") || undefined }));
   if (req.method === "GET" && url.pathname === "/claude/status") return claudeCall(() => claudeLogin.status());
   if (req.method === "GET" && url.pathname === "/mcp/status") {
     const server = url.searchParams.get("server") || "";
@@ -584,10 +585,10 @@ async function handle(req) {
     agentFolders.validate(body);
     const folder = await ensureFolder(body);
     if (folder.status !== 200) return folder;
-    const managed = await agentFolders.register(body.agentId, body.name);
+    const managed = await agentFolders.register(body.agentId, body.name, { dir: body.dir, readOnly: body.readOnly });
     return { status: 200, body: { hostPath: folder.body.hostPath, ...managed } };
   }
-  const teamOps = { "/teams/clone": cloneTeamRepo, "/teams/fetch": fetchTeamRepo, "/teams/push": pushTeamBranch, "/teams/remove": removeTeamRepo };
+  const teamOps = { "/teams/clone": cloneTeamRepo, "/teams/member": prepareMemberRepo, "/teams/fetch": fetchTeamRepo, "/teams/push": pushTeamBranch, "/teams/remove": removeTeamRepo };
   if (teamOps[url.pathname]) return teamCall(() => teamOps[url.pathname](body));
   if (url.pathname === "/backup/delete") {
     if (body.confirm !== true) return { status: 400, body: { error: "confirmation_required", message: "confirm backup deletion" } };

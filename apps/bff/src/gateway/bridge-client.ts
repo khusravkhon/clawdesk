@@ -252,31 +252,40 @@ export class BridgeClient {
     return this.#call("POST", "/files/folder", { name });
   }
 
-  /** Exchanges files with the junior's managed workspace, without a host bind in its sandbox. */
-  ensureAgentFolder(agentId: string, name: string): Promise<{ hostPath: string; gatewayPath: string }> {
-    return this.#call("POST", "/files/agent-folder", { agentId, name }, 120_000);
+  /**
+   * Exchanges files with the junior's managed workspace, without a host bind in its sandbox. `dir` puts the
+   * copy at a fixed workspace folder (a team's "docs"); `readOnly` only mirrors the shared folder into it.
+   */
+  ensureAgentFolder(agentId: string, name: string, options: { dir?: "docs"; readOnly?: boolean } = {}): Promise<{ hostPath: string; gatewayPath: string }> {
+    return this.#call("POST", "/files/agent-folder", { agentId, name, ...options }, 120_000);
   }
 
   async folderSyncStatus(): Promise<FolderSyncStatusesDto> {
     return FolderSyncStatusesDto.parse(await this.#call("GET", "/files/sync-status", undefined, 5_000));
   }
 
-  /** Clones a team's repository (a read-only copy and the developer's branch); the token stays aside. */
-  teamClone(teamId: string, repoUrl: string, token: string): Promise<{ defaultBranch: string; branch: string; repoPath: string; devPath: string }> {
+  /** Clones a team's repository for the panel; the token stays aside. Members get copies with teamMember. */
+  teamClone(teamId: string, repoUrl: string, token: string): Promise<{ defaultBranch: string; branch: string }> {
     return this.#call("POST", "/teams/clone", { teamId, repoUrl, token }, 10 * 60_000);
   }
 
-  teamStatus(teamId: string): Promise<TeamRepoStatusDto> {
-    return this.#call("GET", `/teams/status?teamId=${encodeURIComponent(teamId)}`);
+  /** A member's copy at <its workspace>/repo (/workspace/repo in its sandbox): the developer's branch, or a read copy. */
+  teamMember(teamId: string, agentId: string, role: "pm" | "developer" | "reviewer"): Promise<{ path: string; moved: boolean }> {
+    return this.#call("POST", "/teams/member", { teamId, agentId, role }, 10 * 60_000);
   }
 
-  teamFetch(teamId: string): Promise<TeamRepoStatusDto> {
-    return this.#call("POST", "/teams/fetch", { teamId }, 5 * 60_000);
+  teamStatus(teamId: string, developer?: string): Promise<TeamRepoStatusDto> {
+    return this.#call("GET", `/teams/status?teamId=${encodeURIComponent(teamId)}${developer ? `&developer=${encodeURIComponent(developer)}` : ""}`);
   }
 
-  /** Pushes the developer's branch and opens (or finds) its pull request. */
-  teamPush(teamId: string, repoUrl: string, title: string, body: string): Promise<PullRequestDto> {
-    return this.#call("POST", "/teams/push", { teamId, repoUrl, title, body }, 5 * 60_000);
+  /** New commits from GitHub; read copies of PM and reviewer are refreshed. */
+  teamFetch(teamId: string, members: { agentId: string; role: "pm" | "developer" | "reviewer" }[]): Promise<TeamRepoStatusDto> {
+    return this.#call("POST", "/teams/fetch", { teamId, members }, 5 * 60_000);
+  }
+
+  /** Pushes the developer's branch (read into the panel's clone) and opens (or finds) its pull request. */
+  teamPush(teamId: string, repoUrl: string, developer: string | undefined, title: string, body: string): Promise<PullRequestDto> {
+    return this.#call("POST", "/teams/push", { teamId, repoUrl, developer, title, body }, 5 * 60_000);
   }
 
   teamRemove(teamId: string): Promise<{ ok: true }> {

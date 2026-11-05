@@ -98,6 +98,8 @@ async function repairStartup(): Promise<void> {
   const repairs: [string, () => Promise<unknown>][] = [
     ["personal agent session policy and restricted ask-main configuration (tool availability unverified)", () => repairAgentCommunication({ gateway, db })],
     ["managed agent folders", () => repairAgentFolders({ gateway, db, bridge, logger })],
+    // GitHub teams made before OpenClaw refused binds into /workspace: members get copies in their workspaces.
+    ["team repository copies", () => teams.repairWorkspaces()],
     ["default exec approval mode", repairDefaultApprovals],
     ["junior models", repairFollowerModels],
     ["memory provider", repairMemory],
