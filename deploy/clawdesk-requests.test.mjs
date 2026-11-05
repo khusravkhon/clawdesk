@@ -10,10 +10,11 @@ async function fixture(t) {
   t.after(() => fs.rm(path.dirname(spoolDir), { recursive: true, force: true }));
   const factories = {};
   let config = { agents: { entries: { dev: {}, other: {} } }, plugins: { entries: { "clawdesk-requests": { enabled: true, config: { allowedAgentIds: ["dev", "main"] } } } } };
-  registerRequests({ registerTool: (factory, options) => { for (const name of options.names) factories[name] = { factory, options }; } }, { spoolDir, now: () => 1000 });
+  const interactive = [];
+  registerRequests({ registerTool: (factory, options) => { for (const name of options.names) factories[name] = { factory, options }; }, registerInteractiveHandler: (registration) => interactive.push(registration) }, { spoolDir, now: () => 1000 });
   const context = (agentId = "dev", sessionKey = `agent:${agentId}:main`) => ({ agentId, sessionKey, getRuntimeConfig: () => config });
   const spool = async () => Promise.all((await fs.readdir(spoolDir).catch(() => [])).map(async (name) => JSON.parse(await fs.readFile(path.join(spoolDir, name), "utf8"))));
-  return { spoolDir, factories, context, tool: (name, ctx = context()) => factories[name].factory(ctx), spool, setConfig: (value) => { config = value; }, config: () => config };
+  return { interactive, spoolDir, factories, context, tool: (name, ctx = context()) => factories[name].factory(ctx), spool, setConfig: (value) => { config = value; }, config: () => config };
 }
 
 test("manifest declares both optional tools with a strict agent allowlist", async () => {
@@ -82,4 +83,21 @@ test("an access request names its resource and level; other kinds may not", asyn
   assert.equal((await up.execute("a5", { kind: "access", subject: "x", details: "y", resource: "mcp:notion", access: "admin" })).details.code, "invalid_arguments");
   const [filed] = await f.spool();
   assert.deepEqual([filed.kind, filed.resource, filed.access], ["access", "folder:Finance", "read"]);
+});
+
+test("an owner's Telegram button is filed once with the presser's ID and its buttons cleared, never sent to a model", async (t) => {
+  const f = await fixture(t);
+  assert.equal(f.interactive.length, 1);
+  const [handler] = f.interactive;
+  assert.deepEqual([handler.channel, handler.namespace], ["telegram", "cdreq"]);
+  let cleared = 0;
+  const press = (payload, senderId = "4242", callbackId = "cb-1") => handler.handler({ callbackId, senderId, accountId: "default", callback: { payload, data: `cdreq:${payload}` }, respond: { clearButtons: async () => { cleared++; } } });
+  assert.deepEqual(await press("tok_abcdefghijklmnop"), { handled: true });
+  await press("tok_abcdefghijklmnop");
+  await press("bad token!", "4242", "cb-2");
+  await press("tok_abcdefghijklmnop", "not-a-number", "cb-3");
+  const filed = await f.spool();
+  assert.equal(filed.length, 1);
+  assert.deepEqual([filed[0].type, filed[0].token, filed[0].senderId, filed[0].accountId], ["owner_button", "tok_abcdefghijklmnop", "4242", "default"]);
+  assert.equal(cleared, 2);
 });

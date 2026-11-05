@@ -11,8 +11,8 @@ export type WorkRequestKind = "question" | "decision" | "access";
 export type WorkRequestStatus = "open" | "clarify" | "answered" | "denied" | "expired" | "cancelled";
 export type WorkRequestLevelKind = "manager" | "main" | "owner";
 export type WorkRequestLevelDto = { kind: WorkRequestLevelKind; agentId: string | null; name: string };
-export type WorkRequestEventKind = "created" | "routed" | "skipped" | "escalated" | "clarify" | "reply" | "answered" | "denied" | "expired" | "cancelled" | "refused" | "granted";
-export type WorkRequestEventDto = { kind: WorkRequestEventKind; actor: string; text: string; at: number; delivery: "none" | "pending" | "delivered" | "failed" };
+export type WorkRequestEventKind = "created" | "routed" | "skipped" | "escalated" | "clarify" | "reply" | "answered" | "denied" | "expired" | "cancelled" | "refused" | "granted" | "notified";
+export type WorkRequestEventDto = { kind: WorkRequestEventKind; actor: string; text: string; at: number; delivery: "none" | "pending" | "delivered" | "failed"; channel: "agent" | "telegram" | null };
 export type WorkRequestDto = {
   id: string;
   code: string;

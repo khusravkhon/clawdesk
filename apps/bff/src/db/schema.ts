@@ -563,10 +563,12 @@ export const workRequests = sqliteTable("work_requests", {
 export const workRequestEvents = sqliteTable("work_request_events", {
   id: integer("id").primaryKey({ autoIncrement: true }),
   requestId: text("request_id").notNull().references(() => workRequests.id, { onDelete: "cascade" }),
-  kind: text("kind", { enum: ["created", "routed", "skipped", "escalated", "clarify", "reply", "answered", "denied", "expired", "cancelled", "refused", "granted"] }).notNull(),
+  kind: text("kind", { enum: ["created", "routed", "skipped", "escalated", "clarify", "reply", "answered", "denied", "expired", "cancelled", "refused", "granted", "notified"] }).notNull(),
   actor: text("actor").notNull(),
   text: text("text").notNull().default(""),
   notifyAgentId: text("notify_agent_id"),
+  /** Stage 8: the message goes to the owner in Telegram instead of an agent's chat. */
+  notifyOwner: integer("notify_owner", { mode: "boolean" }).notNull().default(false),
   notifyText: text("notify_text"),
   deliveredAt: integer("delivered_at"),
   attempts: integer("attempts").notNull().default(0),
@@ -599,3 +601,14 @@ export const resourceGrants = sqliteTable("resource_grants", {
   revokedAt: integer("revoked_at"),
   revokedBy: text("revoked_by"),
 }, (t) => [index("resource_grants_agent_idx").on(t.agentId, t.resource)]);
+
+/** Stage 8: one-time tokens behind the owner's Telegram buttons on a request ("cdreq:<token>"). */
+export const workRequestButtons = sqliteTable("work_request_buttons", {
+  token: text("token").primaryKey(),
+  requestId: text("request_id").notNull().references(() => workRequests.id, { onDelete: "cascade" }),
+  /** The owner message the button belongs to. */
+  eventId: integer("event_id").notNull(),
+  action: text("action", { enum: ["grant", "deny", "cancel"] }).notNull(),
+  createdAt: integer("created_at").notNull(),
+  usedAt: integer("used_at"),
+}, (t) => [index("work_request_buttons_request_idx").on(t.requestId)]);

@@ -82,6 +82,8 @@ const access = new AccessService({
 // Stage 6: requests up the company structure, filed by agents through the clawdesk-requests plugin.
 const requests = new WorkRequestsService({
   db, bridge, companyMode: () => space.mode() === "company", liveAgents: () => liveAgentIds(gateway),
+  // Stage 8: requests that reach the owner go to the owner's Telegram too, with buttons the plugin hands back.
+  telegram, grant: (request, by) => access.grant(request, by),
   send: async (agentId, message, idempotencyKey) => { await gateway.request("chat.send", { sessionKey: mainSessionKey(agentId), agentId, message, idempotencyKey }); },
 });
 

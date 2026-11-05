@@ -75,7 +75,8 @@ describe("company requests", () => {
     expect(request).toMatchObject({ status: "answered", answer: { by: "owner", text: "ТЗ в папке docs/spec.md" } });
     await tick();
     expect(messagesTo("dev").at(-1)).toContain("Ответ на REQ-001");
-    expect(request.events.map((event) => event.kind)).toEqual(["created", "routed", "escalated", "routed", "escalated", "routed", "answered"]);
+    // The owner was told in Telegram when it reached them, so the outcome goes there too.
+    expect(request.events.map((event) => event.kind)).toEqual(["created", "routed", "escalated", "routed", "escalated", "routed", "answered", "notified"]);
     // A late reply from the main agent changes nothing.
     reply("main", "REQ-001", "answer");
     await tick();

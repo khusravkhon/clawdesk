@@ -81,7 +81,7 @@ onBeforeUnmount(() => clearInterval(timer));
         <summary>{{ t('requests.history') }}</summary>
         <p v-for="(event, index) in request.events" :key="index" class="meta">
           {{ time(event.at) }} · {{ t(`requests.event.${event.kind}`) }} · {{ event.actor === 'owner' ? t('requests.owner') : event.actor === 'panel' ? t('requests.panel') : event.actor }}<template v-if="event.text">: {{ event.text }}</template>
-          <n-tag v-if="event.delivery === 'pending' || event.delivery === 'failed'" size="small" :type="event.delivery === 'failed' ? 'error' : 'warning'">{{ t(`requests.delivery.${event.delivery}`) }}</n-tag>
+          <n-tag v-if="event.delivery === 'pending' || event.delivery === 'failed'" size="small" :type="event.delivery === 'failed' ? 'error' : 'warning'">{{ event.channel === 'telegram' ? `${t('requests.channel.telegram')}: ` : '' }}{{ t(`requests.delivery.${event.delivery}`) }}</n-tag>
         </p>
       </details>
       <template v-if="active(request.status)">

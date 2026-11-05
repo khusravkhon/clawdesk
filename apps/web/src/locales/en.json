@@ -1965,7 +1965,8 @@
       "expired": "expired",
       "cancelled": "closed by the owner",
       "refused": "refused",
-      "granted": "access granted"
+      "granted": "access granted",
+      "notified": "owner told"
     },
     "delivery": {
       "pending": "message to the agent not delivered yet",
@@ -1994,7 +1995,11 @@
       "resource_missing": "The requested folder or server does not exist."
     },
     "resource": "Resource",
-    "grantConfirm": "Grant {resource} to “{name}”? The panel applies the access, checks it, and only then closes the request."
+    "grantConfirm": "Grant {resource} to “{name}”? The panel applies the access, checks it, and only then closes the request.",
+    "channel": {
+      "agent": "to the agent",
+      "telegram": "Telegram"
+    }
   },
   "access": {
     "title": "Access",

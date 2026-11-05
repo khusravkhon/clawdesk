@@ -109,6 +109,34 @@ export function registerRequests(api, { spoolDir = path.join(process.env.OPENCLA
 
   api.registerTool(tool(UP, "Ask up the company", "File a request to your supervisor in the company (department manager, then the main agent, then the owner). kind: question (you need information), decision (you need someone to decide) or access (you need a resource: set resource to folder:<shared folder name> or mcp:<server name>, and access to read or write). The panel delivers the answer to your chat; until then the work it blocks waits. Only the owner grants access, and the panel checks it before telling you.", upParameters, "up"), { names: [UP], optional: true });
   api.registerTool(tool(REPLY, "Reply to a company request", "Reply to a request REQ-… addressed to you: answer (give the information or decision), deny (with the reason), clarify (ask the requester a question), escalate (pass it to the next level). The requester uses reply to answer a clarification. Only the current addressee can act; a text answer never grants access.", replyParameters, "reply"), { names: [REPLY], optional: true });
+
+  // Stage 8: the owner's buttons on a request in Telegram ("cdreq:<token>"). OpenClaw hands the press to
+  // this handler, never to a model, with the pressing user's numeric ID. The handler only files it; the
+  // panel checks that the owner pressed it and that the token is unused, current and for an open request.
+  if (typeof api.registerInteractiveHandler === "function") {
+    api.registerInteractiveHandler({
+      channel: "telegram",
+      namespace: BUTTONS,
+      handler: async (ctx) => {
+        const token = typeof ctx?.callback?.payload === "string" ? ctx.callback.payload.trim() : "";
+        const senderId = typeof ctx?.senderId === "string" ? ctx.senderId.trim() : "";
+        if (!TOKEN.test(token) || !/^[0-9]{1,20}$/.test(senderId) || typeof ctx.callbackId !== "string" || !ctx.callbackId) return { handled: true };
+        const id = createHash("sha256").update(JSON.stringify(["button", ctx.callbackId])).digest("hex").slice(0, 32);
+        try {
+          await fs.mkdir(spoolDir, { recursive: true, mode: 0o700 });
+          if ((await fs.readdir(spoolDir)).length < MAX_SPOOL) await fs.writeFile(path.join(spoolDir, `${id}.json`), JSON.stringify({ id, type: "owner_button", agentId: "telegram", token, senderId, accountId: String(ctx.accountId ?? ""), at: now() }), { flag: "wx", mode: 0o600 });
+        } catch (error) {
+          if (error?.code !== "EEXIST") return { handled: true };
+        }
+        // The buttons go away at once so a second press cannot repeat it; the panel answers with the result.
+        await ctx.respond?.clearButtons?.().catch?.(() => undefined);
+        return { handled: true };
+      },
+    });
+  }
 }
+
+export const BUTTONS = "cdreq";
+const TOKEN = /^[A-Za-z0-9_-]{16,40}$/;
 
 export default { id: ID, name: "ClawDesk Requests", register: registerRequests };

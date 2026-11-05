@@ -136,13 +136,13 @@ describe("company access", () => {
     close();
     const sqlite = new Database(path.join(root, "panel.sqlite"));
     sqlite.exec([
-      "DROP TABLE resource_grants",
+      "DROP TABLE work_request_buttons", "DROP TABLE resource_grants",
       "CREATE TABLE old_requests AS SELECT id, number, from_agent_id, kind, subject, subject_key, details, task_ref, status, route, level, hops, revision, answer_text, answered_by, deadline_at, created_at, updated_at, spool_id FROM work_requests",
-      "CREATE TABLE old_events AS SELECT * FROM work_request_events",
+      "CREATE TABLE old_events AS SELECT id, request_id, kind, actor, text, notify_agent_id, notify_text, delivered_at, attempts, created_at, request_key FROM work_request_events WHERE kind NOT IN ('notified', 'granted')",
       "DROP TABLE work_request_events", "DROP TABLE work_requests",
       ...fs.readFileSync(path.resolve(import.meta.dirname, "../drizzle/0020_work_requests.sql"), "utf8").split("--> statement-breakpoint").filter((part) => !part.includes("work_request_spool")),
       "INSERT INTO work_requests SELECT * FROM old_requests", "INSERT INTO work_request_events SELECT * FROM old_events", "DROP TABLE old_requests", "DROP TABLE old_events",
-      "DELETE FROM __drizzle_migrations WHERE created_at = 1792351000000",
+      "DELETE FROM __drizzle_migrations WHERE created_at >= 1792351000000",
     ].join(";\n"));
     sqlite.close();
     ({ db, close } = openDb(path.join(root, "panel.sqlite")));

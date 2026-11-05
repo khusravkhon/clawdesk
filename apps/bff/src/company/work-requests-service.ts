@@ -1,8 +1,8 @@
-import { randomUUID } from "node:crypto";
+import { randomBytes, randomUUID } from "node:crypto";
 import { ResourceRef, type GrantResourceRequest, type OwnerRequestAction, type ResourceAccess, type WorkRequestDto, type WorkRequestEventDto, type WorkRequestLevelKind, type WorkRequestsDto } from "@clawdesk/shared";
 import { and, asc, desc, eq, inArray, isNull, lt } from "drizzle-orm";
 import type { Db } from "../db/client.js";
-import { agents, companyAgentAssignments, companyProjects, departmentManagers, departments, teams, workRequestEvents, workRequests, workRequestSpool } from "../db/schema.js";
+import { agents, companyAgentAssignments, companyProjects, departmentManagers, departments, teams, workRequestButtons, workRequestEvents, workRequests, workRequestSpool } from "../db/schema.js";
 
 // Stage 6: requests up the company structure. Agents file them through the clawdesk-requests plugin, which
 // only drops an entry into the Gateway's spool; everything else happens here, in one transaction per entry:
@@ -12,6 +12,12 @@ import { agents, companyAgentAssignments, companyProjects, departmentManagers, d
 // a recipient, delivered later with its event ID as the idempotency key: a panel restart re-sends nothing
 // that already went out, and a lost delivery is retried. Answers are information or decisions in text;
 // they grant nothing (access is the policy service's, stage 5).
+//
+// Stage 8: a request that reaches the owner is also sent to the owner in Telegram, with one-time buttons
+// (a random token each, "cdreq:<token>"). A press reaches the plugin's interactive handler, not a model,
+// and comes back through the spool with the presser's numeric Telegram ID; it acts only if that is the
+// owner's ID and the token is unused and belongs to a request still open. When the request is decided
+// anywhere, the owner gets the outcome and the remaining buttons stop working.
 
 export class WorkRequestError extends Error {
   constructor(readonly code: "company_only" | "request_missing" | "request_closed" | "revision_conflict" | "request_conflict" | "not_access") { super(code); }
@@ -20,7 +26,13 @@ export class WorkRequestError extends Error {
 type Level = { kind: WorkRequestLevelKind; agentId: string | null };
 type Row = typeof workRequests.$inferSelect;
 type Tx = Pick<Db, "select" | "insert" | "update">;
-type SpoolEntry = { id?: unknown; type?: unknown; agentId?: unknown; kind?: unknown; subject?: unknown; details?: unknown; taskRef?: unknown; resource?: unknown; access?: unknown; requestId?: unknown; action?: unknown; text?: unknown };
+type SpoolEntry = { id?: unknown; type?: unknown; agentId?: unknown; kind?: unknown; subject?: unknown; details?: unknown; taskRef?: unknown; resource?: unknown; access?: unknown; requestId?: unknown; action?: unknown; text?: unknown; token?: unknown; senderId?: unknown };
+/** The owner's Telegram (TelegramService): their numeric user ID and a message with buttons. */
+export type OwnerTelegram = {
+  ownerUserId(): string | null;
+  sendToOwnerWithButtons(text: string, buttons: { label: string; data: string; style?: "success" | "danger" | "primary" }[], idempotencyKey: string): Promise<void>;
+};
+const BUTTON_LABEL = { grant: "Выдать доступ", deny: "Отказать", cancel: "Закрыть без ответа" } as const;
 /** Applies and checks a grant (AccessService.grant); returns where the agent finds the resource. */
 export type GrantPort = (request: GrantResourceRequest, by: string) => Promise<{ resource: string; access: ResourceAccess; path: string | null }>;
 export type RequestsBridge = { requestsSpool(): Promise<{ entries: SpoolEntry[]; rejected: string[] }>; requestsAck(ids: string[]): Promise<unknown> };
@@ -43,6 +55,9 @@ export class WorkRequestsService {
     send?: (agentId: string, message: string, idempotencyKey: string) => Promise<void>;
     /** Agents the Gateway runs now; a level whose agent is not running is skipped. */
     liveAgents?: () => Promise<Set<string>>;
+    telegram?: OwnerTelegram;
+    /** For the owner's "grant" button (AccessService.grant). */
+    grant?: GrantPort;
     now?: () => number;
   }) {}
 
@@ -91,7 +106,8 @@ export class WorkRequestsService {
       deadlineAt: row.deadlineAt, createdAt: row.createdAt, updatedAt: row.updatedAt,
       events: events.map((event): WorkRequestEventDto => ({
         kind: event.kind, actor: event.actor, text: event.text, at: event.createdAt,
-        delivery: !event.notifyAgentId ? "none" : event.deliveredAt ? "delivered" : event.attempts >= MAX_ATTEMPTS ? "failed" : "pending",
+        delivery: !event.notifyAgentId && !event.notifyOwner ? "none" : event.deliveredAt ? "delivered" : event.attempts >= MAX_ATTEMPTS ? "failed" : "pending",
+        channel: event.notifyOwner ? "telegram" : event.notifyAgentId ? "agent" : null,
       })),
     };
   }
@@ -118,6 +134,14 @@ export class WorkRequestsService {
     for (const entry of entries) {
       const id = typeof entry.id === "string" && /^[a-f0-9]{32}$/.test(entry.id) ? entry.id : null;
       if (!id) continue;
+      if (entry.type === "owner_button") {
+        if (!this.deps.db.select().from(workRequestSpool).where(eq(workRequestSpool.id, id)).get()) {
+          const outcome = await this.#button(entry);
+          this.deps.db.insert(workRequestSpool).values({ id, agentId: "telegram", outcome, notifyText: null, createdAt: this.#now() }).onConflictDoNothing().run();
+        }
+        done.push(id);
+        continue;
+      }
       this.deps.db.transaction((tx) => {
         if (tx.select().from(workRequestSpool).where(eq(workRequestSpool.id, id)).get()) return;
         const agentId = typeof entry.agentId === "string" && AGENT.test(entry.agentId) ? entry.agentId : "?";
@@ -175,7 +199,13 @@ export class WorkRequestsService {
     }
     const target = row.route[level]!;
     tx.update(workRequests).set({ level, hops: row.hops + 1, revision: row.revision + 1, updatedAt: this.#now() }).where(eq(workRequests.id, row.id)).run();
-    this.#event(tx, row.id, "routed", "panel", this.#name(target.agentId), target.agentId ? { agentId: target.agentId, text: addresseeMessage(code(row.number), this.#name(row.fromAgentId), row, this.#nextName(row, level)) } : undefined);
+    if (target.agentId) this.#event(tx, row.id, "routed", "panel", this.#name(target.agentId), { agentId: target.agentId, text: addresseeMessage(code(row.number), this.#name(row.fromAgentId), row, this.#nextName(row, level)) });
+    else {
+      const eventId = this.#event(tx, row.id, "routed", "panel", this.#name(null), { owner: true, text: ownerMessage(code(row.number), this.#name(row.fromAgentId), row, row.route.slice(0, level).map((item) => this.#name(item.agentId))) });
+      for (const action of row.kind === "access" ? ["grant", "deny"] as const : ["deny", "cancel"] as const) {
+        tx.insert(workRequestButtons).values({ token: randomBytes(16).toString("base64url"), requestId: row.id, eventId, action, createdAt: this.#now() }).run();
+      }
+    }
     return level;
   }
 
@@ -183,8 +213,15 @@ export class WorkRequestsService {
     return level + 1 < row.route.length ? this.#name(row.route[level + 1]!.agentId) : null;
   }
 
-  #event(tx: Tx, requestId: string, kind: (typeof workRequestEvents.$inferInsert)["kind"], actor: string, text: string, notify?: { agentId: string; text: string }, requestKey?: string): void {
-    tx.insert(workRequestEvents).values({ requestId, kind, actor, text: text.slice(0, 4000), notifyAgentId: notify?.agentId ?? null, notifyText: notify?.text ?? null, createdAt: this.#now(), requestKey: requestKey ?? null }).run();
+  #event(tx: Tx, requestId: string, kind: (typeof workRequestEvents.$inferInsert)["kind"], actor: string, text: string, notify?: { agentId?: string; owner?: boolean; text: string }, requestKey?: string): number {
+    return tx.insert(workRequestEvents).values({ requestId, kind, actor, text: text.slice(0, 4000), notifyAgentId: notify?.agentId ?? null, notifyOwner: notify?.owner === true, notifyText: notify?.text ?? null, createdAt: this.#now(), requestKey: requestKey ?? null }).returning({ id: workRequestEvents.id }).get().id;
+  }
+
+  /** Once a request the owner was told about in Telegram is decided, the owner gets the outcome and its buttons stop working. */
+  #ownerOutcome(tx: Tx, row: Row, text: string): void {
+    tx.update(workRequestButtons).set({ usedAt: this.#now() }).where(and(eq(workRequestButtons.requestId, row.id), isNull(workRequestButtons.usedAt))).run();
+    if (!tx.select({ id: workRequestEvents.id }).from(workRequestEvents).where(and(eq(workRequestEvents.requestId, row.id), eq(workRequestEvents.notifyOwner, true))).get()) return;
+    this.#event(tx, row.id, "notified", "panel", text, { owner: true, text: `${code(row.number)} («${row.subject}»): ${text}` });
   }
 
   /** An agent's reply: only the current addressee acts; the requester only answers a clarification. */
@@ -236,6 +273,7 @@ export class WorkRequestsService {
         ? `Ответ на ${label} («${row.subject}») от ${by}:\n${text}\n\nЭто сведения или решение, а не выданный доступ.`
         : `${by} отказал по ${label} («${row.subject}»): ${text}\nНе повторяй то же обращение без новых обстоятельств.`,
     }, requestKey);
+    this.#ownerOutcome(tx, row, `${action === "answer" ? "ответил" : "отказал"} ${by}: ${text}`);
   }
 
   // --- The owner ----------------------------------------------------------------------------------
@@ -267,6 +305,7 @@ export class WorkRequestsService {
       const text = `Доступ выдан и проверен: ${granted.resource} (${level})${granted.path ? `, в песочнице: ${granted.path}` : ""}.`;
       this.#set(tx, current, { status: "answered", answerText: text, answeredBy: "owner" });
       this.#event(tx, id, "granted", "owner", text, { agentId: row.fromAgentId, text: `Владелец выдал доступ по ${label} («${row.subject}»): ${granted.resource}, ${level}.${where} Продолжай работу, которую блокировало обращение.` }, request.requestId);
+      this.#ownerOutcome(tx, current, text);
       return this.#one(tx, id);
     });
   }
@@ -287,6 +326,7 @@ export class WorkRequestsService {
       if (request.action === "cancel") {
         this.#set(tx, row, { status: "cancelled" });
         this.#event(tx, row.id, "cancelled", "owner", request.text, { agentId: row.fromAgentId, text: `Владелец закрыл ${code(row.number)} («${row.subject}») без ответа.${request.text ? ` ${request.text}` : ""}` }, request.requestId);
+        this.#ownerOutcome(tx, row, "закрыто без ответа.");
       } else this.#close(tx, row, request.action, "owner", request.text, request.requestId);
       return this.#one(tx, id);
     });
@@ -295,6 +335,40 @@ export class WorkRequestsService {
   #one(tx: Tx, id: string): WorkRequestDto {
     const row = tx.select().from(workRequests).where(eq(workRequests.id, id)).get()!;
     return this.#dto(row, tx.select().from(workRequestEvents).where(eq(workRequestEvents.requestId, id)).orderBy(asc(workRequestEvents.id)).all());
+  }
+
+  /**
+   * A press on the owner's Telegram button: acts only for the owner's numeric ID, an unused token and a
+   * request still open; the token is the idempotency key, so a repeated press never acts twice.
+   */
+  async #button(entry: SpoolEntry): Promise<string> {
+    const { db } = this.deps;
+    const token = typeof entry.token === "string" ? entry.token : "";
+    const owner = this.deps.telegram?.ownerUserId();
+    if (!owner || entry.senderId !== owner) return "not_owner";
+    const button = db.select().from(workRequestButtons).where(eq(workRequestButtons.token, token)).get();
+    if (!button) return "unknown_button";
+    const row = db.select().from(workRequests).where(eq(workRequests.id, button.requestId)).get();
+    if (!row) return "unknown_button";
+    const tell = (text: string) => db.transaction((tx) => { this.#event(tx, row.id, "notified", "panel", text, { owner: true, text: `${code(row.number)}: ${text}` }); });
+    if (button.usedAt !== null || (row.status !== "open" && row.status !== "clarify")) {
+      tell(`уже решено (${row.status}), кнопка больше не действует.`);
+      return `stale:${code(row.number)}`;
+    }
+    const request = { requestId: `telegram:${token}`, revision: row.revision, text: "" };
+    try {
+      if (button.action === "grant") {
+        if (!this.deps.grant) throw new WorkRequestError("not_access");
+        await this.ownerGrant(row.id, { ...request, action: "grant" }, this.deps.grant);
+      } else if (button.action === "deny") this.ownerAct(row.id, { ...request, action: "deny", text: "Отказано владельцем в Telegram." });
+      else this.ownerAct(row.id, { ...request, action: "cancel" });
+    } catch (error) {
+      const reason = (error as { code?: string }).code ?? "error";
+      tell(reason === "not_applied" ? "доступ не подтвердился при проверке; обращение осталось открытым, посмотрите в панели." : `не выполнено (${reason}); посмотрите в панели.`);
+      return `failed:${reason}`;
+    }
+    db.update(workRequestButtons).set({ usedAt: this.#now() }).where(eq(workRequestButtons.token, token)).run();
+    return `${button.action}:${code(row.number)}`;
   }
 
   // --- Deadlines and delivery ---------------------------------------------------------------------
@@ -307,6 +381,7 @@ export class WorkRequestsService {
       for (const row of overdue) {
         this.#set(tx, row, { status: "expired" });
         this.#event(tx, row.id, "expired", "panel", "", { agentId: row.fromAgentId, text: `Срок ${code(row.number)} («${row.subject}») истёк без ответа. Работа, которую оно блокирует, остаётся заблокированной; владелец видит это в панели.` });
+        this.#ownerOutcome(tx, row, "срок истёк без ответа.");
       }
       return overdue.length;
     });
@@ -315,26 +390,53 @@ export class WorkRequestsService {
   /** Sends pending messages; the event or spool ID is the idempotency key, so a retry is never a second message. */
   async deliver(): Promise<number> {
     const { send, db } = this.deps;
-    if (!send) return 0;
     let sent = 0;
-    const events = db.select().from(workRequestEvents).where(and(isNull(workRequestEvents.deliveredAt), lt(workRequestEvents.attempts, MAX_ATTEMPTS))).orderBy(asc(workRequestEvents.id)).limit(50).all().filter((event) => event.notifyAgentId);
-    for (const event of events) {
+    const pending = db.select().from(workRequestEvents).where(and(isNull(workRequestEvents.deliveredAt), lt(workRequestEvents.attempts, MAX_ATTEMPTS))).orderBy(asc(workRequestEvents.id)).limit(50).all();
+    for (const event of pending.filter((item) => item.notifyOwner)) {
+      // No bot or no approved owner: the request stays in the panel, the delivery is marked failed.
+      const telegram = this.deps.telegram;
+      if (!telegram?.ownerUserId()) { db.update(workRequestEvents).set({ attempts: MAX_ATTEMPTS }).where(eq(workRequestEvents.id, event.id)).run(); continue; }
+      const buttons = db.select().from(workRequestButtons).where(and(eq(workRequestButtons.eventId, event.id), isNull(workRequestButtons.usedAt))).all()
+        .map((button) => ({ label: BUTTON_LABEL[button.action], data: `cdreq:${button.token}`, style: button.action === "grant" ? "success" as const : button.action === "deny" ? "danger" as const : undefined }));
       try {
-        await send(event.notifyAgentId!, event.notifyText!, `clawdesk-request-event-${event.id}`);
+        await telegram.sendToOwnerWithButtons(event.notifyText!, buttons, `clawdesk-request-event-${event.id}`);
+        db.update(workRequestEvents).set({ deliveredAt: this.#now(), attempts: event.attempts + 1 }).where(eq(workRequestEvents.id, event.id)).run();
+        sent++;
+      } catch { db.update(workRequestEvents).set({ attempts: event.attempts + 1 }).where(eq(workRequestEvents.id, event.id)).run(); }
+    }
+    const events = pending.filter((event) => event.notifyAgentId);
+    for (const event of send ? events : []) {
+      try {
+        await send!(event.notifyAgentId!, event.notifyText!, `clawdesk-request-event-${event.id}`);
         db.update(workRequestEvents).set({ deliveredAt: this.#now(), attempts: event.attempts + 1 }).where(eq(workRequestEvents.id, event.id)).run();
         sent++;
       } catch { db.update(workRequestEvents).set({ attempts: event.attempts + 1 }).where(eq(workRequestEvents.id, event.id)).run(); }
     }
     const notes = db.select().from(workRequestSpool).where(and(isNull(workRequestSpool.deliveredAt), lt(workRequestSpool.attempts, MAX_ATTEMPTS))).limit(50).all().filter((note) => note.notifyText && AGENT.test(note.agentId));
-    for (const note of notes) {
+    for (const note of send ? notes : []) {
       try {
-        await send(note.agentId, note.notifyText!, `clawdesk-request-note-${note.id}`);
+        await send!(note.agentId, note.notifyText!, `clawdesk-request-note-${note.id}`);
         db.update(workRequestSpool).set({ deliveredAt: this.#now(), attempts: note.attempts + 1 }).where(eq(workRequestSpool.id, note.id)).run();
         sent++;
       } catch { db.update(workRequestSpool).set({ attempts: note.attempts + 1 }).where(eq(workRequestSpool.id, note.id)).run(); }
     }
     return sent;
   }
+}
+
+/** What the owner reads in Telegram: who asks, what for, by when; answers with text are in the panel. */
+function ownerMessage(label: string, from: string, row: Row, passed: string[]): string {
+  const what = row.kind === "access" ? `нужен доступ: ${row.resource}, ${row.access === "read" ? "только чтение" : "чтение и запись"}` : row.kind === "question" ? "нужны сведения" : "нужно решение";
+  return [
+    `${label} · ${what}`,
+    `От: ${from} (${row.fromAgentId})`,
+    `Тема: ${row.subject}`,
+    `${row.kind === "access" ? "Зачем" : "Подробности"}: ${row.details.slice(0, 1500)}`,
+    row.taskRef ? `Задача: ${row.taskRef}` : null,
+    passed.length ? `Прошло: ${passed.join(" → ")} → вы` : null,
+    `Срок: ${new Date(row.deadlineAt).toISOString().slice(0, 16).replace("T", " ")} UTC`,
+    row.kind === "access" ? "Кнопки ниже — выдать (панель проверит доступ) или отказать." : "Ответить текстом можно в панели: «Компания → Обращения».",
+  ].filter((line): line is string => typeof line === "string").join("\n");
 }
 
 function addresseeMessage(label: string, from: string, row: Row, next: string | null): string {
