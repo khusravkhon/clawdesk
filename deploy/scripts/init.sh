@@ -8,7 +8,8 @@
 # CLAWDESK_DOMAIN, CLAWDESK_FILES_DIR, CLAWDESK_TZ, CLAWDESK_VERSION, CLAWDESK_DATA_DIR, PANEL_PORT and
 # COMPOSE_PROJECT_NAME in the environment are written to deploy/.env
 # (install.sh passes them). With a domain, Caddy serves the panel over HTTPS.
-# OPENCLAW_VERSION is written from deploy/openclaw.version (an OPENCLAW_VERSION in the environment wins).
+# OPENCLAW_VERSION: a new install gets deploy/openclaw.version; an existing one keeps its OpenClaw line, at the
+# newest verified patch (deploy/scripts/openclaw-choice.sh). An OPENCLAW_VERSION in the environment wins.
 #
 # Over a running install this is an update: a backup first, and the previous images come back if the
 # new ones fail (deploy/scripts/update-guard.sh).
@@ -26,6 +27,8 @@ COMPOSE=(docker compose -f docker-compose.yml)
 step() { printf '\n\033[1m==> %s\033[0m\n' "$*"; }
 # shellcheck source=update-guard.sh
 . "$DEPLOY_DIR/scripts/update-guard.sh"
+# shellcheck source=openclaw-choice.sh
+. "$DEPLOY_DIR/scripts/openclaw-choice.sh"
 
 random_token() {
   if command -v openssl >/dev/null 2>&1; then openssl rand -hex 32
@@ -56,6 +59,23 @@ env_set() {
   else echo "$1=$2" >> .env; fi
 }
 
+# Decided before anything changes: an install newer than this code stops here untouched.
+OPENCLAW_DEFAULT="$(tr -d "[:space:]" < openclaw.version)"
+if [[ -n "${OPENCLAW_VERSION:-}" ]]; then
+  OPENCLAW_CHOSEN="$OPENCLAW_VERSION"
+else
+  installed="$(openclaw_installed)"
+  if ! OPENCLAW_CHOSEN="$(openclaw_choose "$installed" "$OPENCLAW_DEFAULT" openclaw.supported)"; then
+    echo "This install runs OpenClaw $installed, newer than every version this ClawDesk has verified (deploy/openclaw.supported)."
+    echo "Update ClawDesk itself (the desktop app or the code on the server) and run this again. Nothing was changed."
+    exit 1
+  fi
+  if [[ -n "$installed" && "$(openclaw_line "$installed")" != "$(openclaw_line "$OPENCLAW_CHOSEN")" ]]; then
+    echo "OpenClaw $(openclaw_line "$installed") is no longer supported by this ClawDesk: moving to $OPENCLAW_CHOSEN."
+  fi
+fi
+echo "OpenClaw: $OPENCLAW_CHOSEN"
+
 [[ $DEV == 0 ]] && guard_detect
 if [[ $GUARD == 1 ]]; then
   step "Backing up before the update"
@@ -69,8 +89,7 @@ for name in CLAWDESK_DOMAIN CLAWDESK_FILES_DIR CLAWDESK_TZ CLAWDESK_VERSION CLAW
   if [[ -n "${!name+set}" ]]; then env_set "$name" "${!name}"; fi
 done
 
-# The OpenClaw version travels with the code, so an update of the code brings its OpenClaw too.
-env_set OPENCLAW_VERSION "${OPENCLAW_VERSION:-$(tr -d '[:space:]' < openclaw.version)}"
+env_set OPENCLAW_VERSION "$OPENCLAW_CHOSEN"
 
 if [[ -z "$(env_get FREELLMAPI_ENCRYPTION_KEY)" ]]; then
   env_set FREELLMAPI_ENCRYPTION_KEY "$(random_token)"
@@ -126,7 +145,10 @@ fi
 
 VERSION="$(env_get CLAWDESK_VERSION)"
 pulled=0
-if [[ -n "$VERSION" && "$VERSION" != "dev" && "$VERSION" != "local" && $DEV == 0 ]]; then
+# Released images carry the default OpenClaw; an install on another verified line builds its own.
+if [[ -n "$VERSION" && "$VERSION" != "dev" && "$VERSION" != "local" && $DEV == 0 && "$OPENCLAW_CHOSEN" != "$OPENCLAW_DEFAULT" ]]; then
+  echo "OpenClaw $OPENCLAW_CHOSEN is not in the released $VERSION images; building them here."
+elif [[ -n "$VERSION" && "$VERSION" != "dev" && "$VERSION" != "local" && $DEV == 0 ]]; then
   step "Pulling ClawDesk $VERSION images"
   registry="ghcr.io/khusravkhon"
   if "${COMPOSE[@]}" pull gateway panel && docker pull "$registry/clawdesk-sandbox:$VERSION"     && docker tag "$registry/clawdesk-sandbox:$VERSION" openclaw-sandbox:bookworm-slim; then

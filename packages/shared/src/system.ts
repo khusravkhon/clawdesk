@@ -46,3 +46,35 @@ export const FactoryResetResultDto = z.object({
   backup: z.string(),
 });
 export type FactoryResetResultDto = z.infer<typeof FactoryResetResultDto>;
+
+// System → OpenClaw: a newer OpenClaw verified for this ClawDesk, installed only when the owner asks.
+
+export const OpenClawUpdateState = z.enum(["backup", "building", "switching", "checking", "rolling_back", "done", "rolled_back", "failed"]);
+export type OpenClawUpdateState = z.infer<typeof OpenClawUpdateState>;
+
+export const OpenClawUpdateDto = z.object({
+  /** Works in the installed panel (Docker), not in host development. */
+  available: z.boolean(),
+  /** The OpenClaw the Gateway image runs. */
+  running: z.string().nullable(),
+  /** The newest verified version above it; `newLine` when it is another OpenClaw line (2026.8 → 2026.11). */
+  offer: z.object({ version: z.string(), newLine: z.boolean() }).nullable(),
+  /** The last update from the panel, while it runs and after. */
+  status: z.object({
+    version: z.string(),
+    from: z.string().nullish(),
+    state: OpenClawUpdateState,
+    backup: z.string().nullish(),
+    reason: z.string().nullish(),
+    message: z.string().nullish(),
+    startedAt: z.string().nullish(),
+    finishedAt: z.string().nullish(),
+  }).nullable(),
+});
+export type OpenClawUpdateDto = z.infer<typeof OpenClawUpdateDto>;
+
+export const StartOpenClawUpdateRequest = z.object({
+  version: z.string().regex(/^\d{4}\.\d{1,2}\.\d{1,4}$/),
+  confirm: z.literal(true),
+}).strict();
+export type StartOpenClawUpdateRequest = z.infer<typeof StartOpenClawUpdateRequest>;

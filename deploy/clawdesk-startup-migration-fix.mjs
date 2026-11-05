@@ -4,9 +4,11 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 // openclaw-bump-review: remove when upstream no longer reconciles failed startup stores.
-export const SUPPORTED_VERSION = "2026.8.35";
-export const UPSTREAM_FILE = "dist/startup-migration-DkIFHb-U.js";
-export const UPSTREAM_SHA256 = "dad962a2880e9f7f8d883a72a0807c8b36c5a2a68e3ce491bd2ce2e7ec96518f";
+// One entry per verified OpenClaw version (deploy/openclaw.supported): the file to patch and its exact
+// SHA-256, or null once a version is reviewed and no longer needs the fix. Any other version fails the build.
+export const FIXES = {
+  "2026.8.35": { file: "dist/startup-migration-DkIFHb-U.js", sha256: "dad962a2880e9f7f8d883a72a0807c8b36c5a2a68e3ce491bd2ce2e7ec96518f" },
+};
 const BEFORE = '\t\t} catch (error) {\n\t\t\tparams.log.warn(`session: SQLite startup maintenance failed for ${target.agentId}; continuing: ${String(error)}`);';
 const AFTER = BEFORE.replace("\t\t\tparams.log.warn", "\t\t\tdatabases.delete(databasePath);\n\t\t\tparams.log.warn");
 
@@ -20,15 +22,18 @@ export function patchMigrationSource(source) {
 export function applyStartupMigrationFix({ appDir = "/app", versionFile = "/usr/local/lib/openclaw.version" } = {}) {
   const pinnedVersion = fs.readFileSync(versionFile, "utf8").trim();
   const installedVersion = JSON.parse(fs.readFileSync(path.join(appDir, "package.json"), "utf8")).version;
-  if (pinnedVersion !== SUPPORTED_VERSION || installedVersion !== SUPPORTED_VERSION) {
+  if (pinnedVersion !== installedVersion || !Object.hasOwn(FIXES, installedVersion)) {
     throw new Error("Unsupported OpenClaw version; review startup migration compatibility fix before building.");
   }
-  const target = path.join(appDir, UPSTREAM_FILE);
+  const fix = FIXES[installedVersion];
+  if (fix === null) return false;
+  const target = path.join(appDir, fix.file);
   const source = fs.readFileSync(target, "utf8");
-  if (createHash("sha256").update(source).digest("hex") !== UPSTREAM_SHA256) {
+  if (createHash("sha256").update(source).digest("hex") !== fix.sha256) {
     throw new Error("Unexpected OpenClaw startup migration digest; refusing to patch unknown source.");
   }
   fs.writeFileSync(target, patchMigrationSource(source));
+  return true;
 }
 
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {

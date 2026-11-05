@@ -3,7 +3,9 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { test } from "node:test";
-import { applyStartupMigrationFix, patchMigrationSource, SUPPORTED_VERSION, UPSTREAM_FILE } from "./clawdesk-startup-migration-fix.mjs";
+import { applyStartupMigrationFix, FIXES, patchMigrationSource } from "./clawdesk-startup-migration-fix.mjs";
+
+const [SUPPORTED_VERSION, { file: UPSTREAM_FILE }] = Object.entries(FIXES).find(([, fix]) => fix);
 
 // Mirrors the upstream loop: failed maintenance is deliberately logged and continued.
 const fixture = `async function run(params) {
@@ -71,6 +73,27 @@ test("build patch rejects unknown versions and source bytes without changing inp
   } finally {
     assert.equal(path.dirname(root), path.resolve(os.tmpdir()));
     assert.ok(path.basename(root).startsWith("clawdesk-startup-fix-"));
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("every verified OpenClaw version has a reviewed fix entry", () => {
+  const supported = fs.readFileSync(new URL("./openclaw.supported", import.meta.url), "utf8").split(/\r?\n/).map((l) => l.replace(/#.*/, "").trim()).filter(Boolean);
+  for (const version of supported) assert.ok(Object.hasOwn(FIXES, version), `${version}: add it to FIXES (its file and SHA-256, or null when not needed)`);
+});
+
+test("a version reviewed as not needing the fix builds without patching; the image version must match", () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "clawdesk-startup-fix-"));
+  FIXES["2099.1.1"] = null;
+  try {
+    const versionFile = path.join(root, "openclaw.version");
+    fs.writeFileSync(path.join(root, "package.json"), JSON.stringify({ version: "2099.1.1" }));
+    fs.writeFileSync(versionFile, "2099.1.1");
+    assert.equal(applyStartupMigrationFix({ appDir: root, versionFile }), false);
+    fs.writeFileSync(versionFile, SUPPORTED_VERSION);
+    assert.throws(() => applyStartupMigrationFix({ appDir: root, versionFile }), /Unsupported OpenClaw version/);
+  } finally {
+    delete FIXES["2099.1.1"];
     fs.rmSync(root, { recursive: true, force: true });
   }
 });

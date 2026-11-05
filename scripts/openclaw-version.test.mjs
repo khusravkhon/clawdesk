@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { candidates, check, COPIES, compare, pinnedVersion, reviewNotes, setVersion, VERSION_FILE } from "./openclaw-version.mjs";
+import { candidates, check, COPIES, compare, offerVersion, pinnedVersion, reviewNotes, setVersion, SUPPORTED_FILE, supportedVersions, VERSION_FILE } from "./openclaw-version.mjs";
 
 const ROOT = path.resolve(import.meta.dirname, "..");
 
@@ -11,7 +11,7 @@ const ROOT = path.resolve(import.meta.dirname, "..");
 function fixture(t) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "openclaw-version-"));
   t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
-  for (const file of new Set([VERSION_FILE, ...COPIES.map((c) => c.file)])) {
+  for (const file of new Set([VERSION_FILE, SUPPORTED_FILE, ...COPIES.map((c) => c.file)])) {
     fs.mkdirSync(path.join(dir, path.dirname(file)), { recursive: true });
     fs.copyFileSync(path.join(ROOT, file), path.join(dir, file));
   }
@@ -65,4 +65,31 @@ test("review notes point at version-specific workarounds", () => {
   const notes = reviewNotes();
   assert.ok(notes.some((n) => n.file === "deploy/docker-compose.yml" && /Gemini/.test(n.note)));
   assert.ok(notes.every((n) => n.note.length > 0 && n.line > 0));
+});
+
+test("offer adds a newer line for installs to choose; the default and its copies stay", (t) => {
+  const dir = fixture(t);
+  const before = pinnedVersion(dir);
+  offerVersion("2099.11.2", dir);
+  offerVersion("2099.11.4", dir);
+  assert.equal(pinnedVersion(dir), before);
+  assert.deepEqual(supportedVersions(dir), [before, "2099.11.4"]);
+  assert.deepEqual(check(dir), []);
+  assert.match(fs.readFileSync(path.join(dir, SUPPORTED_FILE), "utf8"), /^# /);
+});
+
+test("set moves the default and replaces only its own line in the supported list", (t) => {
+  const dir = fixture(t);
+  offerVersion("2099.11.2", dir);
+  const line = pinnedVersion(dir).split(".").slice(0, 2).join(".");
+  setVersion(`${line}.999`, dir);
+  assert.deepEqual(supportedVersions(dir), [`${line}.999`, "2099.11.2"]);
+});
+
+test("check wants the default among the supported versions, one version per line", (t) => {
+  const dir = fixture(t);
+  fs.writeFileSync(path.join(dir, SUPPORTED_FILE), ["2099.1.1", "2099.1.2", ""].join("\n"));
+  const problems = check(dir);
+  assert.ok(problems.some((p) => p.includes("misses the default")));
+  assert.ok(problems.some((p) => p.includes("more than one version")));
 });

@@ -53,6 +53,7 @@ import { registerExtensionRoutes } from "./routes/extensions.js";
 import type { McpService } from "./skills/mcp-service.js";
 import type { SkillsService } from "./skills/skills-service.js";
 import { registerSystemRoutes } from "./routes/system.js";
+import { registerOpenClawUpdateRoutes } from "./routes/openclaw-update.js";
 import { registerStorageRoutes } from "./routes/storage.js";
 import { registerSpaceRoutes } from "./routes/space.js";
 import { registerTeamRoutes } from "./routes/teams.js";
@@ -165,6 +166,7 @@ export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
   registerVideoRoutes(app, { video: deps.video ?? new VideoService({ db: deps.db, bridge: deps.bridge, chat, logger: deps.logger.child({ component: "video" }), videoDir: deps.videoDir, library }), budget });
   registerDashboardRoutes(app, { dashboard: new DashboardService(deps) });
   registerSystemRoutes(app, deps);
+  registerOpenClawUpdateRoutes(app, deps);
   registerSpaceRoutes(app, deps);
   registerTeamRoutes(app, deps);
   registerWorkRequestRoutes(app, deps);

@@ -1005,7 +1005,40 @@
     "resettingTitle": "Resetting",
     "resettingText": "The server is wiping the data and restarting — 1–3 minutes. Then the new password screen opens. Your owner code:",
     "resettingHint": "Write the code down: if the page does not open by itself, open the panel and enter it on the password screen.",
-    "openSetup": "Open the password screen"
+    "openSetup": "Open the password screen",
+    "openclaw": {
+      "title": "OpenClaw",
+      "running": "Running OpenClaw {v}.",
+      "about": "A new OpenClaw shows up here only after ClawDesk has verified it. You decide when to update.",
+      "upToDate": "This is the newest verified version.",
+      "offer": "Verified OpenClaw {v} is available.",
+      "newLine": "This is a new OpenClaw line ({from} → {to}). It may store data in a new way: going back to the previous line takes restoring a backup.",
+      "steps": "A backup comes first. Then a new Gateway is built and the Gateway and the panel restart: 5–20 minutes, agents do not answer meanwhile. If the new version fails its checks, the previous one comes back.",
+      "update": "Update OpenClaw to {v}",
+      "confirmTitle": "Update OpenClaw?",
+      "confirmText": "OpenClaw {from} → {to}. The panel and the agents are unavailable for a few minutes.",
+      "confirm": "Update",
+      "cancel": "Cancel",
+      "restarting": "The panel is restarting… This updates by itself.",
+      "backup": "Backup before the update: {backup}",
+      "state": {
+        "backup": "Making a backup…",
+        "building": "Building the Gateway with OpenClaw {v}…",
+        "switching": "Restarting the Gateway and the panel…",
+        "checking": "Checking the new version…",
+        "rolling_back": "That did not work; bringing the previous version back…",
+        "done": "OpenClaw updated to {v}.",
+        "rolled_back": "The update to {v} failed its checks; the previous version runs.",
+        "failed": "The update to {v} failed."
+      },
+      "reason": {
+        "interrupted": "The update was cut short: the computer or Docker restarted. You can start it again.",
+        "backup_failed": "The backup failed, so nothing was changed.",
+        "build_failed": "The Gateway could not be built; nothing was changed. Usually a passing network problem: try again.",
+        "helper_failed": "The update helper did not start.",
+        "rollback_failed": "The previous version could not be brought back. Restore the backup from the list below."
+      }
+    }
   },
   "mode": {
     "title": "What is this panel for?",

@@ -1,4 +1,4 @@
-import { FolderSyncStatusesDto, type PullRequestDto, type TeamRepoStatusDto } from "@clawdesk/shared";
+import { FolderSyncStatusesDto, type OpenClawUpdateDto, type PullRequestDto, type TeamRepoStatusDto } from "@clawdesk/shared";
 
 // Client for the ClawDesk bridge in the Gateway container (deploy/clawdesk-bridge.mjs):
 // OpenClaw CLI steps that have no RPC, such as signing in to an OAuth MCP server.
@@ -382,6 +382,16 @@ export class BridgeClient {
 
   backupDelete(name: string): Promise<{ deleted: true; name: string }> {
     return this.#call("POST", "/backup/delete", { name, confirm: true }, 30_000);
+  }
+
+  /** The running OpenClaw, the verified newer one and the last update (deploy/clawdesk-openclaw-update.mjs). */
+  openclawUpdate(): Promise<Omit<OpenClawUpdateDto, "available">> {
+    return this.#call("GET", "/openclaw/update", undefined, 30_000);
+  }
+
+  /** Starts the backup and the update helper; the Gateway and the panel restart a few minutes later. */
+  startOpenclawUpdate(version: string): Promise<{ started: true; version: string }> {
+    return this.#call("POST", "/openclaw/update", { version }, 60_000);
   }
 
   /** Starts the factory reset; the Gateway and the panel stop shortly after this returns. */

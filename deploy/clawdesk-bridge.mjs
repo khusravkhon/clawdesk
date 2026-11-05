@@ -37,6 +37,8 @@
 //   GET  /video/progress?jobId=…             → { percent } while a download runs
 //   POST /video/cancel       { jobId }        stops that job's worker container
 //   POST /reset              { ownerCode }   factory reset in a helper container; the stack restarts
+//   GET  /openclaw/update                   → { running, supported, offer, status } (see clawdesk-openclaw-update.mjs)
+//   POST /openclaw/update    { version }    backup, then a helper container moves the Gateway to that verified OpenClaw
 
 import { spawn } from "node:child_process";
 import { timingSafeEqual } from "node:crypto";
@@ -44,7 +46,8 @@ import http from "node:http";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { DatabaseSync } from "node:sqlite";
-import { BackupError, createBackup, deleteBackup, listBackups, startReset } from "./clawdesk-backup.mjs";
+import { BackupError, createBackup, deleteBackup, listBackups, resetGateway, startReset } from "./clawdesk-backup.mjs";
+import { OpenClawUpdateError, startUpdate as startOpenClawUpdate, updateInfo as openclawUpdateInfo } from "./clawdesk-openclaw-update.mjs";
 import { cloneTeamRepo, fetchTeamRepo, prepareMemberRepo, pushTeamBranch, removeTeamRepo, TeamError, teamRepoStatus } from "./clawdesk-teams.mjs";
 import { isAuthorizationCode, mcpLoginArgs } from "./clawdesk-oauth.mjs";
 import { AudioSetupError, audioSettings, audioStatus, saveAudioKey, verifyAudioKey } from "./clawdesk-audio.mjs";
@@ -594,6 +597,7 @@ async function handle(req) {
   // P0: what this container can do now (versions and tools), for the capabilities screen.
   if (req.method === "GET" && url.pathname === "/capabilities") return { status: 200, body: await capabilities() };
   if (req.method === "GET" && url.pathname === "/google/status") return googleStatus();
+  if (req.method === "GET" && url.pathname === "/openclaw/update") return { status: 200, body: await openclawUpdateInfo() };
   if (req.method === "GET" && url.pathname === "/backup/list") return { status: 200, body: { backups: await listBackups() } };
   // Company requests filed by agents (clawdesk-requests plugin): the panel reads, stores, then acknowledges.
   if (req.method === "GET" && url.pathname === "/requests/spool") return { status: 200, body: await readRequestsSpool(requestsSpoolDir(process.env.OPENCLAW_STATE_DIR || "/var/lib/clawdesk/openclaw")) };
@@ -658,6 +662,16 @@ async function handle(req) {
       return { status: 200, body: result };
     } catch (error) {
       if (error instanceof BackupError) return { status: error.status, body: { error: error.code, message: error.message } };
+      throw error;
+    }
+  }
+  if (url.pathname === "/openclaw/update") {
+    try {
+      const result = await startOpenClawUpdate(body.version, { identify: () => resetGateway(), backup: () => createBackup("before-update") });
+      log("openclaw update started", { version: result.version });
+      return { status: 200, body: { started: true, version: result.version } };
+    } catch (error) {
+      if (error instanceof OpenClawUpdateError || error instanceof BackupError) return { status: error.status, body: { error: error.code, message: error.message } };
       throw error;
     }
   }

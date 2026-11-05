@@ -6,11 +6,15 @@
 //   node scripts/openclaw-version.mjs              print the pinned version
 //   node scripts/openclaw-version.mjs check        fail if any copy disagrees with the file (CI runs this)
 //   node scripts/openclaw-version.mjs set 2026.9.1 write the file and every copy (then: pnpm install)
+//   node scripts/openclaw-version.mjs offer 2026.11.2  verified for installs that choose it in the panel; the default stays
 //   node scripts/openclaw-version.mjs next         newer stable releases on npm, as JSON (the bump workflow)
 //   node scripts/openclaw-version.mjs review       lines marked "openclaw-bump-review" (workarounds to recheck)
 //
 // Versions are YYYY.M.P. A "line" is YYYY.M: OpenClaw keeps shipping patches to older lines next to
 // new ones, so a patch inside the current line and a move to a newer line are told apart.
+//
+// deploy/openclaw.supported lists every version this code builds: the default plus newer lines an install may
+// move to from the panel (System → OpenClaw). One version per line of OpenClaw.
 import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
@@ -18,6 +22,7 @@ import { fileURLToPath } from "node:url";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 export const VERSION_FILE = "deploy/openclaw.version";
+export const SUPPORTED_FILE = "deploy/openclaw.supported";
 const STABLE = /^\d{4}\.\d{1,2}\.\d{1,4}$/;
 const REVIEW_MARKER = "openclaw-bump-review";
 
@@ -40,10 +45,27 @@ export function pinnedVersion(root = ROOT) {
   return version;
 }
 
+/** The verified versions as written (oldest first when written by this script). */
+export function supportedVersions(root = ROOT) {
+  return read(SUPPORTED_FILE, root).split("\n").map((l) => l.replace(/#.*/, "").trim()).filter(Boolean);
+}
+
+/** Writes the list with `version` in place of any other version of its line; the comments stay. */
+function writeSupported(version, root) {
+  const comments = read(SUPPORTED_FILE, root).split("\n").filter((l) => l.trim().startsWith("#"));
+  const versions = [...supportedVersions(root).filter((v) => lineOf(v) !== lineOf(version)), version].sort(compare);
+  fs.writeFileSync(path.join(root, SUPPORTED_FILE), [...comments, ...versions, ""].join("\n"));
+}
+
 /** Disagreements between the file and its copies, as readable lines; empty when all agree. */
 export function check(root = ROOT) {
   const version = pinnedVersion(root);
   const problems = [];
+  const supported = supportedVersions(root);
+  for (const v of supported) if (!STABLE.test(v)) problems.push(`${SUPPORTED_FILE}: "${v}" is not a stable YYYY.M.P version`);
+  if (!supported.includes(version)) problems.push(`${SUPPORTED_FILE}: misses the default ${version}`);
+  const lines = supported.filter((v) => STABLE.test(v)).map(lineOf);
+  if (new Set(lines).size !== lines.length) problems.push(`${SUPPORTED_FILE}: more than one version of one line`);
   for (const { file, pattern } of COPIES) {
     const text = read(file, root);
     const flags = pattern.flags.includes("g") ? pattern.flags : `${pattern.flags}g`;
@@ -63,6 +85,13 @@ export function setVersion(version, root = ROOT) {
     fs.writeFileSync(path.join(root, file), text.replace(pattern, (_, before, _old, after) => `${before}${version}${after}`));
   }
   fs.writeFileSync(path.join(root, VERSION_FILE), `${version}\n`);
+  writeSupported(version, root);
+}
+
+/** Verified for installs that choose it in the panel; new installs keep the default. */
+export function offerVersion(version, root = ROOT) {
+  if (!STABLE.test(version)) throw new Error(`"${version}" is not a stable YYYY.M.P version`);
+  writeSupported(version, root);
 }
 
 const parts = (v) => v.split(".").map(Number);
@@ -122,6 +151,10 @@ function main([command, arg]) {
       setVersion(arg ?? "");
       console.log(`OpenClaw ${arg}: written. Next: pnpm install (updates pnpm-lock.yaml), then the tests and the contract test.`);
       return 0;
+    case "offer":
+      offerVersion(arg ?? "");
+      console.log(`OpenClaw ${arg}: offered to installs (${SUPPORTED_FILE}); the default stays ${pinnedVersion()}. Next: its entry in FIXES (deploy/clawdesk-startup-migration-fix.mjs), the tests, OPENCLAW_VERSION=${arg} bash deploy/scripts/contract.sh.`);
+      return 0;
     case "next": {
       const current = pinnedVersion();
       // A release counts only once the panel's client packages exist in the same version.
@@ -135,7 +168,7 @@ function main([command, arg]) {
       for (const n of reviewNotes()) console.log(`${n.file}:${n.line}: ${n.note}`);
       return 0;
     default:
-      console.error("usage: openclaw-version.mjs [check | set <version> | next | review]");
+      console.error("usage: openclaw-version.mjs [check | set <version> | offer <version> | next | review]");
       return 2;
   }
 }

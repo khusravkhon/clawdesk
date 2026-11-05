@@ -1,0 +1,17 @@
+# Build context of the Gateway image: only what gateway.Dockerfile uses. The image also carries this context
+# (/usr/local/share/clawdesk/gateway-build) to build itself for another verified OpenClaw from the panel, so
+# nothing else may get in — never .env, backups or data.
+*
+!gateway.Dockerfile
+!clawdesk-*.mjs
+clawdesk-*.test.mjs
+clawdesk-*.bench.mjs
+clawdesk-*.smoke.mjs
+!fetch-verified.mjs
+!docker-mountpoints.sh
+!gateway-start.sh
+!openclaw.version
+!openclaw.supported
+!project-templates
+!skills
+!plugins
