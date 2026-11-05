@@ -36,3 +36,4 @@ export * from "./project-interview.js";
 export * from "./project-rule-audit.js";
 export * from "./project-foundation.js";
 export * from "./project-transfer.js";
+export * from "./capabilities.js";

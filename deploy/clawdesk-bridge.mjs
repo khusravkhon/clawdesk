@@ -20,6 +20,7 @@
 //   POST /google/login/start { email, services, readonly, redirectUri? } → { authorizationUrl }
 //   POST /google/login/complete { …same, authUrl }
 //   POST /google/remove      { email }
+//   GET  /capabilities                      → { openclaw, docker, git, gog } versions, null when missing (P0)
 //   POST /google/doc/copy    { agentId, docId, account }  one Doc as a read-only copy in the agent's workspace (stage 7)
 //   POST /google/doc/remove  { agentId, docId }   POST /google/doc/list { agentId } → { copies: [{ docId, sha }] }
 //   POST /freellmapi/reset   { newPassword }   recover FreeLLMAPI's account (code from its log)
@@ -61,6 +62,7 @@ import { ProjectBuilder } from "./clawdesk-project-builder.mjs";
 import { ProjectWork } from "./clawdesk-project-work.mjs";
 import { GoogleDocCopies } from "./clawdesk-google-docs.mjs";
 import { ProjectTransfer } from "./clawdesk-project-transfer.mjs";
+import { capabilities } from "./clawdesk-capabilities.mjs";
 import { sharedFolderSource } from "./clawdesk-shared-folder.mjs";
 import { composeServiceContainer } from "./clawdesk-containers.mjs";
 
@@ -589,6 +591,8 @@ async function handle(req) {
     }
   }
 
+  // P0: what this container can do now (versions and tools), for the capabilities screen.
+  if (req.method === "GET" && url.pathname === "/capabilities") return { status: 200, body: await capabilities() };
   if (req.method === "GET" && url.pathname === "/google/status") return googleStatus();
   if (req.method === "GET" && url.pathname === "/backup/list") return { status: 200, body: { backups: await listBackups() } };
   // Company requests filed by agents (clawdesk-requests plugin): the panel reads, stores, then acknowledges.

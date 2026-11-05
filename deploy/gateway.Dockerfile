@@ -34,6 +34,7 @@ COPY --chmod=0644 clawdesk-requests-spool.mjs /usr/local/lib/
 COPY --chmod=0644 clawdesk-project-github.mjs /usr/local/lib/
 COPY --chmod=0644 clawdesk-google-docs.mjs /usr/local/lib/
 COPY --chmod=0644 clawdesk-project-transfer.mjs /usr/local/lib/
+COPY --chmod=0644 clawdesk-capabilities.mjs /usr/local/lib/
 COPY project-templates /usr/local/lib/project-templates
 COPY --chmod=0644 clawdesk-shared-folder.mjs /usr/local/lib/
 COPY --chmod=0644 clawdesk-containers.mjs /usr/local/lib/

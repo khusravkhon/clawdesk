@@ -111,6 +111,7 @@ onMounted(load);
         <n-button v-if="!selectedId" key="work-items" @click="router.push('/company/work-items')">{{ t('workItems.title') }}</n-button>
         <n-button v-if="!selectedId" key="requests" @click="router.push('/company/requests')">{{ t('requests.title') }}</n-button>
         <n-button v-if="!selectedId" key="access" @click="router.push('/company/access')">{{ t('access.title') }}</n-button>
+        <n-button v-if="!selectedId" key="capabilities" @click="router.push('/company/capabilities')">{{ t('capabilities.title') }}</n-button>
         <n-button v-if="!selectedId" key="create" type="primary" :disabled="!data || saving" @click="edit()">{{ t('company.create') }}</n-button>
       </n-space>
     </page-header>

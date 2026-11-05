@@ -2608,5 +2608,71 @@
       "gateway_unavailable": "No connection to the Gateway.",
       "workspace_required": "The project has no folder."
     }
+  },
+  "capabilities": {
+    "title": "Installation capabilities",
+    "subtitle": "What this installation can do now",
+    "lead": "Each row is checked right now on this installation: connection, settings and tools in the container. It is a fact about this machine, not a promise: what is missing here does not work, even if the documentation describes it.",
+    "check": "Check again",
+    "failed": "Could not check the capabilities.",
+    "checkedAt": "Checked {at}.",
+    "state": {
+      "ok": "present",
+      "off": "switched off",
+      "missing": "missing",
+      "unknown": "could not check"
+    },
+    "items": {
+      "gateway": {
+        "title": "Gateway connection",
+        "gives": "The panel runs the OpenClaw agents.",
+        "without": "No Gateway connection: agents, chats, tasks and checks do not work until it is back."
+      },
+      "openclaw": {
+        "title": "OpenClaw version",
+        "gives": "The pinned version the panel was checked with.",
+        "without": "The OpenClaw version could not be read."
+      },
+      "company_mode": {
+        "title": "Company mode",
+        "gives": "Departments, projects, requests and tasks are available.",
+        "without": "The installation is in personal mode: company features are off."
+      },
+      "model": {
+        "title": "Main agent's AI",
+        "gives": "The project interview, the contradiction check and the agents' work use this model.",
+        "without": "The main agent has no model: the interview, the contradiction check and agents' work are unavailable. Connect an AI under Assistant."
+      },
+      "sandbox": {
+        "title": "Agent sandbox",
+        "gives": "Junior agents run in containers of their own and see only the folders and copies granted to them.",
+        "without": "The sandbox is off: junior agents run in the Gateway container and are not bound by the folder and Google Doc rules."
+      },
+      "docker": {
+        "title": "Docker",
+        "gives": "Checks and previews of project apps, agent sandboxes.",
+        "without": "Docker is unavailable: checks and previews of created apps and agent sandboxes do not work."
+      },
+      "requests_plugin": {
+        "title": "Requests plugin",
+        "gives": "Agents file requests and task reports; Telegram buttons and /req.",
+        "without": "The requests plugin is not on: agents cannot file requests or reports. Restart the installation."
+      },
+      "telegram": {
+        "title": "Owner in Telegram",
+        "gives": "Requests to the owner arrive in Telegram with buttons.",
+        "without": "The owner is not confirmed in the bot: requests show in the panel only (Telegram → pairing)."
+      },
+      "google": {
+        "title": "Google",
+        "gives": "Google Docs are given to agents as read-only copies.",
+        "without": "Google is not connected: no Google Docs for agents (a spec can go into the shared folder as a file)."
+      },
+      "git": {
+        "title": "Git",
+        "gives": "GitHub teams and projects on GitHub.",
+        "without": "Git is unavailable: GitHub teams and pushing projects to GitHub do not work."
+      }
+    }
   }
 }

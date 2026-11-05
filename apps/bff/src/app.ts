@@ -32,6 +32,7 @@ import { GatewayUnavailableError, type GatewayService } from "./gateway/gateway-
 import { registerAgentRoutes } from "./routes/agents.js";
 import { registerAgentCharterRoutes } from "./routes/agent-charter.js";
 import { oneShot } from "./chat/one-shot.js";
+import { registerCapabilityRoutes } from "./routes/capabilities.js";
 import type { AgentCharterService } from "./company/agent-charter-service.js";
 import { registerAiRoutes } from "./routes/ai.js";
 import { registerApprovalRoutes } from "./routes/approvals.js";
@@ -170,6 +171,7 @@ export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
   registerWorkItemRoutes(app, deps);
   registerActivityRoutes(app, deps);
   if (deps.charters) registerAgentCharterRoutes(app, deps.charters);
+  registerCapabilityRoutes(app, deps);
   registerCompanyRoutes(app, new CompanyService({ ...deps, model: oneShot(deps.gateway) }));
   registerAuditRoutes(app, deps);
   registerUsageRoutes(app, { usage: new UsageService(deps) });

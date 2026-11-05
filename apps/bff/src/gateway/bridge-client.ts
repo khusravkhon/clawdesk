@@ -270,6 +270,11 @@ export class BridgeClient {
     return this.#call("GET", "/files/folders");
   }
 
+  /** P0: versions of OpenClaw and of the tools the container has (null when missing). */
+  capabilities(): Promise<{ openclaw: string | null; docker: string | null; git: string | null; gog: string | null }> {
+    return this.#call("GET", "/capabilities", undefined, 20_000);
+  }
+
   /** P8: a project's files for a transfer package (base64 with hashes), and a package's files into a new folder. */
   projectTransferRead(projectId: string): Promise<{ files: { path: string; size: number; sha256: string; data: string }[]; excluded: { path: string; reason: string }[]; mode: string }> {
     return this.#call("POST", "/projects/transfer/read", { projectId }, 120_000);
