@@ -1736,7 +1736,8 @@
       "revision_conflict": "Data changed. Refresh the state and retry; your answer remains in the input.",
       "request_conflict": "The action changed. Refresh the state before retrying.",
       "gateway_unavailable": "The local environment is unavailable. Restore the connection and retry.",
-      "builder_busy": "Another action is still running. Refresh the state shortly."
+      "builder_busy": "Another action is still running. Refresh the state shortly.",
+      "foundation_gaps_unacknowledged": "Confirm that the missing needs will not be in the first version."
     },
     "featureItems": [
       "Create, rename and delete tasks",
@@ -2529,5 +2530,48 @@
       "conflict_missing": "Contradiction not found — refresh.",
       "no_rules": "At least two rules are needed."
     }
+  },
+  "projectFoundation": {
+    "title": "Project foundation",
+    "decision": {
+      "fits": "The checked foundation fits: a small Node.js web app with an SQLite database. Nothing in the brief and rules goes beyond it.",
+      "partial": "The checked foundation does not cover everything. Below is what was found in the brief and rules and will not be in the first version. You can create the project only after confirming this; the rest is separate development."
+    },
+    "needs": {
+      "roles": "Sign-in, roles and permissions",
+      "integrations": "External services",
+      "realtime": "Real-time updates, chat",
+      "mobile": "Mobile app",
+      "files": "Files and images",
+      "offline": "Working offline",
+      "payments": "Payments",
+      "messages": "E-mail, SMS, notifications",
+      "load": "High load"
+    },
+    "covered": "in the foundation",
+    "notCovered": "not in the first version",
+    "fromField": "From \"{field}\"",
+    "fromRule": "From a business rule",
+    "basis": "The basis is the words of your brief and rules; if something was found wrongly, fix the brief (for example, move it to \"Not in the first version\").",
+    "technical": "Technical details",
+    "fields": {
+      "runtime": "Runtime",
+      "storage": "Data",
+      "ui": "Interface",
+      "tests": "Checks",
+      "dependencies": "Dependencies",
+      "platforms": "Runs on",
+      "license": "License",
+      "origin": "Origin"
+    },
+    "alternatives": "What would fit the missing needs",
+    "alternative": {
+      "vue-node": "A web app with a separate frontend (e.g. Vue + Node.js) — sign-in and roles, files, e-mail.",
+      "aspnet": "A server app with complex permissions and integrations (e.g. ASP.NET Core) — roles, external services, payments, load.",
+      "mobile": "A mobile app (e.g. Flutter or React Native) and a server for it.",
+      "realtime": "An app with persistent connections (WebSocket) — chat and real-time updates."
+    },
+    "notGenerated": "The panel does not create these automatically: they are directions for separate development, not ready templates.",
+    "acknowledge": "I understand: the listed needs will not be in the first version"
   }
 }

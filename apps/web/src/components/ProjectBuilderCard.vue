@@ -12,6 +12,8 @@ const data = ref<ProjectBuilderDto | null>(null);
 const analysis = ref<ProjectWorkspaceAnalysisDto | null>(null);
 const loading = ref(false), busy = ref(false), error = ref<string | null>(null);
 const answer = ref("");
+/** P4: the owner's word that needs the checked profile lacks stay out of the first version. */
+const acknowledgeGaps = ref(false);
 const answerField = ref<keyof ProjectBriefFields | null>(null);
 const templateId = ref<"task-board-v1" | null>(null);
 const confirmed = ref(false), html = ref("");
@@ -71,7 +73,7 @@ async function act(action: Action): Promise<void> {
   if (!data.value || (action === "stop" ? busy.value || loading.value : blocked.value)) return;
   const id = props.projectId, sequence = generation;
   const field = question.value?.field;
-  const extra = action === "answer" ? { field, value: answer.value.trim() } : action === "plan" ? { templateId: templateId.value } : action === "approve" || action === "prepare" ? { confirm: true as const } : {};
+  const extra = action === "answer" ? { field, value: answer.value.trim() } : action === "plan" ? { templateId: templateId.value, acknowledgeGaps: acknowledgeGaps.value } : action === "approve" || action === "prepare" ? { confirm: true as const } : {};
   const signature = JSON.stringify({ action, revision: data.value.revision, ...extra });
   if (!pending || pending.signature !== signature) pending = { signature, request: { requestId: crypto.randomUUID(), revision: data.value.revision } };
   const body = pending.request;
@@ -83,7 +85,7 @@ async function act(action: Action): Promise<void> {
       result = await api.company.answerBuilder(id, { ...body, field, value: answer.value.trim() });
     } else if (action === "plan") {
       if (!templateId.value) return;
-      result = await api.company.planBuilder(id, { ...body, templateId: templateId.value });
+      result = await api.company.planBuilder(id, { ...body, templateId: templateId.value, ...(data.value.foundation.fit === "partial" ? { acknowledgeGaps: acknowledgeGaps.value } : {}) });
     } else if (action === "approve") result = await api.company.approveBuilder(id, { ...body, confirm: true });
     else if (action === "prepare") result = await api.company.prepareBuilder(id, { ...body, confirm: true });
     else if (action === "start") result = await api.company.startBuilder(id, body);
@@ -159,10 +161,31 @@ onBeforeUnmount(() => { disposed = true; generation++; previewGeneration++; wind
         <n-button attr-type="submit" type="primary" :loading="busy" :disabled="blocked || !answer.trim()">{{ t('projectBuilder.answer') }}</n-button>
       </form>
       <p v-else>{{ t('projectBuilder.answered') }}</p>
+      <section class="builder-block foundation">
+        <h3>{{ t('projectFoundation.title') }}</h3>
+        <n-alert :type="data.foundation.fit === 'fits' ? 'success' : 'warning'" :bordered="false">{{ t(`projectFoundation.decision.${data.foundation.fit}`) }}</n-alert>
+        <ul v-if="data.foundation.needs.length" class="builder-block">
+          <li v-for="item in data.foundation.needs" :key="item.need">
+            <strong>{{ t(`projectFoundation.needs.${item.need}`) }}</strong> — {{ t(item.covered ? 'projectFoundation.covered' : 'projectFoundation.notCovered') }}
+            <br /><span class="foundation-quote">{{ t(item.field === 'rule' ? 'projectFoundation.fromRule' : 'projectFoundation.fromField', { field: item.field === 'rule' ? '' : t(`projectBrief.fields.${item.field}`) }) }}: «{{ item.evidence }}»</span>
+          </li>
+        </ul>
+        <p class="foundation-quote">{{ t('projectFoundation.basis') }}</p>
+        <details class="builder-block">
+          <summary>{{ t('projectFoundation.technical') }}</summary>
+          <p v-for="key in (['runtime', 'storage', 'ui', 'tests', 'dependencies', 'platforms', 'license', 'origin'] as const)" :key="key">{{ t(`projectFoundation.fields.${key}`) }}: {{ data.foundation.profile[key] }}</p>
+        </details>
+        <details v-if="data.foundation.fit === 'partial'" class="builder-block">
+          <summary>{{ t('projectFoundation.alternatives') }}</summary>
+          <p v-for="item in data.foundation.alternatives" :key="item.id">{{ t(`projectFoundation.alternative.${item.id}`) }} <span class="foundation-quote">({{ item.needs.map(need => t(`projectFoundation.needs.${need}`)).join(', ') }})</span></p>
+          <p class="foundation-quote">{{ t('projectFoundation.notGenerated') }}</p>
+        </details>
+        <n-checkbox v-if="data.foundation.fit === 'partial'" v-model:checked="acknowledgeGaps" class="builder-block" :disabled="blocked">{{ t('projectFoundation.acknowledge') }}</n-checkbox>
+      </section>
       <h3>{{ t('projectBuilder.templates') }}</h3>
       <n-form-item :label="t('projectBuilder.choose')"><n-select v-model:value="templateId" :aria-label="t('projectBuilder.choose')" :options="data.templates.map(item => ({ value: item.id, label: t(`projectBuilder.templateNames.${item.id}`) }))" :placeholder="t('projectBuilder.choose')" :disabled="blocked" /></n-form-item>
       <template v-if="selected"><p>{{ t('projectBuilder.templateDescription') }}</p><p>{{ t('projectBuilder.templateLimits') }}</p></template>
-      <n-button :disabled="blocked || !templateId" :loading="busy" @click="act('plan')">{{ t(data.plan ? 'projectBuilder.replan' : 'projectBuilder.plan') }}</n-button>
+      <n-button :disabled="blocked || !templateId || (data.foundation.fit === 'partial' && !acknowledgeGaps)" :loading="busy" @click="act('plan')">{{ t(data.plan ? 'projectBuilder.replan' : 'projectBuilder.plan') }}</n-button>
       <section v-if="data.plan" class="builder-plan">
         <h3>{{ t('projectBuilder.planTitle', { name: data.plan.projectName }) }}</h3>
         <n-alert v-if="existing" type="info" class="builder-block">{{ t('projectBuilder.existing') }}</n-alert>
@@ -202,6 +225,8 @@ onBeforeUnmount(() => { disposed = true; generation++; previewGeneration++; wind
 </template>
 
 <style scoped>
+.foundation ul { padding-left: 20px; line-height: 1.6; }
+.foundation-quote { font-size: 0.92em; opacity: 0.75; overflow-wrap: anywhere; }
 .builder-card { margin-bottom: 18px; }
 .builder-block { margin: 16px 0; }
 .builder-conversation, .builder-plan { border-top: 1px solid var(--border); padding-top: 16px; margin-top: 18px; }

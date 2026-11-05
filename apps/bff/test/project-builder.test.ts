@@ -54,6 +54,19 @@ describe("project builder guided workflow", () => {
     expect(company.projectBrief(id).fields.goal).toBe("Personal tasks");
   });
 
+  it("explains the foundation and plans needs it lacks out of the first version only with the owner's word", async () => {
+    complete();
+    expect((await company.builder.get(id)).foundation).toMatchObject({ fit: "fits", needs: [], profile: { id: "node-web-v1", templateId: "task-board-v1" } });
+    company.saveProjectBrief(id, { requestId: randomUUID(), revision: company.projectBrief(id).revision, step: 3, fields: { ...company.projectBrief(id).fields, audience: "Менеджеры и администратор с разными правами доступа", integrations: "Отправлять счета в 1С" } });
+    const state = await company.builder.get(id);
+    expect(state.foundation.fit).toBe("partial");
+    expect(state.foundation.needs.map((item) => [item.need, item.field, item.covered])).toEqual([["roles", "audience", false], ["integrations", "integrations", false]]);
+    expect(state.foundation.alternatives.every((item) => item.generated === false)).toBe(true);
+    await expect(company.builder.plan(id, { ...req(0), templateId: "task-board-v1" })).rejects.toThrow("foundation_gaps_unacknowledged");
+    const planned = await company.builder.plan(id, { ...req(0), templateId: "task-board-v1", acknowledgeGaps: true });
+    expect(planned.plan).toMatchObject({ gapsAcknowledged: true, foundation: { fit: "partial" } });
+  });
+
   it("keeps planning and approval free of filesystem effects; prepare requires exact approved snapshot", async () => {
     complete();
     let state = await company.builder.plan(id, { ...req(0), templateId: "task-board-v1" });

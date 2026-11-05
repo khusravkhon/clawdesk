@@ -4,9 +4,10 @@ import type { AnswerProjectBuilderRequest, BuilderMutationRequest, BusinessRuleD
 import type { Db } from "../db/client.js";
 import { projectBuilderRequests, projectBuilders } from "../db/schema.js";
 import { BridgeError } from "../gateway/bridge-client.js";
+import { assessFoundation } from "@clawdesk/shared";
 
 export class ProjectBuilderError extends Error {
-  constructor(readonly code: "builder_incomplete" | "builder_plan_missing" | "builder_plan_stale" | "builder_approval_required" | "builder_existing_project" | "builder_workspace_required" | "revision_conflict" | "request_conflict" | "gateway_unavailable" | "builder_busy") { super(code); }
+  constructor(readonly code: "builder_incomplete" | "builder_plan_missing" | "builder_plan_stale" | "builder_approval_required" | "builder_existing_project" | "builder_workspace_required" | "revision_conflict" | "request_conflict" | "gateway_unavailable" | "builder_busy" | "foundation_gaps_unacknowledged") { super(code); }
 }
 export type ProjectBuilderBridge = {
   projectWorkspace(id: string): Promise<ProjectWorkspaceDto>;
@@ -68,7 +69,7 @@ export class ProjectBuilderService {
     let runtime = await this.deps.bridge?.builderStatus(id).catch((error: unknown) => ({ ...emptyRuntime(), state: "failed" as const, error: error instanceof BridgeError ? error.code : "gateway_unavailable" })) ?? { ...emptyRuntime(), state: "failed" as const, error: "gateway_unavailable" };
     const context = await this.#context(id), row = this.#row(id);
     if (!context.workspace && runtime.error === "workspace_required") runtime = emptyRuntime();
-    return { revision: row?.revision ?? 0, brief: context.brief, questions: context.questions, templates: [template], plan: row?.plan ?? null, stale: !!row?.plan && JSON.stringify(row.plan.snapshot) !== JSON.stringify(context.snapshot), blockers: context.blockers, workspace: context.workspace, runtime: { ...runtime, previewUrl: runtime.state === "running" ? `/api/company/projects/${encodeURIComponent(id)}/builder/preview` : null } };
+    return { revision: row?.revision ?? 0, brief: context.brief, questions: context.questions, templates: [template], foundation: assessFoundation(context.brief.fields, context.rules.map(rule => rule.fields)), plan: row?.plan ?? null, stale: !!row?.plan && JSON.stringify(row.plan.snapshot) !== JSON.stringify(context.snapshot), blockers: context.blockers, workspace: context.workspace, runtime: { ...runtime, previewUrl: runtime.state === "running" ? `/api/company/projects/${encodeURIComponent(id)}/builder/preview` : null } };
   }
 
   async #mutate(id: string, operation: string, request: BuilderMutationRequest, action: () => Promise<ProjectBuilderPlanDto | null>, commit?: () => void): Promise<ProjectBuilderDto> {
@@ -107,7 +108,10 @@ export class ProjectBuilderService {
     return this.#mutate(id, "plan", request, async () => {
       const context = await this.#context(id);
       if (context.snapshot.workspace?.mode === "existing") throw new ProjectBuilderError("builder_existing_project");
-      return { id: randomUUID(), templateId: request.templateId, projectName: context.project.name, features: [...template.features], limitations: [...template.limitations], files: [...files], brief: context.brief.fields, rules: context.rules, snapshot: context.snapshot, createdAt: Date.now(), approvedAt: null };
+      // P4: needs the profile does not cover stay out of the first version only with the owner's word.
+      const foundation = assessFoundation(context.brief.fields, context.rules.map(rule => rule.fields));
+      if (foundation.fit === "partial" && request.acknowledgeGaps !== true) throw new ProjectBuilderError("foundation_gaps_unacknowledged");
+      return { id: randomUUID(), templateId: request.templateId, projectName: context.project.name, features: [...template.features], limitations: [...template.limitations], files: [...files], brief: context.brief.fields, rules: context.rules, snapshot: context.snapshot, createdAt: Date.now(), approvedAt: null, foundation, gapsAcknowledged: foundation.fit === "partial" };
     });
   }
 
