@@ -680,3 +680,13 @@ export const agentCharterVersions = sqliteTable("agent_charter_versions", {
   createdAt: integer("created_at").notNull(),
   requestId: text("request_id").notNull(),
 }, (t) => [primaryKey({ columns: [t.agentId, t.version] }), uniqueIndex("agent_charter_request_uq").on(t.agentId, t.requestId)]);
+
+/** Stage 7: Google Docs copied for an agent (google/<doc>.md in its workspace): what the copy holds now. */
+export const googleDocCopies = sqliteTable("google_doc_copies", {
+  agentId: text("agent_id").notNull(),
+  docId: text("doc_id").notNull(),
+  title: text("title").notNull(),
+  revision: text("revision"),
+  sha: text("sha").notNull(),
+  copiedAt: integer("copied_at").notNull(),
+}, (t) => [primaryKey({ columns: [t.agentId, t.docId] })]);

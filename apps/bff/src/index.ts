@@ -81,6 +81,7 @@ const access = new AccessService({
   db, bridge, companyMode: () => space.mode() === "company",
   setMcpAgents: (server, agentIds) => mcp.setAgents(server, agentIds),
   config: async () => (await getConfig<Record<string, never>>(gateway)).config,
+  notify: async (agentId, message, idempotencyKey) => { await gateway.request("chat.send", { sessionKey: mainSessionKey(agentId), agentId, message, idempotencyKey }); },
 });
 // Stage 6, part 2: company tasks; a request filed for a task blocks it until it is decided.
 const workItems = new WorkItemsService({

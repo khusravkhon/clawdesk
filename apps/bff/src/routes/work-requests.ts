@@ -1,4 +1,4 @@
-import { GrantResourceRequest, OwnerRequestAction, RevokeResourceRequest } from "@clawdesk/shared";
+import { GrantResourceRequest, OwnerRequestAction, RefreshResourceRequest, RevokeResourceRequest } from "@clawdesk/shared";
 import type { FastifyInstance } from "fastify";
 import { z, ZodError } from "zod";
 import { AccessError, type AccessService } from "../company/access-service.js";
@@ -28,5 +28,6 @@ export function registerWorkRequestRoutes(app: FastifyInstance, deps: { requests
     scope.get("/api/company/access", () => access.list());
     scope.post("/api/company/access/grant", async (request) => { await access.grant(GrantResourceRequest.parse(request.body), "owner"); return access.list(); });
     scope.post("/api/company/access/revoke", async (request) => { await access.revoke(RevokeResourceRequest.parse(request.body), "owner"); return access.list(); });
+    scope.post("/api/company/access/refresh", async (request) => { const result = await access.refresh(RefreshResourceRequest.parse(request.body)); return { ...(await access.list()), changed: result.changed }; });
   });
 }

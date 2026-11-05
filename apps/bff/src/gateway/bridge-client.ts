@@ -270,6 +270,17 @@ export class BridgeClient {
     return this.#call("GET", "/files/folders");
   }
 
+  /** Stage 7: one Google Doc as a read-only copy in the agent's workspace (google/<id>.md), exported with the owner's account. */
+  googleDocCopy(agentId: string, docId: string, account: string): Promise<{ docId: string; title: string; revision: string | null; copiedAt: number; sha: string; path: string }> {
+    return this.#call("POST", "/google/doc/copy", { agentId, docId, account }, 120_000);
+  }
+  googleDocRemove(agentId: string, docId: string): Promise<{ removed: true }> {
+    return this.#call("POST", "/google/doc/remove", { agentId, docId });
+  }
+  googleDocList(agentId: string): Promise<{ copies: { docId: string; sha: string }[] }> {
+    return this.#call("POST", "/google/doc/list", { agentId });
+  }
+
   async folderSyncStatus(): Promise<FolderSyncStatusesDto> {
     return FolderSyncStatusesDto.parse(await this.#call("GET", "/files/sync-status", undefined, 5_000));
   }

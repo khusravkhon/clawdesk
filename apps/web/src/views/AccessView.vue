@@ -1,8 +1,9 @@
 <script setup lang="ts">
 // Stage 5: what each company agent can actually reach (read from where access is enforced), and the
 // owner's grants and revocations. A change is shown as done only after the panel has checked it.
-import type { AgentAccessDto, AgentResourceDto, CompanyAccessDto, ResourceAccess } from "@clawdesk/shared";
-import { NAlert, NButton, NCard, NPopconfirm, NSelect, NSpace, NTag } from "naive-ui";
+// Stage 7: a Google Doc is given as a read-only copy made with the owner's connection, refreshed on request.
+import { normalizeResourceRef, ResourceRef, type AgentAccessDto, type AgentResourceDto, type CompanyAccessDto, type ResourceAccess } from "@clawdesk/shared";
+import { NAlert, NButton, NCard, NInput, NPopconfirm, NSelect, NSpace, NTag } from "naive-ui";
 import { computed, onMounted, ref } from "vue";
 import { useI18n } from "vue-i18n";
 import { useRouter } from "vue-router";
@@ -13,12 +14,15 @@ const { t, te } = useI18n();
 const router = useRouter();
 const data = ref<CompanyAccessDto | null>(null);
 const loading = ref(false), busy = ref(false), error = ref<string | null>(null), notice = ref<string | null>(null);
-const agentId = ref<string | null>(null), resource = ref<string | null>(null), level = ref<ResourceAccess>("read");
+const agentId = ref<string | null>(null), resource = ref<string | null>(null), level = ref<ResourceAccess>("read"), docLink = ref("");
+/** The Google Doc chosen by its link (or ID), or null while the link is not a document's. */
+const docRef = computed(() => { const value = normalizeResourceRef(`gdoc:${docLink.value.trim()}`); return typeof value === "string" && ResourceRef.safeParse(value).success ? value : null; });
 
 const agentOptions = computed(() => (data.value?.agents ?? []).map((agent) => ({ value: agent.agentId, label: `${agent.name} (${agent.agentId})` })));
 const resourceOptions = computed(() => [
   ...(agentId.value === "main" ? [] : (data.value?.folders ?? []).map((name) => ({ value: `folder:${name}`, label: `${t('access.kind.folder')}: ${name}` }))),
   ...(data.value?.servers ?? []).map((name) => ({ value: `mcp:${name}`, label: `${t('access.kind.mcp')}: ${name}` })),
+  ...(agentId.value === "main" ? [] : [{ value: "gdoc:", label: t('access.gdocOption') }]),
 ]);
 const levelOptions = computed(() => [{ value: "read", label: t('access.level.read') }, { value: "write", label: t('access.level.write') }]);
 const explain = (e: unknown) => e instanceof ApiError && te(`access.errors.${e.body.error}`) ? t(`access.errors.${e.body.error}`) : t("access.failed");
@@ -37,7 +41,13 @@ async function change(call: () => Promise<CompanyAccessDto>, done: string): Prom
   catch (e) { error.value = explain(e); await load(); }
   finally { busy.value = false; }
 }
-const grant = () => agentId.value && resource.value && change(() => api.company.grantAccess({ agentId: agentId.value!, resource: resource.value!, access: resource.value!.startsWith("mcp:") ? "write" : level.value }), t('access.granted'));
+const target = computed(() => resource.value === "gdoc:" ? docRef.value : resource.value);
+const grant = () => agentId.value && target.value && change(() => api.company.grantAccess({ agentId: agentId.value!, resource: target.value!, access: target.value!.startsWith("mcp:") ? "write" : target.value!.startsWith("gdoc:") ? "read" : level.value }), t('access.granted'));
+async function refresh(agent: AgentAccessDto, item: AgentResourceDto): Promise<void> {
+  let changed = false;
+  await change(async () => { const result = await api.company.refreshAccess({ agentId: agent.agentId, resource: `gdoc:${item.name}` }); changed = result.changed; return result; }, t('access.refreshed'));
+  if (!error.value) notice.value = t(changed ? 'access.refreshedChanged' : 'access.refreshedSame');
+}
 const revoke = (agent: AgentAccessDto, item: AgentResourceDto) => change(() => api.company.revokeAccess({ agentId: agent.agentId, resource: ref_(item) }), t('access.revoked'));
 onMounted(load);
 </script>
@@ -60,7 +70,11 @@ onMounted(load);
         <n-select v-model:value="resource" :options="resourceOptions" :placeholder="t('access.resource')" :aria-label="t('access.resource')" :disabled="busy || !agentId" />
         <n-select v-if="resource?.startsWith('folder:')" v-model:value="level" :options="levelOptions" :aria-label="t('access.levelLabel')" :disabled="busy" />
         <p v-if="resource?.startsWith('mcp:')" class="meta">{{ t('access.mcpAll') }}</p>
-        <n-button type="primary" :loading="busy" :disabled="!agentId || !resource" @click="grant">{{ t('access.grant') }}</n-button>
+        <template v-if="resource === 'gdoc:'">
+          <n-input v-model:value="docLink" :placeholder="t('access.gdocLink')" :aria-label="t('access.gdocLink')" :disabled="busy" />
+          <p class="meta">{{ t('access.gdocHint') }}</p>
+        </template>
+        <n-button type="primary" :loading="busy" :disabled="!agentId || !target" @click="grant">{{ t('access.grant') }}</n-button>
       </n-space>
     </n-card>
 
@@ -72,12 +86,14 @@ onMounted(load);
       <div v-for="item in agent.resources" :key="ref_(item)" class="row">
         <span>
           <n-tag size="small">{{ t(`access.kind.${item.kind}`) }}</n-tag>
-          <strong> {{ item.name }}</strong> · {{ t(`access.level.${item.access}`) }}<template v-if="item.path"> · <code>{{ item.path }}</code></template>
+          <strong> {{ item.title ?? item.name }}</strong> · {{ t(`access.level.${item.access}`) }}<template v-if="item.path"> · <code>{{ item.path }}</code></template>
+          <template v-if="item.kind === 'gdoc'"> · {{ t('access.gdocVersion', { version: item.version ?? '—', at: new Date(item.copiedAt ?? 0).toLocaleString() }) }}</template>
           <n-tag v-if="item.state === 'error' || item.state === 'partial'" size="small" type="warning"> {{ t(`access.state.${item.state}`) }}</n-tag>
         </span>
+        <n-button v-if="item.kind === 'gdoc'" size="small" :disabled="busy" @click="refresh(agent, item)">{{ t('access.refresh') }}</n-button>
         <n-popconfirm v-if="item.revocable" @positive-click="revoke(agent, item)">
           <template #trigger><n-button size="small" :disabled="busy">{{ t('access.revoke') }}</n-button></template>
-          <span class="confirm">{{ t(item.kind === 'mcp' ? 'access.revokeMcp' : 'access.revokeFolder', { name: item.name, agent: agent.name }) }}</span>
+          <span class="confirm">{{ t(item.kind === 'mcp' ? 'access.revokeMcp' : item.kind === 'gdoc' ? 'access.revokeGdoc' : 'access.revokeFolder', { name: item.title ?? item.name, agent: agent.name }) }}</span>
         </n-popconfirm>
         <span v-else class="meta">{{ t('access.viaTeam') }}</span>
       </div>

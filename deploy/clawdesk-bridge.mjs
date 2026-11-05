@@ -20,6 +20,8 @@
 //   POST /google/login/start { email, services, readonly, redirectUri? } → { authorizationUrl }
 //   POST /google/login/complete { …same, authUrl }
 //   POST /google/remove      { email }
+//   POST /google/doc/copy    { agentId, docId, account }  one Doc as a read-only copy in the agent's workspace (stage 7)
+//   POST /google/doc/remove  { agentId, docId }   POST /google/doc/list { agentId } → { copies: [{ docId, sha }] }
 //   POST /freellmapi/reset   { newPassword }   recover FreeLLMAPI's account (code from its log)
 //   POST /files/folder       { name }        a junior agent's folder in the shared files folder → { hostPath, gatewayPath }
 //   POST /teams/clone        { teamId, repoUrl, token }   project team repository (see clawdesk-teams.mjs)
@@ -57,6 +59,7 @@ import { StorageManager, StorageError } from "./clawdesk-storage.mjs";
 import { ProjectFolders, ProjectFolderError } from "./clawdesk-project-folders.mjs";
 import { ProjectBuilder } from "./clawdesk-project-builder.mjs";
 import { ProjectWork } from "./clawdesk-project-work.mjs";
+import { GoogleDocCopies } from "./clawdesk-google-docs.mjs";
 import { sharedFolderSource } from "./clawdesk-shared-folder.mjs";
 import { composeServiceContainer } from "./clawdesk-containers.mjs";
 
@@ -254,6 +257,7 @@ async function googleRemove(body) {
 const FILES_IN_GATEWAY = path.join(process.env.OPENCLAW_STATE_DIR || "/var/lib/clawdesk/openclaw", "workspace", "files");
 const projectFolders = new ProjectFolders({ stateDir: process.env.OPENCLAW_STATE_DIR || "/var/lib/clawdesk/openclaw" });
 const projectWork = new ProjectWork({ stateDir: process.env.OPENCLAW_STATE_DIR || "/var/lib/clawdesk/openclaw", configPath: process.env.OPENCLAW_CONFIG_PATH || "/var/lib/clawdesk/openclaw/openclaw.json" });
+const googleDocs = new GoogleDocCopies({ stateDir: process.env.OPENCLAW_STATE_DIR || "/var/lib/clawdesk/openclaw", configPath: process.env.OPENCLAW_CONFIG_PATH || "/var/lib/clawdesk/openclaw/openclaw.json", gog: (args) => runGog(args, { timeoutMs: 90_000 }) });
 const projectGitHub = new ProjectGitHub({ folders: projectFolders, stateDir: process.env.OPENCLAW_STATE_DIR || "/var/lib/clawdesk/openclaw" });
 const projectBuilder = new ProjectBuilder({ folders: projectFolders, stateDir: process.env.OPENCLAW_STATE_DIR || "/var/lib/clawdesk/openclaw" });
 function spaceMode() {
@@ -655,6 +659,19 @@ async function handle(req) {
     } catch (error) {
       if (error instanceof SkillRemoveError) return { status: 400, body: { error: error.code, message: error.message } };
       throw error;
+    }
+  }
+  // Stage 7: prepared copies of single Google Docs for company agents; the agent never gets the connection.
+  if (url.pathname.startsWith("/google/doc/")) {
+    if (spaceMode() !== "company") return { status: 409, body: { error: "company_only" } };
+    try {
+      if (url.pathname === "/google/doc/copy") return { status: 200, body: await googleDocs.copy(body.agentId, body.docId, body.account) };
+      if (url.pathname === "/google/doc/remove") return { status: 200, body: await googleDocs.remove(body.agentId, body.docId) };
+      if (url.pathname === "/google/doc/list") return { status: 200, body: await googleDocs.list(body.agentId) };
+      return { status: 404, body: { error: "not_found" } };
+    } catch (error) {
+      const code = error instanceof ProjectFolderError ? error.code : "google_unavailable";
+      return { status: error instanceof ProjectFolderError ? error.status : 503, body: { error: code, message: code } };
     }
   }
   switch (url.pathname) {

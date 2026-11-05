@@ -1,5 +1,5 @@
 import { randomBytes, randomUUID } from "node:crypto";
-import { ResourceRef, type GrantResourceRequest, type OwnerRequestAction, type ResourceAccess, type WorkRequestDto, type WorkRequestEventDto, type WorkRequestLevelKind, type WorkRequestsDto } from "@clawdesk/shared";
+import { normalizeResourceRef, ResourceRef, type GrantResourceRequest, type OwnerRequestAction, type ResourceAccess, type WorkRequestDto, type WorkRequestEventDto, type WorkRequestLevelKind, type WorkRequestsDto } from "@clawdesk/shared";
 import { and, asc, desc, eq, inArray, isNull, lt } from "drizzle-orm";
 import type { Db } from "../db/client.js";
 import { agents, companyAgentAssignments, companyProjects, departmentManagers, departments, teams, workRequestButtons, workRequestEvents, workRequests, workRequestSpool, channelBindings } from "../db/schema.js";
@@ -185,9 +185,10 @@ export class WorkRequestsService {
     const taskRef = entry.taskRef === undefined ? "" : str(entry.taskRef, 200);
     if (!kind || !subject || !details || taskRef === null) return { outcome: "invalid", notify: "Обращение не принято: неверные поля." };
     // An access request names exactly one resource and a level; nothing else does.
-    const resource = kind === "access" && ResourceRef.safeParse(entry.resource).success ? entry.resource as string : null;
+    const named = normalizeResourceRef(entry.resource);
+    const resource = kind === "access" && ResourceRef.safeParse(named).success ? named as string : null;
     const access = kind === "access" && (entry.access === "read" || entry.access === "write") ? entry.access : null;
-    if (kind === "access" ? !resource || !access : entry.resource !== undefined || entry.access !== undefined) return { outcome: "invalid", notify: "Обращение не принято: для доступа укажи resource (folder:<папка> или mcp:<сервер>) и access (read или write)." };
+    if (kind === "access" ? !resource || !access : entry.resource !== undefined || entry.access !== undefined) return { outcome: "invalid", notify: "Обращение не принято: для доступа укажи resource (folder:<папка>, mcp:<сервер> или gdoc:<ссылка на Google-документ>) и access (read или write)." };
     const key = subjectKey(subject);
     const active = tx.select().from(workRequests).where(and(eq(workRequests.fromAgentId, agentId), inArray(workRequests.status, ["open", "clarify"]))).all();
     const same = active.find((row) => row.kind === kind && row.subjectKey === key);

@@ -19,24 +19,28 @@ const hash = value => createHash("sha256").update(value).digest("hex");
 const fail = (code, status = 409) => { throw new ProjectFolderError(code, status); };
 const READ = constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK;
 
+/** The agent's workspace relative to the state dir (from the OpenClaw config, else the default). */
+export async function agentWorkspace(stateDir, configPath, agentId) {
+    if (typeof agentId !== "string" || !AGENT.test(agentId))
+        fail("invalid_work_request", 400);
+    let configured;
+    try {
+        configured = JSON.parse(await fs.readFile(configPath, "utf8")).agents?.entries?.[agentId]?.workspace;
+    }
+    catch { /* No readable config: the default location below. */ }
+    const relative = path.relative(stateDir, path.resolve(configured ?? path.join(stateDir, "workspace", agentId)));
+    if (!relative || relative.startsWith("..") || path.isAbsolute(relative))
+        fail("work_missing");
+    return relative.split(path.sep).join("/");
+}
+
 export class ProjectWork {
     constructor({ stateDir, configPath }) {
         this.stateDir = path.resolve(stateDir);
         this.configPath = configPath;
     }
-    /** The agent's workspace relative to the state dir (from the OpenClaw config, else the default). */
-    async #workspace(agentId) {
-        if (typeof agentId !== "string" || !AGENT.test(agentId))
-            fail("invalid_work_request", 400);
-        let configured;
-        try {
-            configured = JSON.parse(await fs.readFile(this.configPath, "utf8")).agents?.entries?.[agentId]?.workspace;
-        }
-        catch { /* No readable config: the default location below. */ }
-        const relative = path.relative(this.stateDir, path.resolve(configured ?? path.join(this.stateDir, "workspace", agentId)));
-        if (!relative || relative.startsWith("..") || path.isAbsolute(relative))
-            fail("work_missing");
-        return relative.split(path.sep).join("/");
+    #workspace(agentId) {
+        return agentWorkspace(this.stateDir, this.configPath, agentId);
     }
     async #within(agentId, run, create = false) {
         const workspace = await this.#workspace(agentId);

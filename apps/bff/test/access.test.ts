@@ -51,6 +51,57 @@ describe("company access", () => {
   });
   afterEach(() => { close(); fs.rmSync(root, { recursive: true, force: true }); });
 
+  it("gives a Google Doc as a checked read-only copy, refreshes it telling the agent, and takes it away", async () => {
+    const DOC = "1AbCdEfGhIjKlMnOpQrStUvWxYz0123456789";
+    let copies: { docId: string; sha: string }[] = [], content = "v1", failure: string | null = null, account: string | null = "owner@example.com";
+    const notes: string[] = [];
+    const bridge = {
+      folderSyncStatus: async () => ({ folders: [] }), sharedFolders: async () => ({ folders: [] }),
+      ensureAgentFolder: async () => ({ hostPath: "h", gatewayPath: "g" }), removeAgentFolder: async () => ({ removed: true }),
+      googleDocCopy: async (agentId: string, docId: string, by: string) => {
+        if (failure) throw Object.assign(new Error(failure), { code: failure });
+        expect(by).toBe("owner@example.com");
+        copies = [...copies.filter((item) => item.docId !== docId), { docId, sha: content }];
+        return { docId, title: "ТЗ магазина", revision: "rev-" + content, copiedAt: 7, sha: content, path: "/workspace/google/" + docId + ".md" };
+      },
+      googleDocList: async () => ({ copies: [...copies] }),
+      googleDocRemove: async (_: string, docId: string) => { copies = copies.filter((item) => item.docId !== docId); return { removed: true as const }; },
+    };
+    const docs = new AccessService({
+      db, companyMode: () => true, bridge, now: () => 5, setMcpAgents: async () => undefined,
+      config: async () => ({ skills: { entries: { gog: { enabled: true, env: { GOG_ACCOUNT: account } } } } }),
+      notify: async (_agentId, text) => { notes.push(text); },
+    });
+    // Write access is not offered for a copy; without Google the owner is told to connect it.
+    await expect(docs.grant({ agentId: "analyst", resource: "gdoc:" + DOC, access: "write" }, "owner")).rejects.toThrow("read_only_resource");
+    account = null;
+    await expect(docs.grant({ agentId: "analyst", resource: "gdoc:" + DOC, access: "read" }, "owner")).rejects.toThrow("google_not_connected");
+    account = "owner@example.com";
+    // A missing document is not a refusal.
+    failure = "gdoc_not_found";
+    await expect(docs.grant({ agentId: "analyst", resource: "gdoc:" + DOC, access: "read" }, "owner")).rejects.toThrow("gdoc_not_found");
+    failure = null;
+    expect(await docs.grant({ agentId: "analyst", resource: "gdoc:" + DOC, access: "read" }, "REQ-001")).toEqual({ resource: "gdoc:" + DOC, access: "read", path: "/workspace/google/" + DOC + ".md" });
+    expect((await docs.list()).agents.find((agent) => agent.agentId === "analyst")!.resources).toEqual([{ kind: "gdoc", name: DOC, title: "ТЗ магазина", version: "rev-v1", copiedAt: 7, access: "read", path: "/workspace/google/" + DOC + ".md", state: "ready", revocable: true }]);
+    // Refresh: the same content says nothing; a new version tells the agent.
+    expect(await docs.refresh({ agentId: "analyst", resource: "gdoc:" + DOC })).toEqual({ changed: false });
+    content = "v2";
+    expect(await docs.refresh({ agentId: "analyst", resource: "gdoc:" + DOC })).toEqual({ changed: true });
+    expect(notes).toHaveLength(1);
+    expect(notes[0]).toContain("входные условия твоей работы изменились");
+    await expect(docs.refresh({ agentId: "dev", resource: "gdoc:" + DOC })).rejects.toThrow("resource_missing");
+    await docs.revoke({ agentId: "analyst", resource: "gdoc:" + DOC }, "owner");
+    expect(copies).toEqual([]);
+    expect((await docs.list()).agents.find((agent) => agent.agentId === "analyst")!.resources).toEqual([]);
+    expect(db.select().from(resourceGrants).all().find((grant) => grant.resource === "gdoc:" + DOC)).toMatchObject({ grantedBy: "REQ-001", revokedBy: "owner" });
+  });
+
+  it("accepts a Google Doc link in an agent's access request", async () => {
+    spool.push({ id: "a".repeat(32), type: "up", agentId: "analyst", kind: "access", subject: "ТЗ", details: "Нужно ТЗ", resource: "gdoc:https://docs.google.com/document/d/1AbCdEfGhIjKlMnOpQrStUvWxYz0123456789/edit?usp=sharing", access: "read" });
+    await requests.tick();
+    expect(requests.list().requests[0]).toMatchObject({ resource: "gdoc:1AbCdEfGhIjKlMnOpQrStUvWxYz0123456789", access: "read" });
+  });
+
   it("shows what each agent reaches, grants a folder read-only and revokes it, checking both", async () => {
     folders = [status("dev", "Shop", { dir: "docs", readOnly: true })];
     let list = await access.list();
@@ -136,7 +187,7 @@ describe("company access", () => {
     close();
     const sqlite = new Database(path.join(root, "panel.sqlite"));
     sqlite.exec([
-      "DROP TABLE agent_charter_versions", "ALTER TABLE teams DROP COLUMN lead_agent_id", "ALTER TABLE teams DROP COLUMN owner_requests",
+      "DROP TABLE google_doc_copies", "DROP TABLE agent_charter_versions", "ALTER TABLE teams DROP COLUMN lead_agent_id", "ALTER TABLE teams DROP COLUMN owner_requests",
       "DROP TABLE work_item_events", "DROP TABLE work_items", "DROP TABLE work_request_buttons", "DROP TABLE resource_grants",
       "ALTER TABLE project_check_runs DROP COLUMN isolation", "ALTER TABLE project_tasks DROP COLUMN review_requested_at", "ALTER TABLE project_tasks DROP COLUMN reviewer",
       "CREATE TABLE old_requests AS SELECT id, number, from_agent_id, kind, subject, subject_key, details, task_ref, status, route, level, hops, revision, answer_text, answered_by, deadline_at, created_at, updated_at, spool_id FROM work_requests",

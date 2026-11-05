@@ -2030,7 +2030,13 @@
       "invalid_request": "Enter the answer text.",
       "not_access": "This is not an access request.",
       "not_applied": "The access did not hold when checked; the request stays open.",
-      "resource_missing": "The requested folder or server does not exist."
+      "resource_missing": "The requested folder or server does not exist.",
+      "google_not_connected": "Google is not connected. Connect it in Sources → Google (Docs read access), or put the spec as a file into the shared folder and grant the folder.",
+      "gdoc_not_found": "Document not found: deleted, moved or a wrong link. This is not a refusal — check the link.",
+      "gdoc_no_access": "The connected Google account cannot open this document. Share it with that account in Google.",
+      "gdoc_too_large": "The document is too large for a copy (over 400 KB of text).",
+      "read_only_resource": "A Google Doc is granted read-only.",
+      "google_unavailable": "Google is unavailable right now — try again later."
     },
     "resource": "Resource",
     "grantConfirm": "Grant {resource} to “{name}”? The panel applies the access, checks it, and only then closes the request.",
@@ -2060,7 +2066,8 @@
       "team-docs": "team docs",
       "mcp": "MCP",
       "team-repo": "team repository",
-      "project-copy": "project copy"
+      "project-copy": "project copy",
+      "gdoc": "Google Doc"
     },
     "level": {
       "read": "read",
@@ -2077,7 +2084,7 @@
     "history": "Grants and revocations",
     "by": "granted by: {by}",
     "revokedAt": "revoked {at}",
-    "limits": "First version: only the owner grants and revokes (no delegation to managers); folders only from the shared folder; an MCP server as a whole. Google documents and agents' memory are not split by team yet. An agent without a sandbox is not bound by these rules.",
+    "limits": "Only the owner grants and revokes access (no delegation to managers); folders only from the shared folder; an MCP server as a whole; a Google Doc as a read-only copy refreshed with a button. Agents' memory is not yet separated by team. An agent without a sandbox is not bound by these rules.",
     "failed": "Could not change access.",
     "errors": {
       "agent_missing": "Agent not found.",
@@ -2085,8 +2092,23 @@
       "not_applied": "The change did not hold when checked — access not counted. Refresh the page and check the state.",
       "main_folders": "The main agent sees the whole shared folder; there is nothing to grant.",
       "company_only": "Access is managed in company mode.",
-      "invalid_request": "Invalid resource."
-    }
+      "invalid_request": "Invalid resource.",
+      "google_not_connected": "Google is not connected. Connect it in Sources → Google (Docs read access), or put the spec as a file into the shared folder and grant the folder.",
+      "gdoc_not_found": "Document not found: deleted, moved or a wrong link. This is not a refusal — check the link.",
+      "gdoc_no_access": "The connected Google account cannot open this document. Share it with that account in Google.",
+      "gdoc_too_large": "The document is too large for a copy (over 400 KB of text).",
+      "read_only_resource": "A Google Doc is granted read-only.",
+      "google_unavailable": "Google is unavailable right now — try again later."
+    },
+    "gdocOption": "Google Doc (by link)",
+    "gdocLink": "Google Docs link",
+    "gdocHint": "The agent gets a read-only copy in google/ of its workspace. The panel makes it with your Google connection; the agent itself gets no Google access and sees no other documents.",
+    "gdocVersion": "version {version}, copied {at}",
+    "refresh": "Refresh copy",
+    "refreshed": "Copy refreshed",
+    "refreshedChanged": "The document changed: the copy was replaced and the agent told.",
+    "refreshedSame": "The document has not changed.",
+    "revokeGdoc": "The copy of \"{name}\" will be deleted from {agent}'s workspace. The document in Google does not change. Continue?"
   },
   "workItems": {
     "title": "Company tasks",
