@@ -4,9 +4,9 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 // openclaw-bump-review: remove when upstream no longer reconciles failed startup stores.
-export const SUPPORTED_VERSION = "2026.8.1";
-export const UPSTREAM_FILE = "dist/startup-migration-LqDYqbTK.js";
-export const UPSTREAM_SHA256 = "ce1fc1088ccd4f2f889d4b703a9781bbef1c662fef4d0bd5db0076e7749fae3f";
+export const SUPPORTED_VERSION = "2026.8.35";
+export const UPSTREAM_FILE = "dist/startup-migration-DkIFHb-U.js";
+export const UPSTREAM_SHA256 = "dad962a2880e9f7f8d883a72a0807c8b36c5a2a68e3ce491bd2ce2e7ec96518f";
 const BEFORE = '\t\t} catch (error) {\n\t\t\tparams.log.warn(`session: SQLite startup maintenance failed for ${target.agentId}; continuing: ${String(error)}`);';
 const AFTER = BEFORE.replace("\t\t\tparams.log.warn", "\t\t\tdatabases.delete(databasePath);\n\t\t\tparams.log.warn");
 
