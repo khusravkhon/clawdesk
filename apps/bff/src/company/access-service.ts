@@ -178,7 +178,15 @@ export class AccessService {
       // Access the panel had not granted itself (a template folder, a team): record its revocation as well.
       db.insert(resourceGrants).values({ id: randomUUID(), agentId: agent.id, resource: ref, access: "read", grantedBy: "—", createdAt: this.#now(), revokedAt: this.#now(), revokedBy: by }).run();
     }
+    // The copy is gone; what the agent wrote down or remembers from it is not. It is told plainly (§7.3).
+    if (kind !== "mcp") await this.deps.notify?.(agent.id, revokedMessage(kind, name), `clawdesk-revoked-${agent.id}-${ref}-${this.#now()}`).catch(() => undefined);
   }
+}
+
+/** What a revoked agent is told: the source is gone, and nothing taken from it may be used or passed on. */
+export function revokedMessage(kind: "folder" | "team-docs" | "gdoc", name: string): string {
+  const what = kind === "gdoc" ? `Google-документу ${name}` : kind === "team-docs" ? "документам команды" : `папке «${name}»`;
+  return `Владелец отозвал твой доступ к ${what}; копия удалена из твоей рабочей папки. Больше не используй и не пересказывай сведения из неё — ни в ответах, ни в обращениях, ни другим агентам. Удали из своих заметок и памяти (MEMORY.md, memory/) всё, что ты из неё выписал. Если для работы она всё ещё нужна, подай обращение о доступе.`;
 }
 
 function split(resource: string): ["folder" | "mcp" | "team-docs" | "gdoc", string] {

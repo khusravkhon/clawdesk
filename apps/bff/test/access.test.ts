@@ -92,6 +92,9 @@ describe("company access", () => {
     await expect(docs.refresh({ agentId: "dev", resource: "gdoc:" + DOC })).rejects.toThrow("resource_missing");
     await docs.revoke({ agentId: "analyst", resource: "gdoc:" + DOC }, "owner");
     expect(copies).toEqual([]);
+    // The agent is told the source is gone and nothing from it may be used or passed on.
+    expect(notes.at(-1)).toContain("отозвал твой доступ к Google-документу");
+    expect(notes.at(-1)).toContain("не пересказывай");
     expect((await docs.list()).agents.find((agent) => agent.agentId === "analyst")!.resources).toEqual([]);
     expect(db.select().from(resourceGrants).all().find((grant) => grant.resource === "gdoc:" + DOC)).toMatchObject({ grantedBy: "REQ-001", revokedBy: "owner" });
   });
