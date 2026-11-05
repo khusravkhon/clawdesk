@@ -183,6 +183,13 @@
       "when": 1792355000000,
       "tag": "0025_team_leads",
       "breakpoints": true
+    },
+    {
+      "idx": 26,
+      "version": "6",
+      "when": 1792356000000,
+      "tag": "0026_agent_charters",
+      "breakpoints": true
     }
   ]
 }

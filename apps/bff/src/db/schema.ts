@@ -641,6 +641,8 @@ export const workItems = sqliteTable("work_items", {
   deadlineAt: integer("deadline_at"),
   /** When it joined the executor's queue: the queue is first in, first out. */
   queuedAt: integer("queued_at"),
+  /** Stage 4: the executor's charter version when the task started; the task keeps those conditions. */
+  charterVersion: integer("charter_version"),
   revision: integer("revision").notNull().default(0),
   createdAt: integer("created_at").notNull(),
   updatedAt: integer("updated_at").notNull(),
@@ -662,3 +664,14 @@ export const workItemEvents = sqliteTable("work_item_events", {
   createdAt: integer("created_at").notNull(),
   requestKey: text("request_key"),
 }, (t) => [index("work_item_events_item_idx").on(t.itemId), uniqueIndex("work_item_events_key_uq").on(t.itemId, t.requestKey)]);
+
+/** Stage 4: versions of an agent's charter; the latest is current. Written into AGENTS.md by the panel. */
+export const agentCharterVersions = sqliteTable("agent_charter_versions", {
+  agentId: text("agent_id").notNull().references(() => agents.id, { onDelete: "cascade" }),
+  version: integer("version").notNull(),
+  fields: text("fields", { mode: "json" }).$type<import("@clawdesk/shared").AgentCharterFields>().notNull(),
+  source: text("source", { enum: ["owner", "restore"] }).notNull(),
+  note: text("note").notNull().default(""),
+  createdAt: integer("created_at").notNull(),
+  requestId: text("request_id").notNull(),
+}, (t) => [primaryKey({ columns: [t.agentId, t.version] }), uniqueIndex("agent_charter_request_uq").on(t.agentId, t.requestId)]);

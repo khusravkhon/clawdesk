@@ -31,6 +31,7 @@ import { liveAgentIds, repairAgentCommunication } from "./provision/agent-commun
 import { WorkRequestsService } from "./company/work-requests-service.js";
 import { AccessService } from "./company/access-service.js";
 import { WorkItemsService } from "./company/work-items-service.js";
+import { AgentCharterService } from "./company/agent-charter-service.js";
 import { ActivityService, RunTracker } from "./company/activity-service.js";
 import { getConfig } from "./gateway/config-patch.js";
 import { syncRequestTools } from "./company/work-requests-config.js";
@@ -86,6 +87,8 @@ const workItems = new WorkItemsService({
   db, companyMode: () => space.mode() === "company",
   send: async (agentId, message, idempotencyKey) => { await gateway.request("chat.send", { sessionKey: mainSessionKey(agentId), agentId, message, idempotencyKey }); },
 });
+// Stage 4: agents' charters, written into AGENTS.md and put back when the file no longer matches.
+const charters = new AgentCharterService({ db, gateway, logger });
 // Stage 9: runs from the Gateway's events plus tasks and requests → one state per agent (list and office).
 const runTracker = new RunTracker();
 const activityListeners = new Set<() => void>();
@@ -109,7 +112,7 @@ const requests = new WorkRequestsService({
   send: async (agentId, message, idempotencyKey) => { await gateway.request("chat.send", { sessionKey: mainSessionKey(agentId), agentId, message, idempotencyKey }); },
 });
 
-const app = await buildApp({ logger, gateway, db, aiSetup, signIn, telegram, freeModels, sources, skills, mcp, approvals, assistant, auth, backups, bridge, space, teams, audit, video, videoDir: config.videoDir, library, budget, notes, reminders, requests, access, workItems, activity, onActivity, sandboxEnabled: config.sandboxEnabled, webDist: config.webDist, trustProxy: config.trustProxy });
+const app = await buildApp({ logger, gateway, db, aiSetup, signIn, telegram, freeModels, sources, skills, mcp, approvals, assistant, auth, backups, bridge, space, teams, audit, video, videoDir: config.videoDir, library, budget, notes, reminders, requests, access, workItems, charters, activity, onActivity, sandboxEnabled: config.sandboxEnabled, webDist: config.webDist, trustProxy: config.trustProxy });
 
 gateway.start();
 await app.listen({ host: config.host, port: config.port });
@@ -200,6 +203,11 @@ const requestToolsTimer = setInterval(() => {
   if (!shuttingDown && gateway.status.state === "connected" && space.mode() === "company") void syncRequestTools({ gateway, db, companyMode: true }).catch((error: Error) => logger.warn({ err: error }, "could not give company agents the request tools"));
 }, 60_000);
 requestToolsTimer.unref();
+// An agent may rewrite its own AGENTS.md; its charter block goes back within ten minutes.
+const charterTimer = setInterval(() => {
+  if (!shuttingDown && gateway.status.state === "connected") void charters.sweep().catch((error: Error) => logger.warn({ err: error }, "could not check agent charters"));
+}, 10 * 60_000);
+charterTimer.unref();
 
 async function shutdown(signal: string): Promise<void> {
   if (shuttingDown) return;
@@ -212,6 +220,7 @@ async function shutdown(signal: string): Promise<void> {
   clearInterval(reminderTimer);
   clearInterval(requestsTimer);
   clearInterval(requestToolsTimer);
+  clearInterval(charterTimer);
   await reminders.stop();
   await app.close();
   await notes.drain();

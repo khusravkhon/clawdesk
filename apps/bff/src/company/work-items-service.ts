@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import type { CreateWorkItemRequest, WorkItemActionRequest, WorkItemDto, WorkItemEventDto, WorkItemsDto } from "@clawdesk/shared";
 import { and, asc, desc, eq, inArray, isNull, lt } from "drizzle-orm";
 import type { Db } from "../db/client.js";
-import { agents, workItemEvents, workItems, workRequests } from "../db/schema.js";
+import { agents, workItemEvents, workItems, workRequests, agentCharterVersions } from "../db/schema.js";
 
 // Stage 6, part 2: company tasks. The owner sets and starts a task; each executor works on one task at a
 // time (running or blocked), the rest wait in its queue (first in, first out) and start when it is free —
@@ -61,7 +61,7 @@ export class WorkItemsService {
     const position = row.status === "queued" ? (queues.get(row.executorAgentId)?.indexOf(row.id) ?? -1) + 1 : 0;
     return {
       id: row.id, code: code(row.number), title: row.title, description: row.description, criteria: row.criteria,
-      executor: { agentId: row.executorAgentId, name: this.#name(row.executorAgentId) }, status: row.status, revision: row.revision,
+      executor: { agentId: row.executorAgentId, name: this.#name(row.executorAgentId) }, status: row.status, revision: row.revision, charterVersion: row.charterVersion ?? null,
       block: row.status === "blocked" ? { text: row.blockText ?? "", requestCode: requestNumber !== null ? requestCode(requestNumber) : null } : null,
       result: row.result, returnComment: row.returnComment, queuePosition: position || null, deadlineAt: row.deadlineAt,
       overdue: row.deadlineAt !== null && row.deadlineAt < this.#now() && (OPEN as readonly string[]).includes(row.status),
@@ -126,7 +126,9 @@ export class WorkItemsService {
     if (tx.select({ id: workItems.id }).from(workItems).where(and(eq(workItems.executorAgentId, executor), inArray(workItems.status, [...OCCUPYING]))).get()) return;
     const next = tx.select().from(workItems).where(and(eq(workItems.executorAgentId, executor), eq(workItems.status, "queued"))).orderBy(asc(workItems.queuedAt), asc(workItems.number)).get();
     if (!next) return;
-    this.#set(tx, next, { status: "running" });
+    // The task keeps the conditions it started under: the executor's charter version at this moment.
+    const charter = tx.select({ version: agentCharterVersions.version }).from(agentCharterVersions).where(eq(agentCharterVersions.agentId, executor)).orderBy(desc(agentCharterVersions.version)).get();
+    this.#set(tx, next, { status: "running", charterVersion: charter?.version ?? 0 });
     this.#event(tx, next.id, "started", "panel", "", { agentId: executor, text: startMessage(code(next.number), next) });
   }
 

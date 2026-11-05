@@ -7,6 +7,7 @@ import { computed, onMounted, reactive, ref } from "vue";
 import { useI18n } from "vue-i18n";
 import { api, ApiError } from "../api/client";
 import AgentExtensions from "../components/AgentExtensions.vue";
+import AgentCharterCard from "../components/AgentCharterCard.vue";
 import MemoryNotes from "../components/MemoryNotes.vue";
 import LocalMemorySetup from "../components/LocalMemorySetup.vue";
 import { useSpaceStore } from "../stores/space";
@@ -137,6 +138,7 @@ onMounted(load);
       </div>
 
       <ModelChain agent-id="main" />
+      <AgentCharterCard v-if="space.mode === 'company'" agent-id="main" />
       <AgentExtensions agent-id="main" />
 
       <div id="memory-notes"><MemoryNotes agent-id="main" /></div>

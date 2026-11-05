@@ -19,6 +19,8 @@ export type WorkItemDto = {
   executor: { agentId: string; name: string };
   status: WorkItemStatus;
   revision: number;
+  /** Stage 4: the executor's charter version the task started under (0: defaults), null before it started. */
+  charterVersion: number | null;
   /** Why the task waits: the request it waits for (its code and state) or a reason. */
   block: { text: string; requestCode: string | null } | null;
   result: string;

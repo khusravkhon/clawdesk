@@ -2352,5 +2352,72 @@
     "connect": "Connect a separate AI",
     "cancel": "Cancel",
     "connected": "A separate AI is connected. Choose this agent's models below."
+  },
+  "agentCharter": {
+    "title": "Responsibilities and limits",
+    "lead": "The agent's working conditions in your words. The panel writes them into its AGENTS.md and puts them back if the file changes. The text describes the work and grants no access: technical powers are below.",
+    "loadFailed": "Could not load the agent's responsibilities.",
+    "failed": "Could not save.",
+    "version": "Version {version}",
+    "defaults": "Safe default conditions apply for now",
+    "notSpecified": "Not specified",
+    "note": "Note for this version (optional)",
+    "save": "Save a new version",
+    "saved": "New version saved and written to the agent",
+    "restored": "The earlier version was restored as a new one",
+    "repaired": "The conditions block was written to AGENTS.md again",
+    "expands": "This change widens the agent's powers: something was added to \"May do\" or taken from \"Forbidden\" / \"Ask permission\". Tightening applies at once; widening only with your confirmation.",
+    "confirmExpansion": "I confirm widening the powers",
+    "repair": "Write the conditions again",
+    "history": "Version history",
+    "restore": "Restore",
+    "restoreConfirm": "Save the text of version {version} as a new version? If it is looser than the current one, it widens the agent's powers.",
+    "fields": {
+      "responsibleFor": "Responsible for",
+      "mustDo": "Must do",
+      "mayDo": "May do",
+      "forbidden": "Forbidden",
+      "askPermission": "When to ask permission",
+      "escalateTo": "Whom to hand questions to",
+      "verifyBy": "How the result is checked"
+    },
+    "file": {
+      "changed": "The conditions block in AGENTS.md was changed",
+      "missing": "AGENTS.md has no conditions block",
+      "hint": "The agent may have edited the file itself. The panel's conditions apply; the panel puts the block back within 10 minutes, or now with the button.",
+      "unavailable": "No connection to the Gateway — AGENTS.md could not be compared."
+    },
+    "source": {
+      "owner": "owner",
+      "restore": "restored",
+      "default": "default"
+    },
+    "powers": {
+      "title": "What the agent can technically do",
+      "lead": "Team lead",
+      "sandbox": "Runs in a sandbox",
+      "noSandbox": "Runs without a sandbox",
+      "folder": "Own folder: {name}",
+      "noFolder": "No folder of its own",
+      "grants": "Granted access: {list}",
+      "noGrants": "No extra access granted",
+      "access": {
+        "read": "read",
+        "write": "read and write"
+      },
+      "askMain": "May ask the main agent",
+      "noAskMain": "May not ask the main agent",
+      "memberOf": "Member of team {team}",
+      "leadOf": "Lead of team {team}",
+      "manager": "Department manager",
+      "external": "External actions (publishing, e-mail, payments) only with the owner's approval, whatever the text above says."
+    },
+    "errors": {
+      "version_conflict": "The conditions were changed meanwhile — reload the page.",
+      "expansion_confirmation_required": "Confirm widening the powers.",
+      "version_missing": "No such version.",
+      "agent_missing": "Agent not found.",
+      "gateway_unavailable": "No connection to the Gateway."
+    }
   }
 }

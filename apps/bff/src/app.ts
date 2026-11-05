@@ -30,6 +30,8 @@ import { registerReminderRoutes } from "./routes/reminders.js";
 import type { Db } from "./db/client.js";
 import { GatewayUnavailableError, type GatewayService } from "./gateway/gateway-service.js";
 import { registerAgentRoutes } from "./routes/agents.js";
+import { registerAgentCharterRoutes } from "./routes/agent-charter.js";
+import type { AgentCharterService } from "./company/agent-charter-service.js";
 import { registerAiRoutes } from "./routes/ai.js";
 import { registerApprovalRoutes } from "./routes/approvals.js";
 import { registerAssistantRoutes } from "./routes/assistant.js";
@@ -102,6 +104,8 @@ export type AppDeps = {
   access?: AccessService;
   /** Stage 6, part 2: company tasks. */
   workItems?: WorkItemsService;
+  /** Stage 4: agents' charters (responsibilities and limits) with versions. */
+  charters?: AgentCharterService;
   /** Stage 9: agents' activity for the work list and the office, and a way to hear about changes. */
   activity?: ActivityService;
   onActivity?: (listener: () => void) => () => void;
@@ -164,6 +168,7 @@ export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
   registerWorkRequestRoutes(app, deps);
   registerWorkItemRoutes(app, deps);
   registerActivityRoutes(app, deps);
+  if (deps.charters) registerAgentCharterRoutes(app, deps.charters);
   registerCompanyRoutes(app, new CompanyService(deps));
   registerAuditRoutes(app, deps);
   registerUsageRoutes(app, { usage: new UsageService(deps) });
