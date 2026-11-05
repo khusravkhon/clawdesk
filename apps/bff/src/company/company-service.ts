@@ -21,6 +21,7 @@ import { ProjectRuleAuditService } from "./project-rule-audit-service.js";
 import { ProjectTransferService, type TransferBridge } from "./project-transfer-service.js";
 import { OrganizationalTeams } from "./organizational-teams.js";
 import { ProjectLoadService, type LoadBridge } from "./project-load-service.js";
+import { ExistingPlanService } from "./existing-plan-service.js";
 import type { OneShot } from "../chat/one-shot.js";
 import { mainSessionKey } from "../chat/chat-service.js";
 import type { Logger } from "pino";
@@ -43,6 +44,7 @@ export class CompanyService {
   readonly transfer: ProjectTransferService;
   readonly organizationalTeams: OrganizationalTeams;
   readonly load: ProjectLoadService;
+  readonly existingPlan: ExistingPlanService;
 
   constructor(private readonly deps: { db: Db; gateway: GatewayService; space: SpaceService; logger?: Logger; sandboxEnabled?: boolean; model?: OneShot; bridge?: Pick<BridgeClient, "projectWorkspace" | "prepareProjectWorkspace"> & Partial<ProjectBuilderBridge> & Partial<ProjectChecksBridge> & Partial<TaskBridge> & Partial<Pick<BridgeClient, "ensureProjectWork">> & Partial<ProjectGitHubBridge> & Partial<Pick<BridgeClient, "projectTransferRead" | "projectTransferWrite" | "projectLoad">> }) {
     this.rules = new ProjectRulesService({ db: deps.db, checkProject: (id, writing) => this.#briefProject(id, writing) });
@@ -66,6 +68,7 @@ export class CompanyService {
     });
     this.github = new ProjectGitHubService({ checkProject: (id, writing) => this.#briefProject(id, writing), bridge: bridge?.projectGitHub ? bridge as ProjectGitHubBridge : undefined });
     this.interview = new ProjectInterviewService({ db: deps.db, checkProject: (id, writing) => this.#briefProject(id, writing), brief: id => this.projectBrief(id), saveBrief: (id, request) => this.saveProjectBrief(id, request), model: deps.model });
+    this.existingPlan = new ExistingPlanService({ db: deps.db, checkProject: (id, writing) => this.#briefProject(id, writing), brief: id => this.projectBrief(id), rules: id => this.rules.list(id).rules, analyze: bridge?.analyzeProjectWorkspace ? (id) => bridge.analyzeProjectWorkspace!(id) : undefined, model: deps.model });
     this.load = new ProjectLoadService({ db: deps.db, checkProject: (id, writing) => this.#briefProject(id, writing), brief: id => this.projectBrief(id), bridge: bridge?.projectLoad ? bridge as LoadBridge : undefined });
     this.organizationalTeams = new OrganizationalTeams({ db: deps.db, gateway: deps.logger ? deps.gateway : undefined, logger: deps.logger, sandboxEnabled: deps.sandboxEnabled ?? false });
     this.transfer = new ProjectTransferService({

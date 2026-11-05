@@ -9,6 +9,8 @@ import { RuleAuditError } from "../company/project-rule-audit-service.js";
 import { ProjectTransferError } from "../company/project-transfer-service.js";
 import { OrganizationalTeamError } from "../company/organizational-teams.js";
 import { ProjectLoadError } from "../company/project-load-service.js";
+import { ExistingPlanError } from "../company/existing-plan-service.js";
+import { ExistingPlanRequest } from "@clawdesk/shared";
 import { RunLoadCheckRequest } from "@clawdesk/shared";
 import { CreateAgentError } from "../provision/create-agent.js";
 import { CreateOrganizationalTeamRequest } from "@clawdesk/shared";
@@ -42,7 +44,7 @@ export function registerCompanyRoutes(app: FastifyInstance, company: CompanyServ
         const code = known.has(error.code) ? error.code : "workspace_unavailable";
         return reply.status(code.startsWith("invalid_") ? 400 : code === "workspace_unavailable" ? 503 : 409).send({ error: code, message: code });
       }
-      if (!(error instanceof CompanyError) && !(error instanceof ProjectRuleError) && !(error instanceof AcceptanceError) && !(error instanceof ProjectBuilderError) && !(error instanceof ProjectChecksError) && !(error instanceof ProjectTaskError) && !(error instanceof ProjectGitHubError) && !(error instanceof InterviewError) && !(error instanceof RuleAuditError) && !(error instanceof ProjectTransferError) && !(error instanceof OrganizationalTeamError) && !(error instanceof CreateAgentError) && !(error instanceof ProjectLoadError)) throw error;
+      if (!(error instanceof CompanyError) && !(error instanceof ProjectRuleError) && !(error instanceof AcceptanceError) && !(error instanceof ProjectBuilderError) && !(error instanceof ProjectChecksError) && !(error instanceof ProjectTaskError) && !(error instanceof ProjectGitHubError) && !(error instanceof InterviewError) && !(error instanceof RuleAuditError) && !(error instanceof ProjectTransferError) && !(error instanceof OrganizationalTeamError) && !(error instanceof CreateAgentError) && !(error instanceof ProjectLoadError) && !(error instanceof ExistingPlanError)) throw error;
       const status = error.code === "company_only" || error.code.endsWith("_missing") ? 404 : error.code === "gateway_unavailable" || error.code === "model_missing" ? 503 : 409;
       return reply.status(status).send({ error: error.code, message: error.code });
     });
@@ -62,6 +64,9 @@ export function registerCompanyRoutes(app: FastifyInstance, company: CompanyServ
     });
     scope.post("/api/company/projects", async (request, reply) => reply.status(201).send(company.createProject(CreateProjectRequest.parse(request.body))));
     scope.get("/api/company/projects/:id/brief", (request) => company.projectBrief(Params.parse(request.params).id));
+    // Acceptance 2: a limited change plan for an existing project (shown, never executed).
+    scope.get("/api/company/projects/:id/existing-plan", (request) => company.existingPlan.get(Params.parse(request.params).id));
+    scope.post("/api/company/projects/:id/existing-plan", (request) => company.existingPlan.ask(Params.parse(request.params).id, ExistingPlanRequest.parse(request.body)));
     // P9: load checks of the project's app.
     scope.get("/api/company/projects/:id/load", (request) => company.load.list(Params.parse(request.params).id));
     scope.post("/api/company/projects/:id/load", (request) => company.load.run(Params.parse(request.params).id, RunLoadCheckRequest.parse(request.body)));

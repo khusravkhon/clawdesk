@@ -4,6 +4,7 @@ import { NAlert, NButton, NCard, NCheckbox, NFormItem, NInput, NSelect, NSpace, 
 import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import { api, ApiError } from "../api/client";
+import ExistingPlanSection from "./ExistingPlanSection.vue";
 
 const props = defineProps<{ projectId: string; disabled: boolean; refreshToken?: number }>();
 const emit = defineEmits<{ changed: [] }>();
@@ -147,6 +148,7 @@ onBeforeUnmount(() => { disposed = true; generation++; previewGeneration++; wind
           <ul><li v-for="file in analysis.files" :key="file"><code>{{ file }}</code></li></ul>
           <p v-if="analysis.truncated">{{ t('projectBuilder.truncated') }}</p>
         </section>
+        <ExistingPlanSection :project-id="projectId" :disabled="blocked" />
       </template>
       <template v-else>
       <p>{{ t('projectBrief.filled', { count: savedAnswers.length, total: 10 }) }}</p>

@@ -758,3 +758,16 @@ export const projectLoadRuns = sqliteTable("project_load_runs", {
   createdAt: integer("created_at").notNull(),
   requestId: text("request_id").notNull(),
 }, (t) => [uniqueIndex("project_load_runs_request_uq").on(t.projectId, t.requestId)]);
+
+/** Acceptance 2: the model's limited change plan for an existing project (shown, never executed). */
+export const projectExistingPlans = sqliteTable("project_existing_plans", {
+  projectId: text("project_id").primaryKey().references(() => companyProjects.id, { onDelete: "cascade" }),
+  status: text("status", { enum: ["idle", "planning", "ready", "failed"] }).notNull(),
+  failure: text("failure", { enum: ["model_unavailable", "invalid_reply", "timeout", "interrupted"] }),
+  revision: integer("revision").notNull().default(0),
+  plan: text("plan", { mode: "json" }).$type<import("@clawdesk/shared").ExistingPlanDto["plan"]>(),
+  basis: text("basis", { mode: "json" }).$type<import("@clawdesk/shared").ExistingPlanDto["basis"]>(),
+  startedAt: integer("started_at"),
+  updatedAt: integer("updated_at").notNull(),
+  requestId: text("request_id").notNull(),
+});
