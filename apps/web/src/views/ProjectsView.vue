@@ -12,6 +12,7 @@ import ProjectRulesCard from "../components/ProjectRulesCard.vue";
 import ProjectBuilderCard from "../components/ProjectBuilderCard.vue";
 import ProjectChecksCard from "../components/ProjectChecksCard.vue";
 import ProjectTasksCard from "../components/ProjectTasksCard.vue";
+import ProjectGitHubCard from "../components/ProjectGitHubCard.vue";
 
 const { t, te } = useI18n();
 const route = useRoute();
@@ -134,6 +135,7 @@ onMounted(async () => {
         <project-builder-card :key="`builder-${project.id}`" :project-id="project.id" :disabled="!canAdd || saving" :refresh-token="builderRefreshToken" @changed="briefRefreshToken++" />
         <project-checks-card :key="`checks-${project.id}`" :project-id="project.id" :disabled="!canAdd || saving" :refresh-token="builderRefreshToken" />
         <project-tasks-card :key="`tasks-${project.id}`" :project-id="project.id" :disabled="!canAdd || saving" :refresh-token="builderRefreshToken" @changed="builderRefreshToken++" />
+        <project-git-hub-card :key="`github-${project.id}`" :project-id="project.id" :disabled="!canAdd || saving" :refresh-token="builderRefreshToken" />
         <project-brief-card :key="`brief-${project.id}`" :project-id="project.id" :disabled="!canAdd || saving" :refresh-token="briefRefreshToken" @changed="builderRefreshToken++" />
         <project-rules-card :key="`rules-${project.id}`" :project-id="project.id" :disabled="!canAdd || saving" @changed="builderRefreshToken++" />
         <project-workspace-card :key="project.id" :project-id="project.id" :disabled="!canAdd || saving" @changed="builderRefreshToken++" />

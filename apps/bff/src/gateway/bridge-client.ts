@@ -298,6 +298,32 @@ export class BridgeClient {
     return this.#call("POST", "/teams/push", { teamId, repoUrl, developer, title, body }, 5 * 60_000);
   }
 
+  /** P7: the project's GitHub connection (the token is never returned). */
+  projectGitHub(projectId: string): Promise<import("@clawdesk/shared").ProjectGitHubDto> {
+    return this.#call("GET", `/projects/github/status?projectId=${encodeURIComponent(projectId)}`, undefined, 60_000);
+  }
+
+  projectGitHubPlan(projectId: string): Promise<import("@clawdesk/shared").ProjectGitHubPlanDto> {
+    return this.#call("GET", `/projects/github/plan?projectId=${encodeURIComponent(projectId)}`, undefined, 60_000);
+  }
+
+  projectGitHubChanges(projectId: string): Promise<import("@clawdesk/shared").ProjectGitHubChangesDto> {
+    return this.#call("GET", `/projects/github/changes?projectId=${encodeURIComponent(projectId)}`, undefined, 60_000);
+  }
+
+  /** Creates (or continues with this project's) repository and pushes exactly the confirmed plan. */
+  createProjectRepo(projectId: string, body: { token?: string; owner: string; name: string; visibility: "private" | "public"; planHash: string; requestId: string }): Promise<import("@clawdesk/shared").ProjectGitHubDto> {
+    return this.#call("POST", "/projects/github/create", { projectId, ...body }, 10 * 60_000);
+  }
+
+  projectPullRequest(projectId: string, body: { title: string; body: string; changesHash: string; requestId: string }): Promise<import("@clawdesk/shared").ProjectPullRequestDto> {
+    return this.#call("POST", "/projects/github/pull-request", { projectId, ...body }, 10 * 60_000);
+  }
+
+  disconnectProjectGitHub(projectId: string): Promise<{ ok: true }> {
+    return this.#call("POST", "/projects/github/disconnect", { projectId });
+  }
+
   /** Entries the clawdesk-requests plugin filed (oldest first), and names of unreadable ones. */
   requestsSpool(): Promise<{ entries: Record<string, unknown>[]; rejected: string[] }> {
     return this.#call("GET", "/requests/spool");

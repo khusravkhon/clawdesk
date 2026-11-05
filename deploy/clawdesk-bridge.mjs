@@ -47,6 +47,7 @@ import { isAuthorizationCode, mcpLoginArgs } from "./clawdesk-oauth.mjs";
 import { AudioSetupError, audioSettings, audioStatus, saveAudioKey, verifyAudioKey } from "./clawdesk-audio.mjs";
 import { AgentFolders } from "./clawdesk-agent-folders.mjs";
 import { ackRequestsSpool, readRequestsSpool, requestsSpoolDir } from "./clawdesk-requests-spool.mjs";
+import { ProjectGitHub } from "./clawdesk-project-github.mjs";
 import { directoryIdentityWithin } from "./clawdesk-file-sync.mjs";
 import { ClaudeLogin, ClaudeLoginError } from "./clawdesk-claude.mjs";
 import { removeWorkspaceSkill, SkillRemoveError } from "./clawdesk-skills.mjs";
@@ -253,6 +254,7 @@ async function googleRemove(body) {
 const FILES_IN_GATEWAY = path.join(process.env.OPENCLAW_STATE_DIR || "/var/lib/clawdesk/openclaw", "workspace", "files");
 const projectFolders = new ProjectFolders({ stateDir: process.env.OPENCLAW_STATE_DIR || "/var/lib/clawdesk/openclaw" });
 const projectWork = new ProjectWork({ stateDir: process.env.OPENCLAW_STATE_DIR || "/var/lib/clawdesk/openclaw", configPath: process.env.OPENCLAW_CONFIG_PATH || "/var/lib/clawdesk/openclaw/openclaw.json" });
+const projectGitHub = new ProjectGitHub({ folders: projectFolders, stateDir: process.env.OPENCLAW_STATE_DIR || "/var/lib/clawdesk/openclaw" });
 const projectBuilder = new ProjectBuilder({ folders: projectFolders, stateDir: process.env.OPENCLAW_STATE_DIR || "/var/lib/clawdesk/openclaw" });
 function spaceMode() {
   let db;
@@ -438,6 +440,23 @@ async function handle(req) {
       return { status: 404, body: { error: "not_found" } };
     } catch (error) {
       const code = error instanceof ProjectFolderError ? error.code : "builder_unavailable";
+      return { status: error instanceof ProjectFolderError ? error.status : 503, body: { error: code, message: code } };
+    }
+  }
+  // P7: a project's folder on GitHub; the token stays in the Gateway's state, never in the folder or a sandbox.
+  if (url.pathname.startsWith("/projects/github/")) {
+    if (spaceMode() !== "company") return { status: 409, body: { error: "company_only" } };
+    try {
+      if (req.method === "GET" && url.pathname === "/projects/github/status") return { status: 200, body: await projectGitHub.status(url.searchParams.get("projectId")) };
+      if (req.method === "GET" && url.pathname === "/projects/github/plan") return { status: 200, body: await projectGitHub.plan(url.searchParams.get("projectId")) };
+      if (req.method === "GET" && url.pathname === "/projects/github/changes") return { status: 200, body: await projectGitHub.changes(url.searchParams.get("projectId")) };
+      if (req.method !== "POST") return { status: 404, body: { error: "not_found" } };
+      const { projectId, ...body } = await readJson(req);
+      const operation = { "/projects/github/create": "create", "/projects/github/pull-request": "pullRequest", "/projects/github/disconnect": "disconnect" }[url.pathname];
+      if (!operation) return { status: 404, body: { error: "not_found" } };
+      return { status: 200, body: await projectGitHub[operation](projectId, body) };
+    } catch (error) {
+      const code = error instanceof ProjectFolderError ? error.code : "github_unavailable";
       return { status: error instanceof ProjectFolderError ? error.status : 503, body: { error: code, message: code } };
     }
   }
