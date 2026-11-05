@@ -2310,5 +2310,15 @@
       "working": "Working on a task"
     },
     "limits": "The scene is drawn in the browser and spends no tokens; it polls no agents and updates from the same source as the list. Motion turns off with the switch and with the reduce-motion setting. Characters and furniture are drawn by the panel's code."
+  },
+  "agentAi": {
+    "title": "This agent's AI",
+    "lead": "The agent can run on the main agent's AI or on its own key or subscription. A separate AI is connected the same way as when creating an agent; after that the agent no longer follows the main agent's model changes.",
+    "providers": "Connected",
+    "none": "No own connections: the agent uses the main agent's AI (if it is set up).",
+    "statusFailed": "Could not find out which AI is connected.",
+    "connect": "Connect a separate AI",
+    "cancel": "Cancel",
+    "connected": "A separate AI is connected. Choose this agent's models below."
   }
 }

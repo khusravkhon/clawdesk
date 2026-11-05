@@ -58,6 +58,13 @@ export function registerAiRoutes(app: FastifyInstance, deps: { aiSetup: AiSetupS
     return deps.aiSetup.modelChain(agentId);
   });
 
+  // A junior connected its own AI after creation: it stops following the main agent's models.
+  app.post("/api/ai/own", async (request, reply) => {
+    const { agentId } = AgentQuery.parse(request.query);
+    if (!deps.aiSetup.markOwnAi(agentId)) return reply.status(404).send({ error: "agent_missing", message: "agent_missing" });
+    return { ok: true };
+  });
+
   app.put("/api/ai/models", async (request, reply): Promise<ModelChainDto | ApiErrorDto> => {
     const body = SaveModelChainRequest.parse(request.body);
     return withChainErrors(reply, () => deps.aiSetup.saveModelChain(body));

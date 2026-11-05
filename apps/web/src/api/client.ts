@@ -448,6 +448,7 @@ export const api = {
   templates: (mode: string) => request<TemplateDto[]>(`/api/templates?mode=${encodeURIComponent(mode)}&role=specialist`),
   ai: {
     status: (agentId: string) => request<AiStatusDto>(`/api/ai/status?${q(agentId)}`),
+    markOwn: (agentId: string) => post<{ ok: true }>(`/api/ai/own?${q(agentId)}`, {}),
     catalog: (agentId: string) => request<AiCatalogDto>(`/api/ai/catalog?${q(agentId)}`),
     install: (pluginId: string) => post<InstallProviderResultDto>(`/api/ai/providers/${encodeURIComponent(pluginId)}/install`),
     activate: (body: ActivateApiKeyRequest) => post<ActivateResultDto>("/api/ai/activate", body),

@@ -5,6 +5,8 @@ import type { GatewayService } from "../gateway/gateway-service.js";
 import { buildCatalog, providerPluginId, type DetectResult, type PluginEntry } from "./catalog.js";
 import { findFlashModels, storeKeyWithModelViaWizard } from "./gemini-free-tier.js";
 import type { Db } from "../db/client.js";
+import { and, eq, inArray } from "drizzle-orm";
+import { agents } from "../db/schema.js";
 import { assertRoomForBackup, choicesFor, keepAsBackup, ModelChainError, readCatalog, readChain, syncFollowers, toOptions, validateChain, writeChain } from "./model-chain.js";
 
 type ActivateResult = { ok: boolean; status?: string; modelRef?: string; latencyMs?: number; error?: string };
@@ -54,6 +56,18 @@ export class AiSetupService {
       this.claudePlanAvailable(),
     ]);
     return buildCatalog(agentId, detect, plugins.plugins, { claudePlan });
+  }
+
+  /**
+   * A junior that got its own key or subscription after it was created stops following the main agent's
+   * models (otherwise the next sync would put them back): its stored model is cleared, as for an agent
+   * created with its own AI. Returns false for the main agent or an unknown one.
+   */
+  markOwnAi(agentId: string): boolean {
+    if (agentId === "main") return false;
+    const result = this.db.update(agents).set({ model: null }).where(and(eq(agents.id, agentId), inArray(agents.role, ["specialist", "team_member"]))).run();
+    if (result.changes) this.logger.info({ agentId }, "junior uses its own AI now");
+    return result.changes > 0;
   }
 
   /** Cheap check for routing (first-run window): does this agent have any model credential? */
