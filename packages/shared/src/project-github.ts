@@ -32,6 +32,17 @@ export const CreateProjectRepoRequest = z.object({
   confirm: z.literal(true),
 });
 export type CreateProjectRepoRequest = z.infer<typeof CreateProjectRepoRequest>;
+/** Connect a folder that already has git and a GitHub origin; nothing in the folder changes. */
+export const ConnectProjectRepoRequest = z.object({ requestId: z.uuid(), token: Token.optional() });
+export type ConnectProjectRepoRequest = z.infer<typeof ConnectProjectRepoRequest>;
+/** Clone a GitHub repository into a new folder of the allowed root and link it to the project. */
+export const ImportProjectRepoRequest = z.object({
+  requestId: z.uuid(),
+  token: Token.optional(),
+  url: z.string().trim().regex(/^(?:https:\/\/github\.com\/|git@github\.com:)[A-Za-z0-9][A-Za-z0-9-]{0,38}\/[A-Za-z0-9._-]{1,100}?(?:\.git)?\/?$/),
+  folder: z.string().trim().regex(/^[\p{L}\p{N}][\p{L}\p{N} _-]{0,59}$/u),
+});
+export type ImportProjectRepoRequest = z.infer<typeof ImportProjectRepoRequest>;
 export const ProjectPullRequestRequest = z.object({
   requestId: z.uuid(),
   title: z.string().trim().min(1).max(200),

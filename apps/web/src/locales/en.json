@@ -2154,7 +2154,7 @@
       "committed": "push",
       "pushed": "done"
     },
-    "hasGit": "The folder already has git. Connecting an existing repository comes in the next version; the panel will not create a new one over existing history.",
+    "hasGit": "The project folder already has git. If its origin is a GitHub repository, it can be connected as it is: nothing in the folder changes, and changes go through pull requests.",
     "branch": "default branch {branch}",
     "changesCount": "Unpushed changes: {n}.",
     "noChanges": "Everything is pushed.",
@@ -2166,7 +2166,7 @@
     "pullRequests": "Pull requests opened from the panel",
     "disconnect": "Disconnect GitHub",
     "disconnectConfirm": "The panel forgets the token and the connection. The repository on GitHub and the folder's history stay. Continue?",
-    "limits": "First version: only for a folder without git; changes go through a new branch and a PR, merging is for people, no force push. Connecting an existing repository and importing from GitHub come next.",
+    "limits": "Changes go through a new branch and a PR, merging is for people, no force push. Tracked files the rules do not push (such as .env) are left alone.",
     "failed": "The GitHub action failed.",
     "errors": {
       "invalid_token": "This does not look like a GitHub token (github_pat_… or ghp_…).",
@@ -2187,7 +2187,17 @@
       "github_git_failed": "A git command failed.",
       "github_project_too_large": "The project is too large to push from the panel.",
       "github_unavailable": "GitHub features are unavailable right now.",
-      "invalid_request": "Confirm the plan."
-    }
+      "invalid_request": "Confirm the plan.",
+      "github_repo_not_found": "Repository not found or not visible to the token.",
+      "github_no_origin": "The folder has no GitHub origin.",
+      "github_folder_has_no_git": "The folder has no git.",
+      "workspace_exists": "A folder with this name already exists.",
+      "workspace_already_linked": "The project already has a folder."
+    },
+    "connect": "Connect the repository from origin",
+    "importIntro": "The project has no folder yet. It can come from GitHub: the repository is cloned into a new folder of the allowed root and linked to the project.",
+    "importUrl": "Repository address",
+    "importFolder": "New folder name",
+    "import": "Clone and connect"
   }
 }

@@ -14,7 +14,7 @@ import { ProjectBuilderError } from "../company/project-builder-service.js";
 import { ProjectChecksError } from "../company/project-checks-service.js";
 import { RunProjectChecksRequest, AssignExecutorsRequest, CreateProjectTaskRequest, ProjectTaskActionRequest, ReturnProjectTaskRequest, AcceptProjectTaskRequest } from "@clawdesk/shared";
 import { ProjectTaskError } from "../company/project-tasks-service.js";
-import { CreateProjectRepoRequest, ProjectPullRequestRequest } from "@clawdesk/shared";
+import { ConnectProjectRepoRequest, CreateProjectRepoRequest, ImportProjectRepoRequest, ProjectPullRequestRequest } from "@clawdesk/shared";
 import { ProjectGitHubError } from "../company/project-github-service.js";
 
 const Params = z.object({ id: z.string().min(1).max(128).regex(/^[a-zA-Z0-9_-]+$/) });
@@ -28,7 +28,7 @@ export function registerCompanyRoutes(app: FastifyInstance, company: CompanyServ
       if (error instanceof ZodError) return reply.status(400).send({ error: "invalid_request", message: "request validation failed" });
       if (error instanceof BridgeError) {
         const known = new Set(["invalid_workspace", "workspace_unavailable", "workspace_already_linked", "workspace_in_use", "workspace_limit", "workspace_exists", "workspace_not_directory", "company_only", "builder_files_changed", "builder_existing_readonly", "invalid_builder_request", "builder_plan_changed", "builder_workspace_not_empty", "preview_identity_changed", "preview_image_unavailable", "preview_unavailable", "preview_not_running", "invalid_preview_request", "existing_workspace_required", "workspace_required", "workspace_changed", "checks_unsupported", "checks_too_large", "checks_no_files", "work_app_changed", "work_missing", "work_layout", "invalid_work_request",
-          "invalid_github_request", "invalid_token", "github_token_required", "github_token_rejected", "github_unreachable", "github_repo_exists", "github_repo_gone", "github_no_permission", "github_private_unavailable", "github_folder_has_git", "github_plan_changed", "github_already_connected", "github_not_connected", "github_nothing_to_push", "github_pull_request_failed", "github_git_failed", "github_project_too_large", "github_unavailable"]);
+          "invalid_github_request", "invalid_token", "github_token_required", "github_token_rejected", "github_unreachable", "github_repo_exists", "github_repo_gone", "github_no_permission", "github_private_unavailable", "github_folder_has_git", "github_plan_changed", "github_already_connected", "github_not_connected", "github_nothing_to_push", "github_pull_request_failed", "github_git_failed", "github_project_too_large", "github_unavailable", "github_repo_not_found", "github_no_origin", "github_folder_has_no_git"]);
         const code = known.has(error.code) ? error.code : "workspace_unavailable";
         return reply.status(code.startsWith("invalid_") ? 400 : code === "workspace_unavailable" ? 503 : 409).send({ error: code, message: code });
       }
@@ -68,6 +68,8 @@ export function registerCompanyRoutes(app: FastifyInstance, company: CompanyServ
     scope.get("/api/company/projects/:id/github/plan", request => company.github.plan(Params.parse(request.params).id));
     scope.get("/api/company/projects/:id/github/changes", request => company.github.changes(Params.parse(request.params).id));
     scope.post("/api/company/projects/:id/github/create", request => company.github.create(Params.parse(request.params).id, CreateProjectRepoRequest.parse(request.body)));
+    scope.post("/api/company/projects/:id/github/connect", request => company.github.connect(Params.parse(request.params).id, ConnectProjectRepoRequest.parse(request.body)));
+    scope.post("/api/company/projects/:id/github/import", request => company.github.importRepo(Params.parse(request.params).id, ImportProjectRepoRequest.parse(request.body)));
     scope.post("/api/company/projects/:id/github/pull-request", request => company.github.pullRequest(Params.parse(request.params).id, ProjectPullRequestRequest.parse(request.body)));
     scope.post("/api/company/projects/:id/github/disconnect", request => company.github.disconnect(Params.parse(request.params).id));
     scope.get("/api/company/projects/:id/checks", request => company.checks.list(Params.parse(request.params).id));

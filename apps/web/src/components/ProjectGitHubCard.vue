@@ -13,7 +13,8 @@ const { t, te } = useI18n();
 const status = ref<ProjectGitHubDto | null>(null);
 const plan = ref<ProjectGitHubPlanDto | null>(null);
 const changes = ref<ProjectGitHubChangesDto | null>(null);
-const loading = ref(false), busy = ref(false), error = ref<string | null>(null);
+const loading = ref(false), busy = ref(false), error = ref<string | null>(null), noFolder = ref(false);
+const importForm = ref({ url: "", folder: "", token: "" });
 const form = ref({ token: "", owner: "", name: "", visibility: "private" as "private" | "public", confirm: false });
 const pr = ref({ title: "", body: "", confirm: false });
 let pending: { key: string; requestId: string } | null = null;
@@ -28,10 +29,15 @@ function requestId(key: string): string {
 async function load(): Promise<void> {
   loading.value = true;
   try {
+    noFolder.value = false;
     status.value = await api.company.projectGitHub(props.projectId);
     if (status.value.repo && !form.value.name) Object.assign(form.value, { owner: status.value.repo.owner, name: status.value.repo.name, visibility: status.value.repo.private ? "private" : "public" });
     error.value = null;
-  } catch (e) { error.value = explain(e); }
+  } catch (e) {
+    // A project without a folder can get one from GitHub.
+    if (e instanceof ApiError && e.body.error === "workspace_required") { noFolder.value = true; status.value = null; error.value = null; }
+    else error.value = explain(e);
+  }
   finally { loading.value = false; }
 }
 async function run(call: () => Promise<unknown>): Promise<void> {
@@ -51,6 +57,15 @@ const loadChanges = () => run(async () => { changes.value = await api.company.pr
 const openPr = () => run(async () => {
   await api.company.projectPullRequest(props.projectId, { requestId: requestId(`pr:${changes.value!.changesHash}`), title: pr.value.title.trim(), body: pr.value.body.trim(), changesHash: changes.value!.changesHash, confirm: true });
   changes.value = null; pr.value = { title: "", body: "", confirm: false };
+});
+const connect = () => run(async () => {
+  await api.company.connectProjectRepo(props.projectId, { requestId: requestId("connect"), ...(form.value.token.trim() ? { token: form.value.token.trim() } : {}) });
+  form.value.token = "";
+});
+const importRepo = () => run(async () => {
+  const body = { url: importForm.value.url.trim(), folder: importForm.value.folder.trim(), ...(importForm.value.token.trim() ? { token: importForm.value.token.trim() } : {}) };
+  await api.company.importProjectRepo(props.projectId, { requestId: requestId(`import:${body.url}:${body.folder}`), ...body });
+  importForm.value = { url: "", folder: "", token: "" };
 });
 const disconnect = () => run(async () => { await api.company.disconnectProjectGitHub(props.projectId); });
 watch(() => [props.projectId, props.refreshToken], () => { pending = null; plan.value = null; changes.value = null; void load(); }, { immediate: true });
@@ -79,8 +94,21 @@ watch(() => [props.projectId, props.refreshToken], () => { pending = null; plan.
       </div>
     </template>
 
+    <template v-else-if="noFolder">
+      <p>{{ t('projectGitHub.importIntro') }}</p>
+      <n-form-item :label="t('projectGitHub.importUrl')"><n-input v-model:value="importForm.url" placeholder="https://github.com/owner/repo" :aria-label="t('projectGitHub.importUrl')" /></n-form-item>
+      <n-form-item :label="t('projectGitHub.importFolder')"><n-input v-model:value="importForm.folder" :maxlength="60" :aria-label="t('projectGitHub.importFolder')" /></n-form-item>
+      <n-form-item :label="t('projectGitHub.token')"><n-input v-model:value="importForm.token" type="password" show-password-on="click" :aria-label="t('projectGitHub.token')" placeholder="github_pat_…" /></n-form-item>
+      <n-space><n-button type="primary" :loading="busy" :disabled="disabled || !importForm.url.trim() || !importForm.folder.trim() || !importForm.token.trim()" @click="importRepo">{{ t('projectGitHub.import') }}</n-button></n-space>
+    </template>
+
+    <template v-else-if="status && status.git && !status.repo">
+      <p>{{ t('projectGitHub.hasGit') }}</p>
+      <n-form-item v-if="!status.tokenSaved" :label="t('projectGitHub.token')"><n-input v-model:value="form.token" type="password" show-password-on="click" :aria-label="t('projectGitHub.token')" placeholder="github_pat_…" /></n-form-item>
+      <n-space><n-button type="primary" :loading="busy" :disabled="disabled || (!status.tokenSaved && !form.token.trim())" @click="connect">{{ t('projectGitHub.connect') }}</n-button></n-space>
+    </template>
+
     <template v-else-if="status">
-      <n-alert v-if="status.git && !status.repo" type="warning" class="block">{{ t('projectGitHub.hasGit') }}</n-alert>
       <n-alert v-if="unfinished" type="warning" class="block">{{ t('projectGitHub.unfinished', { repo: `${status.repo!.owner}/${status.repo!.name}`, step: t(`projectGitHub.step.${status.step}`) }) }}</n-alert>
       <template v-if="!status.git || unfinished">
         <n-form-item v-if="!status.tokenSaved" :label="t('projectGitHub.token')"><n-input v-model:value="form.token" type="password" show-password-on="click" :aria-label="t('projectGitHub.token')" :placeholder="'github_pat_…'" /></n-form-item>

@@ -223,8 +223,12 @@ export class ProjectGitHub {
       const blob = (await git(["hash-object", "--", file.path], { cwd: real })).out;
       if (head.get(file.path) !== blob) changes.push({ path: file.path, change: head.has(file.path) ? "modified" : "added" });
     }
-    for (const name of head.keys()) if (name !== ".gitignore" && !now.some((file) => file.path === name)) changes.push({ path: name, change: "removed" });
-    return changes;
+    // Removed means gone from the disk: a tracked file the push rules leave out (a committed .env) is not removed.
+    for (const name of head.keys()) {
+      if (now.some((file) => file.path === name)) continue;
+      if (await fs.lstat(path.join(real, name)).then(() => false, () => true)) changes.push({ path: name, change: "removed" });
+    }
+    return changes.sort((a, b) => a.path.localeCompare(b.path));
   }
 
   /** The changes since the default branch, for the owner to confirm before a pull request. */
@@ -275,6 +279,74 @@ export class ProjectGitHub {
     const pr = { requestId, url: created.body.html_url, number: created.body.number, branch, at: Date.now() };
     await this.#write(projectId, { state: { ...state, pullRequests: [...(state.pullRequests ?? []), pr] } });
     return pr;
+  }
+
+  /** owner/name of a GitHub remote URL (https or git@), or null. */
+  static parseRemote(url) {
+    const match = /^(?:https:\/\/github\.com\/|git@github\.com:)([A-Za-z0-9](?:[A-Za-z0-9-]{0,38}))\/([A-Za-z0-9._-]{1,100}?)(?:\.git)?\/?$/.exec(String(url ?? "").trim());
+    return match ? { owner: match[1], name: match[2] } : null;
+  }
+
+  async #repoInfo(token, owner, name) {
+    const res = await this.api(token, "GET", `/repos/${owner}/${name}`);
+    if (res.status === 401) fail("github_token_rejected");
+    if (res.status === 404 || res.status === 403) fail("github_repo_not_found");
+    if (res.status !== 200) fail("github_unreachable", 502);
+    if (res.body.permissions && res.body.permissions.push === false) fail("github_no_permission");
+    return { id: res.body.id, owner: res.body.owner?.login ?? owner, name: res.body.name ?? name, url: res.body.html_url ?? `https://github.com/${owner}/${name}`, private: res.body.private === true, defaultBranch: res.body.default_branch || "main" };
+  }
+
+  /**
+   * Connects a folder that already has git and a GitHub "origin" (an existing project, or a clone): nothing in
+   * the folder changes; later changes go to pull requests like for a repository created here.
+   */
+  async connect(projectId, { token, requestId }) {
+    if (token !== undefined && !TOKEN.test(token ?? "")) fail("invalid_token", 400);
+    if (typeof requestId !== "string") fail("invalid_github_request", 400);
+    const saved = await this.#read(projectId);
+    if (saved.state?.step === "pushed") { if (saved.state.requestId === requestId) return this.status(projectId); fail("github_already_connected"); }
+    const secret = token ?? saved.token;
+    if (!secret) fail("github_token_required", 400);
+    const origin = await this.folders.withWorkspace(projectId, async (workspace) => {
+      const { real, present } = await this.#git(workspace.directory);
+      if (!present) fail("github_folder_has_no_git");
+      return (await git(["remote", "get-url", "origin"], { cwd: real })).out;
+    });
+    const remote = ProjectGitHub.parseRemote(origin);
+    if (!remote) fail("github_no_origin");
+    const repo = await this.#repoInfo(secret, remote.owner, remote.name);
+    if (token) await this.#write(projectId, { token });
+    await this.#write(projectId, { state: { requestId, step: "pushed", repo: { ...repo, connected: true }, pullRequests: [] } });
+    return this.status(projectId);
+  }
+
+  /**
+   * Clones a GitHub repository into a new folder of the allowed root and links it to the project as an
+   * existing folder. A folder name already taken is refused; a failed clone leaves nothing behind.
+   */
+  async importRepo(projectId, { token, url, folder, requestId }) {
+    if (token !== undefined && !TOKEN.test(token ?? "")) fail("invalid_token", 400);
+    const remote = ProjectGitHub.parseRemote(url);
+    if (!remote || typeof folder !== "string" || !/^[\p{L}\p{N}][\p{L}\p{N} _-]{0,59}$/u.test(folder) || typeof requestId !== "string") fail("invalid_github_request", 400);
+    const saved = await this.#read(projectId);
+    if (saved.state?.step === "pushed") { if (saved.state.requestId === requestId) return this.status(projectId); fail("github_already_connected"); }
+    const secret = token ?? saved.token;
+    if (!secret) fail("github_token_required", 400);
+    if ((await this.folders.status(projectId)).workspace) fail("workspace_already_linked");
+    const repo = await this.#repoInfo(secret, remote.owner, remote.name);
+    if (token) await this.#write(projectId, { token });
+    await withDirectoryWithin(this.stateDir, "company-projects", async (root) => {
+      const real = await fs.realpath(root);
+      if (await fs.lstat(`${real}/${folder}`).then(() => true, () => false)) fail("workspace_exists");
+      const temporary = `${real}/.clawdesk-clone-${randomUUID()}`;
+      try {
+        await must(await git(["clone", "--quiet", this.remote(repo.owner, repo.name), temporary], { token: secret, timeoutMs: 10 * 60_000 }), "clone");
+        await fs.rename(temporary, `${real}/${folder}`);
+      } finally { await fs.rm(temporary, { recursive: true, force: true }); }
+    }, true);
+    await this.folders.prepare({ projectId, name: folder, mode: "existing", requestId });
+    await this.#write(projectId, { state: { requestId, step: "pushed", repo: { ...repo, imported: true }, pullRequests: [] } });
+    return this.status(projectId);
   }
 
   /** Forgets the token and the connection; the repository on GitHub and the folder's history stay. */

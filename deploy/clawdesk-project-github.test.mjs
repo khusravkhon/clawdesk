@@ -111,3 +111,54 @@ test("a folder that already has git is not reinitialized; a failure on GitHub le
   await g.github.disconnect("p1");
   assert.equal((await g.github.status("p1")).tokenSaved, false);
 });
+
+test("an existing folder with a GitHub origin is connected as it is; tracked files the rules leave out are not removed", async (t) => {
+  const f = await fixture(t);
+  const api = f.github.api;
+  f.github.api = async (token, method, url, body) => url === "/repos/owner1/site" ? { status: 200, body: { id: 11, name: "site", html_url: "https://github.com/owner1/site", private: true, default_branch: "trunk", owner: { login: "owner1" }, permissions: { push: true } } } : api(token, method, url, body);
+  git(f.folder, "init", "--quiet", "-b", "trunk");
+  git(f.folder, "remote", "add", "origin", "git@github.com:owner1/site.git");
+  git(f.folder, "add", "-A");
+  git(f.folder, "-c", "user.name=t", "-c", "user.email=t@t", "commit", "--quiet", "-m", "existing history");
+  const status = await f.github.connect("p1", { token: TOKEN, requestId: "c1" });
+  assert.deepEqual([status.step, status.repo.defaultBranch, status.repo.private, status.git], ["pushed", "trunk", true, true]);
+  // .env is committed in that history but never sent by the panel; it is not shown as removed either.
+  assert.deepEqual((await f.github.changes("p1")).changes, []);
+  await fs.writeFile(path.join(f.folder, "app", "server.mjs"), "v3\n");
+  assert.deepEqual((await f.github.changes("p1")).changes, [{ path: "app/server.mjs", change: "modified" }]);
+  assert.equal(git(f.folder, "log", "-1", "--format=%s"), "existing history");
+  // Without a GitHub origin there is nothing to connect.
+  const g = await fixture(t);
+  git(g.folder, "init", "--quiet");
+  await assert.rejects(g.github.connect("p1", { token: TOKEN, requestId: "c1" }), { code: "github_no_origin" });
+  assert.deepEqual(ProjectGitHub.parseRemote("https://github.com/a-b/c.d.git"), { owner: "a-b", name: "c.d" });
+  assert.equal(ProjectGitHub.parseRemote("https://gitlab.com/a/b"), null);
+});
+
+test("importing clones into a new folder of the root and links it; a taken name or a linked project is refused", async (t) => {
+  const f = await fixture(t);
+  const root = path.join(f.stateDir, "company-projects");
+  await fs.mkdir(root, { recursive: true });
+  // The remote has one commit to clone.
+  const seed = path.join(f.root, "seed");
+  git(f.root, "clone", "--quiet", f.remote, seed);
+  await fs.writeFile(path.join(seed, "README.md"), "hello\n");
+  git(seed, "add", "README.md");
+  git(seed, "-c", "user.name=t", "-c", "user.email=t@t", "commit", "--quiet", "-m", "seed");
+  git(seed, "push", "--quiet", "origin", "HEAD:refs/heads/main");
+  git(f.remote, "symbolic-ref", "HEAD", "refs/heads/main");
+  const prepared = [];
+  let linked = null;
+  f.github.folders = { ...f.github.folders, status: async () => ({ workspace: linked }), prepare: async (args) => { prepared.push(args); linked = { name: args.name }; return {}; } };
+  const api = f.github.api;
+  f.github.api = async (token, method, url, body) => url === "/repos/owner1/site" ? { status: 200, body: { id: 12, name: "site", html_url: "https://github.com/owner1/site", private: false, default_branch: "main", owner: { login: "owner1" } } } : api(token, method, url, body);
+  f.github.folders.withWorkspace = async (_id, run) => run({ directory: path.join(root, "Сайт"), mode: "existing" });
+  await fs.mkdir(path.join(root, "Занято"));
+  await assert.rejects(f.github.importRepo("p1", { token: TOKEN, url: "https://github.com/owner1/site", folder: "Занято", requestId: "i0" }), { code: "workspace_exists" });
+  const status = await f.github.importRepo("p1", { token: TOKEN, url: "https://github.com/owner1/site", folder: "Сайт", requestId: "i1" });
+  assert.equal(await fs.readFile(path.join(root, "Сайт", "README.md"), "utf8"), "hello\n");
+  assert.deepEqual(prepared, [{ projectId: "p1", name: "Сайт", mode: "existing", requestId: "i1" }]);
+  assert.deepEqual([status.step, status.repo.name], ["pushed", "site"]);
+  assert.deepEqual((await fs.readdir(root)).filter((name) => name.startsWith(".clawdesk-clone")), []);
+  await assert.rejects(f.github.importRepo("p1", { url: "https://github.com/owner1/site", folder: "Другая", requestId: "i2" }), { code: "github_already_connected" });
+});

@@ -28,6 +28,8 @@ describe("project GitHub routes", () => {
       createProjectRepo: async (id: string, body: unknown) => { calls.push(["create", body]); throw new BridgeError("github_repo_exists", "github_repo_exists"); },
       projectPullRequest: async (id: string, body: unknown) => { calls.push(["pr", body]); return { requestId: "x", url: "u", number: 1, branch: "b", at: 1 }; },
       disconnectProjectGitHub: async () => ({ ok: true as const }),
+      connectProjectRepo: async (id: string, body: unknown) => { calls.push(["connect", body]); return { step: "pushed" }; },
+      importProjectRepo: async (id: string, body: unknown) => { calls.push(["import", body]); return { step: "pushed" }; },
     };
     const company = new CompanyService({ db, space: { mode: () => "company" } as SpaceService, gateway: {} as GatewayService, bridge: bridge as never });
     const id = company.createProject(CreateProjectRequest.parse({ requestId: randomUUID(), name: "Shop" })).id;
@@ -42,6 +44,11 @@ describe("project GitHub routes", () => {
     const pr = await app.inject({ method: "POST", url: `/api/company/projects/${id}/github/pull-request`, payload: { requestId: randomUUID(), title: "BR-002", changesHash: "b".repeat(64), confirm: true } });
     expect(pr.json()).toMatchObject({ number: 1 });
     expect((await app.inject({ url: `/api/company/projects/unknown-project/github` })).statusCode).toBe(404);
+    expect((await app.inject({ method: "POST", url: `/api/company/projects/${id}/github/connect`, payload: { requestId: randomUUID() } })).json()).toEqual({ step: "pushed" });
+    const imported = { requestId: randomUUID(), url: "https://github.com/owner1/site", folder: "Сайт", token: create.token };
+    expect((await app.inject({ method: "POST", url: `/api/company/projects/${id}/github/import`, payload: imported })).json()).toEqual({ step: "pushed" });
+    expect(calls.find(([kind]) => kind === "import")![1]).toEqual({ token: create.token, url: imported.url, folder: "Сайт", requestId: imported.requestId });
+    for (const bad of [{ ...imported, url: "https://gitlab.com/a/b" }, { ...imported, folder: "../etc" }]) expect((await app.inject({ method: "POST", url: `/api/company/projects/${id}/github/import`, payload: bad })).statusCode).toBe(400);
     await app.close();
   });
 });

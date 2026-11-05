@@ -316,6 +316,14 @@ export class BridgeClient {
     return this.#call("POST", "/projects/github/create", { projectId, ...body }, 10 * 60_000);
   }
 
+  connectProjectRepo(projectId: string, body: { token?: string; requestId: string }): Promise<import("@clawdesk/shared").ProjectGitHubDto> {
+    return this.#call("POST", "/projects/github/connect", { projectId, ...body }, 60_000);
+  }
+
+  importProjectRepo(projectId: string, body: { token?: string; url: string; folder: string; requestId: string }): Promise<import("@clawdesk/shared").ProjectGitHubDto> {
+    return this.#call("POST", "/projects/github/import", { projectId, ...body }, 15 * 60_000);
+  }
+
   projectPullRequest(projectId: string, body: { title: string; body: string; changesHash: string; requestId: string }): Promise<import("@clawdesk/shared").ProjectPullRequestDto> {
     return this.#call("POST", "/projects/github/pull-request", { projectId, ...body }, 10 * 60_000);
   }

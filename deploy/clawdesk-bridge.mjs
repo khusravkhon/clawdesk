@@ -452,7 +452,7 @@ async function handle(req) {
       if (req.method === "GET" && url.pathname === "/projects/github/changes") return { status: 200, body: await projectGitHub.changes(url.searchParams.get("projectId")) };
       if (req.method !== "POST") return { status: 404, body: { error: "not_found" } };
       const { projectId, ...body } = await readJson(req);
-      const operation = { "/projects/github/create": "create", "/projects/github/pull-request": "pullRequest", "/projects/github/disconnect": "disconnect" }[url.pathname];
+      const operation = { "/projects/github/create": "create", "/projects/github/connect": "connect", "/projects/github/import": "importRepo", "/projects/github/pull-request": "pullRequest", "/projects/github/disconnect": "disconnect" }[url.pathname];
       if (!operation) return { status: 404, body: { error: "not_found" } };
       return { status: 200, body: await projectGitHub[operation](projectId, body) };
     } catch (error) {
