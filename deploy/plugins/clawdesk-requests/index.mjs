@@ -1,0 +1,110 @@
+import { createHash } from "node:crypto";
+import fs from "node:fs/promises";
+import path from "node:path";
+
+// Requests up the company structure (stage 6). The tools only file what an agent asked for into a spool
+// folder of the Gateway; the panel reads it, decides who the request goes to, checks who may answer and
+// delivers every answer to the agents' chats. Nothing here grants access or trusts the agent's text:
+// the agent's identity comes from the runtime context, never from the arguments.
+// The same tool call is filed once (its file name comes from the agent, session and call ID).
+
+const ID = "clawdesk-requests";
+export const UP = "clawdesk_request_up";
+export const REPLY = "clawdesk_request_reply";
+const MAX_SPOOL = 500;
+const AGENT = /^[a-z0-9][a-z0-9_-]{0,79}$/;
+const text = (min, max) => ({ type: "string", minLength: min, maxLength: max });
+const upParameters = {
+  type: "object", additionalProperties: false, required: ["kind", "subject", "details"],
+  properties: {
+    kind: { type: "string", enum: ["question", "decision"] },
+    subject: text(1, 200),
+    details: text(1, 4000),
+    taskRef: text(1, 200),
+  },
+};
+const replyParameters = {
+  type: "object", additionalProperties: false, required: ["requestId", "action", "text"],
+  properties: {
+    requestId: { type: "string", pattern: "^REQ-[0-9]{1,6}$" },
+    action: { type: "string", enum: ["answer", "deny", "clarify", "escalate", "reply"] },
+    text: text(1, 4000),
+  },
+};
+const result = (status, code, extra = {}) => {
+  const details = { status, ...(code ? { code } : {}), ...extra };
+  return { content: [{ type: "text", text: JSON.stringify(details) }], details };
+};
+
+function identity(ctx) {
+  const agentId = ctx?.agentId, sessionKey = ctx?.sessionKey, getConfig = ctx?.getRuntimeConfig;
+  if (typeof agentId !== "string" || !AGENT.test(agentId)) return null;
+  if (typeof sessionKey !== "string" || sessionKey.length > 512 || !sessionKey.startsWith(`agent:${agentId}:`) || sessionKey === `agent:${agentId}:` || /[\x00-\x1f\x7f]/.test(sessionKey) || typeof getConfig !== "function") return null;
+  return { agentId, sessionKey, getConfig };
+}
+
+function permitted(owner) {
+  try {
+    const config = owner.getConfig();
+    const entry = config?.plugins?.entries?.[ID];
+    return config?.plugins?.enabled !== false && entry?.enabled === true &&
+      (config.plugins.allow === undefined || (Array.isArray(config.plugins.allow) && config.plugins.allow.includes(ID))) &&
+      (!Array.isArray(config.plugins.deny) || !config.plugins.deny.includes(ID)) &&
+      Array.isArray(entry.config?.allowedAgentIds) && entry.config.allowedAgentIds.includes(owner.agentId) &&
+      (owner.agentId === "main" || Object.hasOwn(config?.agents?.entries ?? {}, owner.agentId));
+  } catch { return false; }
+}
+
+/** Exactly the declared keys with the declared types; strings trimmed, no NUL. */
+function validArgs(args, schema) {
+  if (!args || typeof args !== "object" || Array.isArray(args) || ![Object.prototype, null].includes(Object.getPrototypeOf(args))) return null;
+  const keys = Reflect.ownKeys(args);
+  if (keys.some((key) => typeof key !== "string" || !Object.hasOwn(schema.properties, key)) || schema.required.some((key) => !keys.includes(key))) return null;
+  const out = {};
+  for (const key of keys) {
+    const rule = schema.properties[key], value = args[key];
+    if (typeof value !== "string" || value.includes("\0")) return null;
+    const trimmed = value.trim();
+    if (rule.enum && !rule.enum.includes(trimmed)) return null;
+    if (rule.pattern && !new RegExp(rule.pattern).test(trimmed)) return null;
+    if (rule.minLength !== undefined && (trimmed.length < rule.minLength || trimmed.length > rule.maxLength)) return null;
+    out[key] = trimmed;
+  }
+  return out;
+}
+
+export function registerRequests(api, { spoolDir = path.join(process.env.OPENCLAW_STATE_DIR || "/var/lib/clawdesk/openclaw", "clawdesk", "requests"), now = Date.now } = {}) {
+  async function file(owner, toolCallId, type, args) {
+    if (typeof toolCallId !== "string" || !toolCallId || toolCallId.length > 256) return result("error", "invalid_request_id");
+    const id = createHash("sha256").update(JSON.stringify([owner.agentId, owner.sessionKey, toolCallId])).digest("hex").slice(0, 32);
+    const target = path.join(spoolDir, `${id}.json`);
+    try {
+      await fs.mkdir(spoolDir, { recursive: true, mode: 0o700 });
+      const entries = await fs.readdir(spoolDir);
+      if (entries.length >= MAX_SPOOL && !entries.includes(`${id}.json`)) return result("busy", "requests_queue_full");
+      await fs.writeFile(target, JSON.stringify({ id, type, agentId: owner.agentId, sessionKey: owner.sessionKey, at: now(), ...args }), { flag: "wx", mode: 0o600 });
+    } catch (error) {
+      if (error?.code !== "EEXIST") return result("error", "requests_unavailable");
+    }
+    return result("filed", null, { note: "The panel routes this and delivers the answer to your chat. Do not file it again; wait for the message." });
+  }
+
+  const tool = (name, label, description, parameters, type) => (ctx) => {
+    const owner = identity(ctx);
+    if (!owner || !permitted(owner)) return null;
+    return {
+      name, label, description, parameters,
+      execute: async (toolCallId, args) => {
+        if (!permitted(owner)) return result("forbidden", "requests_not_granted");
+        const valid = validArgs(args, parameters);
+        if (!valid) return result("error", "invalid_arguments");
+        return file(owner, toolCallId, type, valid);
+      },
+    };
+  };
+
+  api.registerTool(tool(UP, "Ask up the company", "File a request to your supervisor in the company (department manager, then the main agent, then the owner). kind: question (you need information) or decision (you need someone to decide). The panel delivers the answer to your chat; until then the work it blocks waits. This never grants access by itself.", upParameters, "up"), { names: [UP], optional: true });
+  api.registerTool(tool(REPLY, "Reply to a company request", "Reply to a request REQ-… addressed to you: answer (give the information or decision), deny (with the reason), clarify (ask the requester a question), escalate (pass it to the next level). The requester uses reply to answer a clarification. Only the current addressee can act; a text answer never grants access.", replyParameters, "reply"), { names: [REPLY], optional: true });
+}
+
+export default { id: ID, name: "ClawDesk Requests", register: registerRequests };

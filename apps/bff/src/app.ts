@@ -52,6 +52,8 @@ import { registerSystemRoutes } from "./routes/system.js";
 import { registerStorageRoutes } from "./routes/storage.js";
 import { registerSpaceRoutes } from "./routes/space.js";
 import { registerTeamRoutes } from "./routes/teams.js";
+import { registerWorkRequestRoutes } from "./routes/work-requests.js";
+import type { WorkRequestsService } from "./company/work-requests-service.js";
 import { registerAuditRoutes } from "./routes/audit.js";
 import { registerUsageRoutes } from "./routes/usage.js";
 import { UsageService } from "./dashboard/usage-service.js";
@@ -89,6 +91,8 @@ export type AppDeps = {
   reminders?: ReminderService;
   space: SpaceService;
   teams: TeamService;
+  /** Stage 6 requests up the company structure; absent in tests that do not need them. */
+  requests?: WorkRequestsService;
   audit: AuditService;
   webDist: string | undefined;
   /** Fastify trustProxy: client address and HTTPS come from the proxy's headers (Caddy). */
@@ -145,6 +149,7 @@ export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
   registerSystemRoutes(app, deps);
   registerSpaceRoutes(app, deps);
   registerTeamRoutes(app, deps);
+  registerWorkRequestRoutes(app, deps);
   registerCompanyRoutes(app, new CompanyService(deps));
   registerAuditRoutes(app, deps);
   registerUsageRoutes(app, { usage: new UsageService(deps) });

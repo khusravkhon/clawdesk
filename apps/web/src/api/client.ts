@@ -8,6 +8,9 @@ import type {
   ReturnProjectTaskRequest,
   AcceptProjectTaskRequest,
   RuleChangeImpactDto,
+  WorkRequestsDto,
+  WorkRequestDto,
+  OwnerRequestAction,
   ProjectChecksDto,
   ProjectCheckRunDto,
   RunProjectChecksRequest,
@@ -358,6 +361,8 @@ export const api = {
     figmaDisconnect: () => post<SourcesDto>("/api/sources/figma/disconnect"),
   },
   company: {
+    requests: () => request<WorkRequestsDto>("/api/company/requests"),
+    actOnRequest: (id: string, body: OwnerRequestAction) => post<WorkRequestDto>(`/api/company/requests/${encodeURIComponent(id)}/act`, body),
     projectExecutors: (id: string) => request<ProjectExecutorsDto>(`/api/company/projects/${encodeURIComponent(id)}/executors`),
     assignExecutors: (id: string, body: AssignExecutorsRequest) => post<ProjectExecutorsDto>(`/api/company/projects/${encodeURIComponent(id)}/executors`, body),
     projectTasks: (id: string) => request<ProjectTasksDto>(`/api/company/projects/${encodeURIComponent(id)}/tasks`),

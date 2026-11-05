@@ -27,7 +27,10 @@ import { LibraryService } from "./library/library-service.js";
 import { MemoryNoteService } from "./library/memory-note-service.js";
 import { ReminderService } from "./schedules/reminder-service.js";
 import { repairAgentFolders } from "./provision/agent-folders.js";
-import { repairAgentCommunication } from "./provision/agent-communication.js";
+import { liveAgentIds, repairAgentCommunication } from "./provision/agent-communication.js";
+import { WorkRequestsService } from "./company/work-requests-service.js";
+import { syncRequestTools } from "./company/work-requests-config.js";
+import { mainSessionKey } from "./chat/chat-service.js";
 
 // Host development reads apps/bff/.env (written by init.sh --dev); containers get real env vars.
 if (process.env.NODE_ENV !== "production" && fs.existsSync(".env")) process.loadEnvFile(".env");
@@ -68,8 +71,13 @@ const video = new VideoService({ db, bridge, chat: new ChatService(gateway, libr
 video.recover();
 const reminders = new ReminderService({ db, gateway, telegram, mode: () => space.mode(), timeZone: () => space.get()?.timezone ?? "UTC" });
 reminders.recover();
+// Stage 6: requests up the company structure, filed by agents through the clawdesk-requests plugin.
+const requests = new WorkRequestsService({
+  db, bridge, companyMode: () => space.mode() === "company", liveAgents: () => liveAgentIds(gateway),
+  send: async (agentId, message, idempotencyKey) => { await gateway.request("chat.send", { sessionKey: mainSessionKey(agentId), agentId, message, idempotencyKey }); },
+});
 
-const app = await buildApp({ logger, gateway, db, aiSetup, signIn, telegram, freeModels, sources, skills, mcp, approvals, assistant, auth, backups, bridge, space, teams, audit, video, videoDir: config.videoDir, library, budget, notes, reminders, sandboxEnabled: config.sandboxEnabled, webDist: config.webDist, trustProxy: config.trustProxy });
+const app = await buildApp({ logger, gateway, db, aiSetup, signIn, telegram, freeModels, sources, skills, mcp, approvals, assistant, auth, backups, bridge, space, teams, audit, video, videoDir: config.videoDir, library, budget, notes, reminders, requests, sandboxEnabled: config.sandboxEnabled, webDist: config.webDist, trustProxy: config.trustProxy });
 
 gateway.start();
 await app.listen({ host: config.host, port: config.port });
@@ -100,6 +108,7 @@ async function repairStartup(): Promise<void> {
     ["managed agent folders", () => repairAgentFolders({ gateway, db, bridge, logger })],
     // GitHub teams made before OpenClaw refused binds into /workspace: members get copies in their workspaces.
     ["team repository copies", () => teams.repairWorkspaces()],
+    ["company request tools", () => syncRequestTools({ gateway, db, companyMode: space.mode() === "company" })],
     ["default exec approval mode", repairDefaultApprovals],
     ["junior models", repairFollowerModels],
     ["memory provider", repairMemory],
@@ -150,6 +159,16 @@ const reminderTimer = setInterval(() => {
 }, 15_000);
 reminderTimer.unref();
 
+// Requests: new spool entries, deadlines and messages every few seconds; tools for new agents every minute.
+const requestsTimer = setInterval(() => {
+  if (!shuttingDown && gateway.status.state === "connected") void requests.tick().catch((error: Error) => logger.warn({ err: error }, "could not process company requests"));
+}, 5_000);
+requestsTimer.unref();
+const requestToolsTimer = setInterval(() => {
+  if (!shuttingDown && gateway.status.state === "connected" && space.mode() === "company") void syncRequestTools({ gateway, db, companyMode: true }).catch((error: Error) => logger.warn({ err: error }, "could not give company agents the request tools"));
+}, 60_000);
+requestToolsTimer.unref();
+
 async function shutdown(signal: string): Promise<void> {
   if (shuttingDown) return;
   shuttingDown = true;
@@ -159,6 +178,8 @@ async function shutdown(signal: string): Promise<void> {
   clearInterval(budgetTimer);
   clearInterval(notesTimer);
   clearInterval(reminderTimer);
+  clearInterval(requestsTimer);
+  clearInterval(requestToolsTimer);
   await reminders.stop();
   await app.close();
   await notes.drain();

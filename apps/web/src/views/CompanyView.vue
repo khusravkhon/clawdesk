@@ -95,6 +95,7 @@ onMounted(load);
       <n-space>
         <n-button v-if="selectedId" key="back" @click="router.push('/company')">{{ t('company.back') }}</n-button>
         <n-button key="refresh" :loading="loading" :disabled="saving" @click="load">{{ t('company.refresh') }}</n-button>
+        <n-button v-if="!selectedId" key="requests" @click="router.push('/company/requests')">{{ t('requests.title') }}</n-button>
         <n-button v-if="!selectedId" key="create" type="primary" :disabled="!data || saving" @click="edit()">{{ t('company.create') }}</n-button>
       </n-space>
     </page-header>

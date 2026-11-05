@@ -46,6 +46,7 @@ import { cloneTeamRepo, fetchTeamRepo, prepareMemberRepo, pushTeamBranch, remove
 import { isAuthorizationCode, mcpLoginArgs } from "./clawdesk-oauth.mjs";
 import { AudioSetupError, audioSettings, audioStatus, saveAudioKey, verifyAudioKey } from "./clawdesk-audio.mjs";
 import { AgentFolders } from "./clawdesk-agent-folders.mjs";
+import { ackRequestsSpool, readRequestsSpool, requestsSpoolDir } from "./clawdesk-requests-spool.mjs";
 import { directoryIdentityWithin } from "./clawdesk-file-sync.mjs";
 import { ClaudeLogin, ClaudeLoginError } from "./clawdesk-claude.mjs";
 import { removeWorkspaceSkill, SkillRemoveError } from "./clawdesk-skills.mjs";
@@ -545,6 +546,8 @@ async function handle(req) {
 
   if (req.method === "GET" && url.pathname === "/google/status") return googleStatus();
   if (req.method === "GET" && url.pathname === "/backup/list") return { status: 200, body: { backups: await listBackups() } };
+  // Company requests filed by agents (clawdesk-requests plugin): the panel reads, stores, then acknowledges.
+  if (req.method === "GET" && url.pathname === "/requests/spool") return { status: 200, body: await readRequestsSpool(requestsSpoolDir(process.env.OPENCLAW_STATE_DIR || "/var/lib/clawdesk/openclaw")) };
   if (req.method === "GET" && url.pathname === "/teams/status") return teamCall(() => teamRepoStatus({ teamId: url.searchParams.get("teamId"), developer: url.searchParams.get("developer") || undefined }));
   if (req.method === "GET" && url.pathname === "/claude/status") return claudeCall(() => claudeLogin.status());
   if (req.method === "GET" && url.pathname === "/mcp/status") {
@@ -578,6 +581,10 @@ async function handle(req) {
       log("a video job failed", { path: url.pathname });
       return { status: 500, body: { error: "download_failed", message: "download_failed" } };
     }
+  }
+  if (url.pathname === "/requests/ack") {
+    try { return { status: 200, body: await ackRequestsSpool(requestsSpoolDir(process.env.OPENCLAW_STATE_DIR || "/var/lib/clawdesk/openclaw"), body.ids) }; }
+    catch (error) { if (error.status === 400) return { status: 400, body: { error: "invalid_request", message: "invalid ack" } }; throw error; }
   }
   if (url.pathname === "/freellmapi/reset") return freellmapiReset(body);
   if (url.pathname === "/files/folder") return ensureFolder(body);

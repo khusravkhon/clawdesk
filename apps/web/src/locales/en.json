@@ -1916,5 +1916,76 @@
     "confirmData": "I checked that the data the app already has fits the new rule version (the panel does not migrate data).",
     "rollback": "Restore the previous version",
     "rollbackConfirm": "The app returns to the files it had before task {task}. The app's data does not change. Continue?"
+  },
+  "requests": {
+    "title": "Requests",
+    "scope": "Company agents' requests up the structure: department manager → main agent → owner (missing and stopped levels are skipped). Agents answer in their chats; here you see the route and history and answer what reached you. You can also answer earlier, at any level. An answer is information or a decision; it grants no access.",
+    "filter": "Which requests to show",
+    "filters": {
+      "mine": "Waiting for me",
+      "active": "All open",
+      "all": "All"
+    },
+    "empty": {
+      "mine": "Nothing has reached you.",
+      "active": "No open requests.",
+      "all": "No requests yet."
+    },
+    "status": {
+      "open": "open",
+      "clarify": "waiting for clarification",
+      "answered": "answered",
+      "denied": "denied",
+      "expired": "expired",
+      "cancelled": "closed"
+    },
+    "kind": {
+      "question": "Needs information",
+      "decision": "Needs a decision"
+    },
+    "from": "From",
+    "deadline": "Deadline",
+    "task": "Task",
+    "route": "Route",
+    "answeredBy": "Answer: {name}",
+    "deniedBy": "Denied: {name}",
+    "owner": "owner",
+    "panel": "panel",
+    "history": "History",
+    "event": {
+      "created": "created",
+      "routed": "passed to",
+      "skipped": "level skipped",
+      "escalated": "passed up",
+      "clarify": "clarification asked",
+      "reply": "clarification received",
+      "answered": "answered",
+      "denied": "denied",
+      "expired": "expired",
+      "cancelled": "closed by the owner",
+      "refused": "refused"
+    },
+    "delivery": {
+      "pending": "message to the agent not delivered yet",
+      "failed": "message to the agent not delivered"
+    },
+    "answerPlaceholder": "Answer, reason for denial or a question to the requester",
+    "notYours": "The request is with: {name}. If you answer, it closes with your answer.",
+    "actions": {
+      "answer": "Answer",
+      "clarify": "Ask the requester",
+      "deny": "Deny",
+      "cancel": "Close without answer"
+    },
+    "limits": "First version limits: no team lead level yet; at most four transitions; one open request of a kind per subject and up to five open per agent; one day to answer, after which the work stays blocked. Requests do not grant access to documents or services yet. Telegram messages come in a later stage.",
+    "failed": "The action failed.",
+    "errors": {
+      "request_missing": "Request not found.",
+      "request_closed": "The request is already closed — refresh the page.",
+      "revision_conflict": "The request changed — refresh the page and try again.",
+      "request_conflict": "A repeated request with different content.",
+      "company_only": "Requests are available in company mode only.",
+      "invalid_request": "Enter the answer text."
+    }
   }
 }

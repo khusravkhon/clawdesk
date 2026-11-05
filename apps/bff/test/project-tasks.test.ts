@@ -161,7 +161,7 @@ describe("project tasks", () => {
   it("migrates from 0017 keeping rules and checks, with no tasks yet", async () => {
     close();
     const sqlite = new Database(path.join(root, "panel.sqlite"));
-    sqlite.exec("DROP TABLE project_task_events; DROP TABLE project_tasks; ALTER TABLE project_check_results DROP COLUMN test_hash; ALTER TABLE acceptance_test_links DROP COLUMN test_hash; DELETE FROM __drizzle_migrations WHERE created_at >= 1792348000000");
+    sqlite.exec("DROP TABLE work_request_events; DROP TABLE work_request_spool; DROP TABLE work_requests; DROP TABLE project_task_events; DROP TABLE project_tasks; ALTER TABLE project_check_results DROP COLUMN test_hash; ALTER TABLE acceptance_test_links DROP COLUMN test_hash; DELETE FROM __drizzle_migrations WHERE created_at >= 1792348000000");
     sqlite.close();
     ({ db, close } = openDb(path.join(root, "panel.sqlite")));
     company = new CompanyService({ db, space: { mode: () => "company" } as SpaceService, gateway: {} as GatewayService });
@@ -269,7 +269,8 @@ describe("project tasks", () => {
       "CREATE TABLE old_events (`id` integer PRIMARY KEY AUTOINCREMENT NOT NULL, `task_id` text NOT NULL REFERENCES `project_tasks`(`id`) ON DELETE CASCADE, `kind` text NOT NULL CHECK (`kind` IN ('created','sent','qa_checked','dev_checked','accepted','returned','cancelled')), `note` text DEFAULT '' NOT NULL, `created_at` integer NOT NULL, `request_id` text NOT NULL)",
       "INSERT INTO old_events SELECT * FROM project_task_events", "DROP TABLE project_task_events", "ALTER TABLE old_events RENAME TO project_task_events",
       "CREATE UNIQUE INDEX `project_task_event_request_uq` ON `project_task_events` (`task_id`, `request_id`)",
-      "DELETE FROM __drizzle_migrations WHERE created_at = 1792349000000",
+      "DROP TABLE work_request_events", "DROP TABLE work_request_spool", "DROP TABLE work_requests",
+      "DELETE FROM __drizzle_migrations WHERE created_at >= 1792349000000",
     ].join(";\n"));
     sqlite.close();
     ({ db, close } = openDb(path.join(root, "panel.sqlite")));

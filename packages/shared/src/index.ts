@@ -18,6 +18,7 @@ export * from "./company.js";
 export * from "./project-builder.js";
 export * from "./project-checks.js";
 export * from "./project-tasks.js";
+export * from "./work-requests.js";
 export * from "./project-acceptance.js";
 export * from "./audit.js";
 export * from "./usage.js";

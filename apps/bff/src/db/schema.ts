@@ -530,3 +530,56 @@ export const personalReminders = sqliteTable("personal_reminders", {
   actionRequestId: text("action_request_id"),
   actionPayload: text("action_payload"),
 }, (t) => [index("personal_reminders_due_idx").on(t.action, t.delivery, t.dueAt)]);
+
+/** Stage 6: a request up the company structure (see work-requests-service). */
+export const workRequests = sqliteTable("work_requests", {
+  id: text("id").primaryKey(),
+  number: integer("number").notNull().unique(),
+  fromAgentId: text("from_agent_id").notNull(),
+  kind: text("kind", { enum: ["question", "decision"] }).notNull(),
+  subject: text("subject").notNull(),
+  /** Lower-case subject without extra spaces: one active request of a kind per subject and requester. */
+  subjectKey: text("subject_key").notNull(),
+  details: text("details").notNull(),
+  taskRef: text("task_ref").notNull().default(""),
+  status: text("status", { enum: ["open", "clarify", "answered", "denied", "expired", "cancelled"] }).notNull(),
+  route: text("route", { mode: "json" }).$type<{ kind: "manager" | "main" | "owner"; agentId: string | null }[]>().notNull(),
+  level: integer("level").notNull().default(0),
+  /** Organizational transitions so far (first routing included); limited to four. */
+  hops: integer("hops").notNull().default(0),
+  revision: integer("revision").notNull().default(0),
+  answerText: text("answer_text"),
+  answeredBy: text("answered_by"),
+  deadlineAt: integer("deadline_at").notNull(),
+  createdAt: integer("created_at").notNull(),
+  updatedAt: integer("updated_at").notNull(),
+  spoolId: text("spool_id").notNull().unique(),
+}, (t) => [index("work_requests_from_idx").on(t.fromAgentId, t.status)]);
+
+/** History of a request; an event with a recipient is also a message the panel delivers to that agent's chat. */
+export const workRequestEvents = sqliteTable("work_request_events", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  requestId: text("request_id").notNull().references(() => workRequests.id, { onDelete: "cascade" }),
+  kind: text("kind", { enum: ["created", "routed", "skipped", "escalated", "clarify", "reply", "answered", "denied", "expired", "cancelled", "refused"] }).notNull(),
+  actor: text("actor").notNull(),
+  text: text("text").notNull().default(""),
+  notifyAgentId: text("notify_agent_id"),
+  notifyText: text("notify_text"),
+  deliveredAt: integer("delivered_at"),
+  attempts: integer("attempts").notNull().default(0),
+  createdAt: integer("created_at").notNull(),
+  /** The owner's requestId (idempotency of panel actions); null for agent and panel events. */
+  requestKey: text("request_key"),
+}, (t) => [index("work_request_events_request_idx").on(t.requestId), uniqueIndex("work_request_events_key_uq").on(t.requestId, t.requestKey)]);
+
+/** Spool entries already handled (stored, refused or duplicate): importing them again changes nothing. */
+export const workRequestSpool = sqliteTable("work_request_spool", {
+  id: text("id").primaryKey(),
+  agentId: text("agent_id").notNull(),
+  outcome: text("outcome").notNull(),
+  /** A message for an entry that made no request (e.g. a refused reply), delivered like event messages. */
+  notifyText: text("notify_text"),
+  deliveredAt: integer("delivered_at"),
+  attempts: integer("attempts").notNull().default(0),
+  createdAt: integer("created_at").notNull(),
+});

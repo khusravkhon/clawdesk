@@ -288,6 +288,16 @@ export class BridgeClient {
     return this.#call("POST", "/teams/push", { teamId, repoUrl, developer, title, body }, 5 * 60_000);
   }
 
+  /** Entries the clawdesk-requests plugin filed (oldest first), and names of unreadable ones. */
+  requestsSpool(): Promise<{ entries: Record<string, unknown>[]; rejected: string[] }> {
+    return this.#call("GET", "/requests/spool");
+  }
+
+  /** Removes spool entries the panel has stored. */
+  requestsAck(ids: string[]): Promise<{ removed: number }> {
+    return this.#call("POST", "/requests/ack", { ids });
+  }
+
   teamRemove(teamId: string): Promise<{ ok: true }> {
     return this.#call("POST", "/teams/remove", { teamId });
   }
