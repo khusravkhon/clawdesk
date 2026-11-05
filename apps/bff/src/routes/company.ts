@@ -7,6 +7,9 @@ import { SaveProjectBriefRequest, InterviewAnswerRequest, InterviewAskRequest } 
 import { InterviewError } from "../company/project-interview-service.js";
 import { RuleAuditError } from "../company/project-rule-audit-service.js";
 import { ProjectTransferError } from "../company/project-transfer-service.js";
+import { OrganizationalTeamError } from "../company/organizational-teams.js";
+import { CreateAgentError } from "../provision/create-agent.js";
+import { CreateOrganizationalTeamRequest } from "@clawdesk/shared";
 import { ImportProjectRequest } from "@clawdesk/shared";
 import { DismissRuleConflictRequest, RuleAuditCheckRequest, RuleSearchQuery } from "@clawdesk/shared";
 import { ApproveBusinessRuleRequest, CreateBusinessRuleRequest, UpdateBusinessRuleRequest } from "@clawdesk/shared";
@@ -37,7 +40,7 @@ export function registerCompanyRoutes(app: FastifyInstance, company: CompanyServ
         const code = known.has(error.code) ? error.code : "workspace_unavailable";
         return reply.status(code.startsWith("invalid_") ? 400 : code === "workspace_unavailable" ? 503 : 409).send({ error: code, message: code });
       }
-      if (!(error instanceof CompanyError) && !(error instanceof ProjectRuleError) && !(error instanceof AcceptanceError) && !(error instanceof ProjectBuilderError) && !(error instanceof ProjectChecksError) && !(error instanceof ProjectTaskError) && !(error instanceof ProjectGitHubError) && !(error instanceof InterviewError) && !(error instanceof RuleAuditError) && !(error instanceof ProjectTransferError)) throw error;
+      if (!(error instanceof CompanyError) && !(error instanceof ProjectRuleError) && !(error instanceof AcceptanceError) && !(error instanceof ProjectBuilderError) && !(error instanceof ProjectChecksError) && !(error instanceof ProjectTaskError) && !(error instanceof ProjectGitHubError) && !(error instanceof InterviewError) && !(error instanceof RuleAuditError) && !(error instanceof ProjectTransferError) && !(error instanceof OrganizationalTeamError) && !(error instanceof CreateAgentError)) throw error;
       const status = error.code === "company_only" || error.code.endsWith("_missing") ? 404 : error.code === "gateway_unavailable" || error.code === "model_missing" ? 503 : 409;
       return reply.status(status).send({ error: error.code, message: error.code });
     });
@@ -146,6 +149,8 @@ export function registerCompanyRoutes(app: FastifyInstance, company: CompanyServ
       company.updateProject(Params.parse(request.params).id, UpdateProjectRequest.parse(request.body));
       return { ok: true };
     });
+    // Stage 3: a team without a repository, its members made from company specialist templates.
+    scope.post("/api/company/teams", async (request, reply) => { company.assertCompany(); return reply.status(201).send(await company.organizationalTeams.create(CreateOrganizationalTeamRequest.parse(request.body))); });
     scope.put("/api/company/teams/:id/lead", async (request) => {
       company.assignTeamLead(Params.parse(request.params).id, AssignTeamLeadRequest.parse(request.body));
       return { ok: true };

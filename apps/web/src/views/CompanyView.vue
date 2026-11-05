@@ -80,6 +80,28 @@ async function assignLead(id: string, agentId: string | null, revision: number):
   finally { saving.value = false; }
 }
 
+/** Stage 3: a team without a repository, its members made from company specialist templates. */
+const ROLES = ["team-lead", "marketing", "analyst", "sales", "support", "hr", "operations", "custom"] as const;
+type Role = (typeof ROLES)[number];
+const roleOptions = computed(() => ROLES.map((role) => ({ value: role, label: t(`company.teamRoles.${role}`) })));
+const creatingTeam = ref(false);
+const teamDraft = reactive({ requestId: "", name: "", context: "", projectId: null as string | null, lead: 0 as number | null, members: [] as { templateId: Role; name: string; purpose: string }[] });
+const teamProjects = computed(() => (data.value?.projects ?? []).filter((project) => project.status !== "archived" && (!selectedId.value || !project.departmentId || project.departmentId === selectedId.value)).map((project) => ({ value: project.id, label: project.name })));
+function newTeam(): void {
+  Object.assign(teamDraft, { requestId: crypto.randomUUID(), name: "", context: "", projectId: null, lead: 0, members: [{ templateId: "team-lead", name: "", purpose: "" }, { templateId: "marketing", name: "", purpose: "" }] });
+  creatingTeam.value = true;
+}
+async function createTeam(): Promise<void> {
+  saving.value = true;
+  try {
+    await api.company.createTeam({ requestId: teamDraft.requestId, name: teamDraft.name.trim(), context: teamDraft.context.trim(), departmentId: selectedId.value, projectId: teamDraft.projectId, members: teamDraft.members.map((member) => ({ templateId: member.templateId, name: member.name.trim(), purpose: member.purpose.trim() })), lead: teamDraft.lead, timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC" });
+    creatingTeam.value = false;
+    message.success(t("company.teamCreated", { name: teamDraft.name.trim() }));
+    await load();
+  } catch (e) { message.error(errorText(e)); }
+  finally { saving.value = false; }
+}
+
 async function assignAgent(id: string, departmentId: string | null, revision: number): Promise<void> {
   saving.value = true;
   try { await api.company.assignAgent(id, { departmentId, revision }); addingAgent.value = false; await load(); }
@@ -153,7 +175,12 @@ onMounted(load);
         </div>
       </n-card>
       <n-card class="notice" :title="t(selectedId ? 'company.teams' : 'company.unassigned')">
-        <template #header-extra><n-button text @click="router.push('/teams')">{{ t('company.allTeams') }}</n-button></template>
+        <template #header-extra>
+          <n-space>
+            <n-button v-if="!selected?.archived" text :disabled="saving || !data.gatewayAvailable" @click="newTeam">{{ t('company.createTeam') }}</n-button>
+            <n-button text @click="router.push('/teams')">{{ t('company.allTeams') }}</n-button>
+          </n-space>
+        </template>
         <n-empty v-if="!visibleTeams.length" :description="t('company.noTeams')" />
         <div v-for="team in visibleTeams" :key="team.id" class="team">
           <div class="team-name">
@@ -182,6 +209,29 @@ onMounted(load);
         <p v-if="visibleAgents.some(agent => agent.managerOf)" class="muted">{{ t('company.managerMoveHint') }}</p>
       </n-card>
     </template>
+    <n-modal v-model:show="creatingTeam" preset="card" :title="t('company.createTeam')" class="editor" :mask-closable="!saving" :closable="!saving" :close-on-esc="!saving">
+      <form @submit.prevent="createTeam">
+        <p class="muted">{{ t('company.teamHint') }}</p>
+        <n-form-item :label="t('company.teamName')"><n-input v-model:value="teamDraft.name" :maxlength="80" :disabled="saving" /></n-form-item>
+        <n-form-item :label="t('company.teamContext')"><n-input v-model:value="teamDraft.context" type="textarea" :maxlength="2000" :autosize="{ minRows: 2, maxRows: 5 }" :placeholder="t('company.teamContextExample')" :disabled="saving" /></n-form-item>
+        <n-form-item :label="t('company.teamProject')"><n-select v-model:value="teamDraft.projectId" :options="teamProjects" clearable :placeholder="t('company.noProject')" :disabled="saving" /></n-form-item>
+        <h4>{{ t('company.teamMembers') }}</h4>
+        <div v-for="(member, index) in teamDraft.members" :key="index" class="member-row">
+          <n-select v-model:value="member.templateId" :options="roleOptions" :aria-label="t('company.teamRole')" :disabled="saving" />
+          <n-input v-model:value="member.name" :maxlength="60" :placeholder="t('company.memberName')" :disabled="saving" />
+          <n-input v-model:value="member.purpose" :maxlength="1000" :placeholder="t('company.memberPurpose')" :disabled="saving" />
+          <n-space align="center">
+            <label class="lead-pick"><input type="radio" name="lead" :checked="teamDraft.lead === index" :disabled="saving" @change="teamDraft.lead = index" /> {{ t('company.teamLeadPick') }}</label>
+            <n-button v-if="teamDraft.members.length > 1" size="small" quaternary :disabled="saving" @click="teamDraft.members.splice(index, 1); teamDraft.lead = teamDraft.lead === index ? null : teamDraft.lead !== null && teamDraft.lead > index ? teamDraft.lead - 1 : teamDraft.lead">{{ t('company.removeMember') }}</n-button>
+          </n-space>
+        </div>
+        <n-space class="block">
+          <n-button v-if="teamDraft.members.length < 8" :disabled="saving" @click="teamDraft.members.push({ templateId: 'marketing', name: '', purpose: '' })">{{ t('company.addMember') }}</n-button>
+          <n-button type="primary" attr-type="submit" :loading="saving" :disabled="!teamDraft.name.trim() || !teamDraft.context.trim() || !teamDraft.members.length">{{ t('company.createTeamSubmit', { count: teamDraft.members.length }) }}</n-button>
+        </n-space>
+        <p class="muted">{{ t('company.teamCost') }}</p>
+      </form>
+    </n-modal>
     <n-modal v-model:show="addingAgent" preset="card" :title="t('company.addExistingAgent')" class="editor" :mask-closable="!saving" :closable="!saving" :close-on-esc="!saving">
       <form @submit.prevent="addAgent">
         <n-form-item :label="t('company.selectAgent')"><n-select v-model:value="pickedAgent" :aria-label="t('company.selectAgent')" :options="agentOptions" filterable :disabled="saving" /></n-form-item>
@@ -205,6 +255,9 @@ onMounted(load);
 </template>
 
 <style scoped>
+.member-row { display: grid; gap: 6px; padding: 10px 0; border-bottom: 1px solid var(--border); }
+.lead-pick { display: inline-flex; gap: 6px; align-items: center; font-size: 0.92em; }
+.block { margin-top: 12px; }
 .notice { margin-bottom: 18px; }
 .departments { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 320px), 1fr)); gap: 16px; margin-bottom: 18px; }
 .description { white-space: pre-wrap; overflow-wrap: anywhere; }

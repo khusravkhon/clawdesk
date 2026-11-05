@@ -121,11 +121,40 @@
       "rule_version_missing": "Rule version not found.",
       "acceptance_unchanged": "Scenario unchanged; no new version was created.",
       "rule_not_approved": "Approve the current rule version first.",
-      "lead_not_eligible": "The team lead must be a member of this team or a standalone agent."
+      "lead_not_eligible": "The team lead must be a member of this team or a standalone agent.",
+      "team_busy": "A team is being created — wait.",
+      "invalid_template": "This role cannot be in a team."
     },
     "standaloneAgent": "standalone agent",
     "noLead": "No team lead",
-    "teamLead": "Team lead of {name}"
+    "teamLead": "Team lead of {name}",
+    "createTeam": "Create a team",
+    "teamHint": "A team without a GitHub repository (e.g. marketing or support). Its members are new agents from specialist templates, on the main agent's AI and sandboxed. Folder and document access is granted separately.",
+    "teamName": "Team name",
+    "teamContext": "What the team does",
+    "teamContextExample": "For example: we promote the bakery on social media and answer reviews",
+    "teamProject": "Project (optional)",
+    "noProject": "No project",
+    "teamMembers": "Members",
+    "teamRole": "Role",
+    "memberName": "Name (optional)",
+    "memberPurpose": "Responsible for (optional)",
+    "teamLeadPick": "team lead",
+    "removeMember": "Remove",
+    "addMember": "Add a member",
+    "createTeamSubmit": "Create the team ({count})",
+    "teamCost": "Each member is a separate agent: it spends model tokens when it works.",
+    "teamCreated": "Team \"{name}\" created",
+    "teamRoles": {
+      "team-lead": "Team lead",
+      "marketing": "Marketing",
+      "analyst": "Analyst",
+      "sales": "Sales",
+      "support": "Support",
+      "hr": "HR",
+      "operations": "Operations",
+      "custom": "Custom agent"
+    }
   },
   "storage": {
     "title": "Storage",
