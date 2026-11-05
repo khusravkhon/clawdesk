@@ -2,7 +2,7 @@
 // Screen 11 (company mode): project teams — a GitHub repository with a PM, a developer and a reviewer.
 import type { PullRequestDto, TeamDto, TeamRepoStatusDto, TeamRole } from "@clawdesk/shared";
 import { ExternalLink, GitPullRequest, MessagesSquare, RefreshCw, Send, Trash2, Users } from "@lucide/vue";
-import { NA, NAlert, NButton, NCard, NCheckbox, NCheckboxGroup, NEmpty, NInput, NModal, NPopconfirm, NSkeleton, NSpace, NTag, useMessage } from "naive-ui";
+import { NA, NAlert, NButton, NCard, NCheckbox, NCheckboxGroup, NEmpty, NInput, NModal, NPopconfirm, NSelect, NSkeleton, NSpace, NTag, useMessage } from "naive-ui";
 import { computed, onMounted, reactive, ref } from "vue";
 import { useI18n } from "vue-i18n";
 import { useRouter } from "vue-router";
@@ -50,6 +50,9 @@ async function act(id: string, what: string, run: () => Promise<void>): Promise<
   }
 }
 
+/** Stage 8: where requests of the team's members that reach the owner arrive. */
+const ownerRequestOptions = computed(() => [{ value: "direct", label: t("teams.ownerRequests.direct") }, { value: "topic", label: t("teams.ownerRequests.topic") }]);
+const setOwnerRequests = (team: TeamDto, mode: "direct" | "topic") => act(team.id, "ownerRequests", async () => { await api.teams.ownerRequests(team.id, mode); team.ownerRequests = mode; });
 const refresh = (id: string) => act(id, "fetch", async () => void (repo[id] = await api.teams.fetch(id)));
 const push = (id: string) =>
   act(id, "push", async () => {
@@ -227,6 +230,11 @@ onMounted(load);
             {{ team.telegramChatId ? t("teams.telegramChange") : t("teams.telegram") }}
           </n-button>
         </n-space>
+        <label v-if="team.telegramChatId" class="owner-requests">
+          <span>{{ t("teams.ownerRequests.label") }}</span>
+          <n-select :value="team.ownerRequests" :options="ownerRequestOptions" :disabled="!!busy[team.id]" :aria-label="t('teams.ownerRequests.label')" @update:value="(mode: 'direct' | 'topic') => setOwnerRequests(team, mode)" />
+          <small>{{ t(`teams.ownerRequests.hint_${team.ownerRequests}`) }}</small>
+        </label>
       </n-card>
     </n-space>
 
@@ -250,6 +258,8 @@ onMounted(load);
 </template>
 
 <style scoped>
+.owner-requests { display: grid; gap: 6px; margin-top: 14px; max-width: 420px; font-size: 13px; }
+.owner-requests small { color: var(--muted); line-height: 1.5; }
 .form {
   display: flex;
   flex-direction: column;

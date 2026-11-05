@@ -238,6 +238,11 @@ export const teams = sqliteTable("teams", {
    * No foreign key (SQLite cannot drop such a column): a lead that no longer exists counts as none.
    */
   leadAgentId: text("lead_agent_id"),
+  /**
+   * Stage 8: where requests of this team's members that reach the owner arrive — the owner's chat with the
+   * bot ("direct", default) or the member's topic in the team's group, with the owner mentioned ("topic").
+   */
+  ownerRequests: text("owner_requests", { enum: ["direct", "topic"] }).notNull().default("direct"),
   organizationRevision: integer("organization_revision").notNull().default(0),
   createdAt: createdAt(),
 }, (t) => [index("teams_department_idx").on(t.departmentId), index("teams_project_idx").on(t.projectId)]);

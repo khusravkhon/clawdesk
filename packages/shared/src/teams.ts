@@ -40,8 +40,12 @@ export const TeamDto = z.object({
   docsFolder: z.string().nullable(),
   members: z.array(TeamMemberDto),
   telegramChatId: z.string().nullable(),
+  /** Stage 8: requests to the owner arrive in the owner's chat with the bot, or in the member's topic. */
+  ownerRequests: z.enum(["direct", "topic"]),
 });
 export type TeamDto = z.infer<typeof TeamDto>;
+export const TeamOwnerRequestsRequest = z.object({ mode: z.enum(["direct", "topic"]) });
+export type TeamOwnerRequestsRequest = z.infer<typeof TeamOwnerRequestsRequest>;
 
 export const TeamsDto = z.object({ teams: z.array(TeamDto) });
 export type TeamsDto = z.infer<typeof TeamsDto>;

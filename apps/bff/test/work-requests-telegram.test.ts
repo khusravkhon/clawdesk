@@ -5,7 +5,7 @@ import { randomUUID } from "node:crypto";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { REMIND_BEFORE_MS, REQUEST_TTL_MS, WorkRequestsService } from "../src/company/work-requests-service.js";
 import { openDb, type Db } from "../src/db/client.js";
-import { agents } from "../src/db/schema.js";
+import { agents, channelBindings, teams } from "../src/db/schema.js";
 
 // Stage 8: a request that reaches the owner goes to the owner's Telegram with one-time buttons; a press
 // comes back through the spool with the presser's numeric ID (the plugin's interactive handler).
@@ -68,6 +68,37 @@ describe("company requests in the owner's Telegram", () => {
     expect(granted).toHaveLength(1);
     expect(toOwner.slice(-2).map((message) => message.text)).toEqual(["REQ-001: уже решено (answered), кнопка больше не действует.", "REQ-001: уже решено (answered), кнопка больше не действует."]);
     expect(new Set(toOwner.map((message) => message.key)).size).toBe(toOwner.length);
+  });
+
+  it("a team that chose its topic gets the owner's message there, mentioned and without details", async () => {
+    const toTopic: { chatId: string; topicId: string; text: string; buttons: { label: string; data: string }[] }[] = [];
+    const telegram = { ownerUserId: () => owner, sendToOwnerWithButtons: async (text: string, buttons: { label: string; data: string }[], key: string) => { toOwner.push({ text, buttons, key }); }, sendToTopicWithButtons: async (chatId: string, topicId: string, text: string, buttons: { label: string; data: string }[]) => { toTopic.push({ chatId, topicId, text, buttons }); } };
+    service = new WorkRequestsService({
+      db, companyMode: () => true, now: () => clock, liveAgents: async () => new Set(["main", "analyst"]),
+      bridge: { requestsSpool: async () => ({ entries: [...spool], rejected: [] }), requestsAck: async (ids) => { spool = spool.filter((item) => !ids.includes(item.id as string)); } },
+      send: async () => undefined, telegram, grant: async (request) => ({ resource: request.resource, access: request.access, path: null }),
+    });
+    db.insert(teams).values({ id: "shop", name: "Shop", telegramGroupId: "-1001", ownerRequests: "topic" }).run();
+    db.update(agents).set({ teamId: "shop" }).run();
+    db.insert(channelBindings).values({ id: randomUUID(), agentId: "analyst", channel: "telegram", peerKind: "group", peerId: "-1001", topicId: "77" }).run();
+    await toTheOwner("access");
+    expect(toOwner).toEqual([]);
+    expect(toTopic).toHaveLength(1);
+    expect(toTopic[0]).toMatchObject({ chatId: "-1001", topicId: "77" });
+    expect(toTopic[0]!.text).toContain("[Владелец](tg://user?id=4242), REQ-001 · нужен доступ");
+    expect(toTopic[0]!.text).not.toContain("Нужен отчёт");
+    expect(toTopic[0]!.buttons.map((button) => button.label)).toEqual(["Выдать доступ", "Отказать"]);
+    // A press by another member of the group does nothing.
+    press(toTopic[0]!.buttons[0]!.data, "999");
+    await service.tick();
+    expect(service.list().requests[0]!.status).toBe("open");
+    // Without a topic for the agent the owner's own chat is used.
+    db.delete(channelBindings).run();
+    add({ type: "up", agentId: "analyst", kind: "question", subject: "Другое", details: "Что-то" });
+    await service.tick();
+    add({ type: "reply", agentId: "main", requestId: "REQ-002", action: "escalate", text: "владельцу" });
+    await service.tick();
+    expect(toOwner.at(-1)!.text).toContain("REQ-002");
   });
 
   it("a question decided in the panel closes in Telegram too; without an owner the delivery fails, the request stays", async () => {

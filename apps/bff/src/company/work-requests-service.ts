@@ -2,7 +2,7 @@ import { randomBytes, randomUUID } from "node:crypto";
 import { ResourceRef, type GrantResourceRequest, type OwnerRequestAction, type ResourceAccess, type WorkRequestDto, type WorkRequestEventDto, type WorkRequestLevelKind, type WorkRequestsDto } from "@clawdesk/shared";
 import { and, asc, desc, eq, inArray, isNull, lt } from "drizzle-orm";
 import type { Db } from "../db/client.js";
-import { agents, companyAgentAssignments, companyProjects, departmentManagers, departments, teams, workRequestButtons, workRequestEvents, workRequests, workRequestSpool } from "../db/schema.js";
+import { agents, companyAgentAssignments, companyProjects, departmentManagers, departments, teams, workRequestButtons, workRequestEvents, workRequests, workRequestSpool, channelBindings } from "../db/schema.js";
 
 // Stage 6: requests up the company structure. Agents file them through the clawdesk-requests plugin, which
 // only drops an entry into the Gateway's spool; everything else happens here, in one transaction per entry:
@@ -38,6 +38,8 @@ export type TaskHooks = {
 export type OwnerTelegram = {
   ownerUserId(): string | null;
   sendToOwnerWithButtons(text: string, buttons: { label: string; data: string; style?: "success" | "danger" | "primary" }[], idempotencyKey: string): Promise<void>;
+  /** Stage 8: into a member's topic of its team's group; absent where only the owner's chat is supported. */
+  sendToTopicWithButtons?(chatId: string, topicId: string, text: string, buttons: { label: string; data: string; style?: "success" | "danger" | "primary" }[], idempotencyKey: string): Promise<void>;
 };
 const BUTTON_LABEL = { grant: "Выдать доступ", deny: "Отказать", cancel: "Закрыть без ответа" } as const;
 /** Applies and checks a grant (AccessService.grant); returns where the agent finds the resource. */
@@ -438,6 +440,19 @@ export class WorkRequestsService {
     });
   }
 
+  /**
+   * Stage 8: the topic a request of this agent reaches the owner in — only when its team chose "topic", has a
+   * group and the agent has a topic there; otherwise the owner's own chat with the bot.
+   */
+  #ownerTopic(agentId: string): { chatId: string; topicId: string } | null {
+    const { db } = this.deps;
+    const agent = db.select().from(agents).where(eq(agents.id, agentId)).get();
+    const team = agent?.teamId ? db.select().from(teams).where(eq(teams.id, agent.teamId)).get() : undefined;
+    if (!team || team.ownerRequests !== "topic" || !team.telegramGroupId) return null;
+    const binding = db.select().from(channelBindings).where(and(eq(channelBindings.agentId, agentId), eq(channelBindings.channel, "telegram"), eq(channelBindings.peerKind, "group"), eq(channelBindings.peerId, team.telegramGroupId))).get();
+    return binding?.topicId ? { chatId: team.telegramGroupId, topicId: binding.topicId } : null;
+  }
+
   /** Sends pending messages; the event or spool ID is the idempotency key, so a retry is never a second message. */
   async deliver(): Promise<number> {
     const { send, db } = this.deps;
@@ -450,7 +465,13 @@ export class WorkRequestsService {
       const buttons = db.select().from(workRequestButtons).where(and(eq(workRequestButtons.eventId, event.id), isNull(workRequestButtons.usedAt))).all()
         .map((button) => ({ label: BUTTON_LABEL[button.action], data: `cdreq:${button.token}`, style: button.action === "grant" ? "success" as const : button.action === "deny" ? "danger" as const : undefined }));
       try {
-        await telegram.sendToOwnerWithButtons(event.notifyText!, buttons, `clawdesk-request-event-${event.id}`);
+        const row = db.select().from(workRequests).where(eq(workRequests.id, event.requestId)).get();
+        const topic = row && telegram.sendToTopicWithButtons ? this.#ownerTopic(row.fromAgentId) : null;
+        if (topic && row) {
+          // The team's topic is seen by everyone in the group: the details stay in the panel, the owner is mentioned.
+          const text = event.kind === "routed" ? groupOwnerMessage(code(row.number), this.#name(row.fromAgentId), row, telegram.ownerUserId()!) : event.notifyText!;
+          await telegram.sendToTopicWithButtons!(topic.chatId, topic.topicId, text, buttons, `clawdesk-request-event-${event.id}`);
+        } else await telegram.sendToOwnerWithButtons(event.notifyText!, buttons, `clawdesk-request-event-${event.id}`);
         db.update(workRequestEvents).set({ deliveredAt: this.#now(), attempts: event.attempts + 1 }).where(eq(workRequestEvents.id, event.id)).run();
         sent++;
       } catch { db.update(workRequestEvents).set({ attempts: event.attempts + 1 }).where(eq(workRequestEvents.id, event.id)).run(); }
@@ -488,6 +509,22 @@ function ownerMessage(label: string, from: string, row: Row, passed: string[]): 
     `Срок: ${new Date(row.deadlineAt).toISOString().slice(0, 16).replace("T", " ")} UTC`,
     row.kind === "access" ? "Кнопки ниже — выдать (панель проверит доступ) или отказать." : null,
     `Ответить текстом: /req ${label} ответ <текст> (или отказ <причина>, уточни <вопрос>), либо в панели «Компания → Обращения».`,
+  ].filter((line): line is string => typeof line === "string").join("\n");
+}
+
+/**
+ * The owner's message in a team's topic: what is needed and from whom, never the details (others read the
+ * group); the owner is mentioned by the numeric userId confirmed in the bot's chat, not by a guess.
+ */
+export function groupOwnerMessage(label: string, from: string, row: Row, ownerUserId: string): string {
+  const what = row.kind === "access" ? `нужен доступ: ${row.resource}, ${row.access === "read" ? "только чтение" : "чтение и запись"}` : row.kind === "question" ? "нужны сведения" : "нужно решение";
+  return [
+    `[Владелец](tg://user?id=${ownerUserId}), ${label} · ${what}`,
+    `От: ${from}`,
+    `Тема: ${row.subject}`,
+    row.taskRef ? `Задача: ${row.taskRef}` : null,
+    `Срок: ${new Date(row.deadlineAt).toISOString().slice(0, 16).replace("T", " ")} UTC`,
+    `Подробности — в панели «Компания → Обращения». Ответить текстом: /req ${label} ответ <текст>. Кнопки действуют только для владельца.`,
   ].filter((line): line is string => typeof line === "string").join("\n");
 }
 

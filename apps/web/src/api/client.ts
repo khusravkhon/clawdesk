@@ -219,6 +219,7 @@ export const api = {
     push: (id: string) => post<PullRequestDto>(`/api/teams/${encodeURIComponent(id)}/push`),
     linkTelegram: (id: string, topics: LinkTeamTelegramRequest["topics"]) => post<TeamDto>(`/api/teams/${encodeURIComponent(id)}/telegram`, { topics }),
     remove: (id: string) => request<{ ok: true }>(`/api/teams/${encodeURIComponent(id)}`, { method: "DELETE" }),
+    ownerRequests: (id: string, mode: "direct" | "topic") => put<{ ok: true }>(`/api/teams/${encodeURIComponent(id)}/owner-requests`, { mode }),
   },
   skills: {
     list: () => request<SkillsDto>("/api/skills"),

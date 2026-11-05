@@ -1050,6 +1050,13 @@
       "no_owner": "Connect the Telegram bot and approve yourself in it first.",
       "telegram_links": "The links must be topics of one group: {detail}",
       "git_failed": "Git: {detail}"
+    },
+    "ownerRequests": {
+      "label": "Members' requests to the owner",
+      "direct": "To the owner's chat with the bot",
+      "topic": "To the member's topic in the team's group",
+      "hint_direct": "The default: only you see the details.",
+      "hint_topic": "The message goes to the agent's topic mentioning the owner, without details (everyone in the group sees it). Buttons work only for the owner. Without a topic for the agent — to your own chat."
     }
   },
   "audit": {

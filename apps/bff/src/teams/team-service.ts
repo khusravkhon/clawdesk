@@ -68,6 +68,7 @@ export class TeamService {
         repoUrl: team.repoUrl ?? "",
         docsFolder: docs.find((d) => d.id === `team-docs:${team.id}`)?.connectorRef ?? null,
         telegramChatId: team.telegramGroupId,
+        ownerRequests: team.ownerRequests,
         members: members
           .filter((m) => m.teamId === team.id)
           .map((m) => ({
@@ -80,6 +81,13 @@ export class TeamService {
           .sort((a, b) => ROLE_ORDER.indexOf(a.role) - ROLE_ORDER.indexOf(b.role)),
       })),
     };
+  }
+
+  /** Stage 8: where requests of the team's members that reach the owner arrive. */
+  setOwnerRequests(teamId: string, mode: "direct" | "topic"): void {
+    const team = this.deps.db.select().from(teams).where(eq(teams.id, teamId)).get();
+    if (!team) throw new TeamError("no_team", `team ${teamId} not found`);
+    this.deps.db.update(teams).set({ ownerRequests: mode }).where(eq(teams.id, teamId)).run();
   }
 
   async create(req: CreateTeamRequest): Promise<TeamDto> {
