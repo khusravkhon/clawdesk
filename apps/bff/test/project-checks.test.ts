@@ -118,7 +118,7 @@ describe("project checks", () => {
     company.acceptance.create(projectId, ruleId, scenario(TB002));
     close();
     const sqlite = new Database(path.join(root, "panel.sqlite"));
-    sqlite.exec("DROP TABLE project_interviews; DROP TABLE google_doc_copies; DROP TABLE agent_charter_versions; ALTER TABLE teams DROP COLUMN lead_agent_id; ALTER TABLE teams DROP COLUMN owner_requests; DROP TABLE work_item_events; DROP TABLE work_items; DROP TABLE work_request_buttons; DROP TABLE resource_grants; DROP TABLE work_request_events; DROP TABLE work_request_spool; DROP TABLE work_requests; DROP TABLE project_task_events; DROP TABLE project_tasks; DELETE FROM __drizzle_migrations WHERE created_at >= 1792348000000");
+    sqlite.exec("DROP TABLE project_rule_conflicts; DROP TABLE project_rule_audits; DROP TABLE project_interviews; DROP TABLE google_doc_copies; DROP TABLE agent_charter_versions; ALTER TABLE teams DROP COLUMN lead_agent_id; ALTER TABLE teams DROP COLUMN owner_requests; DROP TABLE work_item_events; DROP TABLE work_items; DROP TABLE work_request_buttons; DROP TABLE resource_grants; DROP TABLE work_request_events; DROP TABLE work_request_spool; DROP TABLE work_requests; DROP TABLE project_task_events; DROP TABLE project_tasks; DELETE FROM __drizzle_migrations WHERE created_at >= 1792348000000");
     sqlite.exec("DROP TABLE acceptance_test_links; DROP TABLE project_check_results; DROP TABLE project_check_runs; DELETE FROM __drizzle_migrations WHERE created_at = 1792347000000");
     sqlite.close();
     ({ db, close } = openDb(path.join(root, "panel.sqlite")));

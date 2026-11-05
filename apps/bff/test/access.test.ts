@@ -187,7 +187,7 @@ describe("company access", () => {
     close();
     const sqlite = new Database(path.join(root, "panel.sqlite"));
     sqlite.exec([
-      "DROP TABLE project_interviews", "DROP TABLE google_doc_copies", "DROP TABLE agent_charter_versions", "ALTER TABLE teams DROP COLUMN lead_agent_id", "ALTER TABLE teams DROP COLUMN owner_requests",
+      "DROP TABLE project_rule_conflicts", "DROP TABLE project_rule_audits", "DROP TABLE project_interviews", "DROP TABLE google_doc_copies", "DROP TABLE agent_charter_versions", "ALTER TABLE teams DROP COLUMN lead_agent_id", "ALTER TABLE teams DROP COLUMN owner_requests",
       "DROP TABLE work_item_events", "DROP TABLE work_items", "DROP TABLE work_request_buttons", "DROP TABLE resource_grants",
       "ALTER TABLE project_check_runs DROP COLUMN isolation", "ALTER TABLE project_tasks DROP COLUMN review_requested_at", "ALTER TABLE project_tasks DROP COLUMN reviewer",
       "CREATE TABLE old_requests AS SELECT id, number, from_agent_id, kind, subject, subject_key, details, task_ref, status, route, level, hops, revision, answer_text, answered_by, deadline_at, created_at, updated_at, spool_id FROM work_requests",

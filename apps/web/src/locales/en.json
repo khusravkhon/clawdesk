@@ -1901,7 +1901,8 @@
       "rollback_unavailable": "Only the latest accepted task can be rolled back, and only when the project has no unfinished task.",
       "review_not_requested": "The reviewer has not been asked about these changes yet.",
       "review_not_written": "The reviewer has not written REVIEW.md yet. Wait for its answer in the chat.",
-      "review_changes_requested": "The reviewer asks for changes. Return the task to the developer or tick that you accept despite the review."
+      "review_changes_requested": "The reviewer asks for changes. Return the task to the developer or tick that you accept despite the review.",
+      "rule_conflict": "The rule has an open contradiction with another rule. Resolve it under Business rules, then start the task."
     },
     "createChange": "Start a change task",
     "changeTag": "change: version {from} → {to}",
@@ -2490,6 +2491,43 @@
       "interview_busy": "The assistant is still thinking — wait for its answer.",
       "model_missing": "The main agent's model is unavailable. Fill the brief step by step.",
       "project_archived": "The project is archived."
+    }
+  },
+  "ruleAudit": {
+    "title": "Contradictions between rules",
+    "check": "Check for contradictions",
+    "checking": "The assistant is reading the rules…",
+    "needTwo": "At least two rules are needed.",
+    "stale": "The rules changed since the last check — check again.",
+    "never": "The rules have not been checked yet.",
+    "checkedAt": "Checked {at}.",
+    "none": "The assistant found no contradictions. That does not prove there are none — check the important rules yourself.",
+    "failure": {
+      "model_unavailable": "The assistant did not answer. Try later.",
+      "invalid_reply": "The assistant answered in the wrong form. Try again.",
+      "timeout": "The assistant ran out of time.",
+      "interrupted": "The check was cut off (the panel restarted)."
+    },
+    "open": "contradiction",
+    "outdated": "a rule changed — check again",
+    "example": "Example",
+    "question": "What to choose",
+    "blocks": "While the contradiction is open, no task can be started on these rules. Fix one of them (a new version) or mark that they do not contradict.",
+    "note": "Why the rules do not contradict",
+    "dismiss": "They agree",
+    "decided": "Decided by the owner: {count}",
+    "searchTitle": "Find a rule by a phrase",
+    "searchPlaceholder": "For example: \"Now a 15% discount is for the manager only\"",
+    "search": "Find",
+    "noMatch": "No matching rule — perhaps it is a new one.",
+    "openRule": "Open",
+    "failed": "The action failed.",
+    "errors": {
+      "revision_conflict": "The check changed meanwhile — refreshed, try again.",
+      "audit_busy": "A check is already running.",
+      "model_missing": "The main agent's model is unavailable.",
+      "conflict_missing": "Contradiction not found — refresh.",
+      "no_rules": "At least two rules are needed."
     }
   }
 }

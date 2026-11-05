@@ -706,3 +706,31 @@ export const projectInterviews = sqliteTable("project_interviews", {
   updatedAt: integer("updated_at").notNull(),
   requestId: text("request_id").notNull(),
 });
+
+/** P3: the last model check of a project's rules for contradictions. */
+export const projectRuleAudits = sqliteTable("project_rule_audits", {
+  projectId: text("project_id").primaryKey().references(() => companyProjects.id, { onDelete: "cascade" }),
+  status: text("status", { enum: ["idle", "checking", "checked", "failed"] }).notNull(),
+  failure: text("failure", { enum: ["model_unavailable", "invalid_reply", "timeout", "interrupted"] }),
+  revision: integer("revision").notNull().default(0),
+  startedAt: integer("started_at"),
+  checkedAt: integer("checked_at"),
+  /** "ruleId:version,…" the last successful check read: a change makes the result stale. */
+  checkedRules: text("checked_rules").notNull().default(""),
+  updatedAt: integer("updated_at").notNull(),
+  requestId: text("request_id").notNull(),
+});
+
+/** P3: a contradiction found between rules at the versions the check read. */
+export const projectRuleConflicts = sqliteTable("project_rule_conflicts", {
+  id: text("id").primaryKey(),
+  projectId: text("project_id").notNull().references(() => companyProjects.id, { onDelete: "cascade" }),
+  rules: text("rules", { mode: "json" }).$type<{ ruleId: string; code: string; version: number }[]>().notNull(),
+  explanation: text("explanation").notNull(),
+  example: text("example").notNull().default(""),
+  question: text("question").notNull().default(""),
+  status: text("status", { enum: ["open", "dismissed", "superseded"] }).notNull(),
+  note: text("note").notNull().default(""),
+  createdAt: integer("created_at").notNull(),
+  decidedAt: integer("decided_at"),
+}, (t) => [index("project_rule_conflicts_project_idx").on(t.projectId, t.status)]);

@@ -25,7 +25,7 @@ import type { RuleScope } from "./project-test-units.js";
 // The verdict is advice: the owner still accepts or returns, but accepting over "changes" needs their word.
 
 export class ProjectTaskError extends Error {
-  constructor(readonly code: "executors_required" | "rule_missing" | "rule_not_approved" | "task_active" | "task_missing" | "task_closed" | "revision_conflict" | "request_conflict" | "task_busy" | "gateway_unavailable" | "work_app_changed" | "rule_outdated" | "data_confirmation_required" | "rollback_unavailable" | "review_not_requested" | "review_not_written" | "review_changes_requested") { super(code); }
+  constructor(readonly code: "executors_required" | "rule_missing" | "rule_not_approved" | "task_active" | "task_missing" | "task_closed" | "revision_conflict" | "request_conflict" | "task_busy" | "gateway_unavailable" | "work_app_changed" | "rule_outdated" | "data_confirmation_required" | "rollback_unavailable" | "review_not_requested" | "review_not_written" | "review_changes_requested" | "rule_conflict") { super(code); }
 }
 
 type Project = { id: string; name: string; description: string; departmentId: string | null };
@@ -52,6 +52,8 @@ export class ProjectTasksService {
     executors?: ExecutorsPort;
     bridge?: TaskBridge;
     send?: (agentId: string, message: string) => Promise<void>;
+    /** P3: codes of rules this rule has an open contradiction with; a task waits for the owner's choice. */
+    conflicts?: (projectId: string, ruleId: string) => string[];
   }) {}
 
   executors(projectId: string): ProjectExecutorsDto {
@@ -203,6 +205,7 @@ export class ProjectTasksService {
     if (!rule) throw new ProjectTaskError("rule_missing");
     if (rule.approvedAt === null) throw new ProjectTaskError("rule_not_approved");
     if (this.#outdated(projectId, { ruleId: rule.id, ruleVersion: rule.version })) throw new ProjectTaskError("rule_outdated");
+    if (this.deps.conflicts?.(projectId, rule.id).length) throw new ProjectTaskError("rule_conflict");
     const qa = this.#executor(projectId, "qa");
     this.#executor(projectId, "developer");
     const { bridge, send } = this.#need();
