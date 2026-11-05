@@ -159,12 +159,22 @@ test('official OpenClaw backup roundtrip in an isolated Linux fixture', { skip: 
     await fs.mkdir(path.join(state, 'npm', 'projects', 'fixture', 'node_modules', '.bin'), { recursive: true });
     await fs.writeFile(path.join(state, 'npm', 'projects', 'fixture', 'node_modules', 'fixture.js'), 'export default {}');
     await fs.symlink('../fixture.js', path.join(state, 'npm', 'projects', 'fixture', 'node_modules', '.bin', 'fixture'));
+    // Company mode keeps its own files in the state folder: they must come back with it.
+    await fs.mkdir(path.join(state, 'company-projects', 'Shop', 'app'), { recursive: true });
+    await fs.writeFile(path.join(state, 'company-projects', 'Shop', 'app', 'server.mjs'), 'company project file');
+    await fs.writeFile(path.join(state, 'clawdesk-project-folders.json'), JSON.stringify({ version: 1, bindings: [] }));
+    await fs.mkdir(path.join(state, 'clawdesk', 'project-github', 'p1'), { recursive: true });
+    await fs.writeFile(path.join(state, 'clawdesk', 'project-github', 'p1', 'token'), 'github_pat_fixture', { mode: 0o600 });
+    await fs.mkdir(path.join(state, 'clawdesk', 'requests'), { recursive: true });
+    await fs.writeFile(path.join(state, 'clawdesk', 'requests', 'a.json'), JSON.stringify({ type: 'up' }));
+    await fs.mkdir(path.join(state, 'workspace', 'google'), { recursive: true });
+    await fs.writeFile(path.join(state, 'workspace', 'google', 'doc.md'), 'granted doc copy');
     const result = cli('backup', 'create', '--verify', '--json', '--output', path.join(root, 'oc-output'));
     const staging = path.join(root, 'outer');
     await fs.mkdir(path.join(staging, 'panel'), { recursive: true });
     await fs.mkdir(path.join(staging, 'auth-secrets'), { recursive: true });
     const database = new DatabaseSync(path.join(staging, 'panel', 'panel.sqlite'));
-    database.exec("CREATE TABLE notes(id TEXT, content TEXT); INSERT INTO notes VALUES('fixture','personal note from SQLite');"); database.close();
+    database.exec("CREATE TABLE notes(id TEXT, content TEXT); INSERT INTO notes VALUES('fixture','personal note from SQLite'); CREATE TABLE departments(id TEXT, name TEXT); INSERT INTO departments VALUES('it','IT');"); database.close();
     await fs.writeFile(path.join(staging, 'auth-secrets', 'fake.json'), JSON.stringify({ fakeSecret: 'fixture-only' }));
     await fs.copyFile(result.archivePath, path.join(staging, 'openclaw.tar.gz'));
     await fs.writeFile(path.join(staging, 'env'), 'OPENCLAW_GATEWAY_TOKEN=fake-fixture-token\n');
@@ -193,7 +203,10 @@ test('official OpenClaw backup roundtrip in an isolated Linux fixture', { skip: 
     assert.equal(JSON.parse(await fs.readFile(await find(path.join(root, 'target'), 'jobs.json'), 'utf8')).jobs[0].id, 'fixture-schedule');
     const reopened = new DatabaseSync(path.join(restored, 'panel', 'panel.sqlite'), { readOnly: true });
     assert.equal(reopened.prepare('SELECT content FROM notes WHERE id=?').get('fixture').content, 'personal note from SQLite');
+    assert.equal(reopened.prepare('SELECT name FROM departments WHERE id=?').get('it').name, 'IT');
     assert.equal(reopened.prepare('PRAGMA integrity_check').get().integrity_check, 'ok'); reopened.close();
+    for (const [name, content] of [['server.mjs', 'company project file'], ['token', 'github_pat_fixture'], ['a.json', '{"type":"up"}'], ['doc.md', 'granted doc copy']]) assert.equal(await fs.readFile(await find(path.join(root, 'target'), name), 'utf8'), content, name);
+    assert.ok(await find(path.join(root, 'target'), 'clawdesk-project-folders.json'));
     assert.equal(JSON.parse(await fs.readFile(path.join(restored, 'auth-secrets', 'fake.json'), 'utf8')).fakeSecret, 'fixture-only');
     const model = await find(path.join(root, 'target'), 'fixture.gguf');
     assert.ok(model); assert.equal(await fs.readFile(model, 'utf8'), 'FAKE MODEL — never inference');
