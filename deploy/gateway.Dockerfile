@@ -9,10 +9,13 @@ ARG OPENCLAW_IMAGE=ghcr.io/openclaw/openclaw
 FROM docker:29-cli AS docker-cli
 
 # Google Workspace CLI for OpenClaw's bundled gog skill (Drive/Docs/Gmail source). Pinned and checksummed.
-FROM debian:bookworm-slim AS gog
+# Downloaded with retries (fetch-verified.mjs): GitHub sometimes answers a release download with a 504 page,
+# which ADD --checksum turned into a failed build; only bytes with the pinned SHA-256 are ever accepted.
+FROM node:24-bookworm-slim AS gog
 ARG GOG_VERSION=0.42.0
-ADD --checksum=sha256:1967a962a57d689958c408dd0abc784792c3712da9d0a90650bb76ab7e3de388 \
-  https://github.com/openclaw/gogcli/releases/download/v${GOG_VERSION}/gogcli_${GOG_VERSION}_linux_amd64.tar.gz /tmp/gog.tgz
+ARG GOG_SHA256=1967a962a57d689958c408dd0abc784792c3712da9d0a90650bb76ab7e3de388
+COPY fetch-verified.mjs /tmp/fetch-verified.mjs
+RUN node /tmp/fetch-verified.mjs https://github.com/openclaw/gogcli/releases/download/v${GOG_VERSION}/gogcli_${GOG_VERSION}_linux_amd64.tar.gz ${GOG_SHA256} /tmp/gog.tgz
 RUN mkdir /tmp/gog && tar xzf /tmp/gog.tgz -C /tmp/gog && install -m 0755 /tmp/gog/gog /usr/local/bin/gog
 
 FROM ${OPENCLAW_IMAGE}:${OPENCLAW_VERSION}
