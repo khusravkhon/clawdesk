@@ -25,13 +25,22 @@ type Config = {
   plugins?: { load?: { paths?: string[] }; allow?: string[]; entries?: Record<string, { enabled?: boolean; config?: { allowedAgentIds?: string[] } }> };
 };
 
+/**
+ * OpenClaw's ask_user waits for an answer in a prompt the panel and Telegram do not show: seen live, the main agent
+ * sat on it for minutes after asking the owner which agent to give a file to. Company agents ask in a plain message.
+ */
+export const DENIED_TOOLS = ["ask_user"];
+
 /** The tools added to (or, for an agent that loses them, removed from) an agent's own policy. */
 function policyWith(policy: Policy | undefined, granted: boolean, agentId: string): Policy | null {
   const key = policy?.allow?.length ? "allow" : "alsoAllow";
   const current = policy?.[key] ?? [];
   const tools = granted ? (agentId === "main" ? ALL_TOOLS : REQUEST_TOOLS) : [];
   const next = [...new Set([...current.filter((tool) => !ALL_TOOLS.includes(tool) || tools.includes(tool)), ...tools])];
-  return JSON.stringify(next) === JSON.stringify(current) ? null : { [key]: next };
+  const deny = policy?.deny ?? [];
+  const nextDeny = granted ? [...new Set([...deny, ...DENIED_TOOLS])] : deny.filter((tool) => !DENIED_TOOLS.includes(tool));
+  const change = { ...(JSON.stringify(next) === JSON.stringify(current) ? {} : { [key]: next }), ...(JSON.stringify(nextDeny) === JSON.stringify(deny) ? {} : { deny: nextDeny }) };
+  return Object.keys(change).length ? change : null;
 }
 
 /**

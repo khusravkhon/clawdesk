@@ -389,6 +389,14 @@ export class BridgeClient {
   }
 
   /** Removes spool entries the panel has stored. */
+  /** The panel's answer for the tool call waiting for it (clawdesk_share_file), and taking it back if nobody did. */
+  requestsResult(id: string, text: string): Promise<{ written: true }> {
+    return this.#call("POST", "/requests/result", { id, text });
+  }
+  requestsResultTake(id: string): Promise<{ existed: boolean }> {
+    return this.#call("POST", "/requests/result/take", { id });
+  }
+
   requestsAck(ids: string[]): Promise<{ removed: number }> {
     return this.#call("POST", "/requests/ack", { ids });
   }

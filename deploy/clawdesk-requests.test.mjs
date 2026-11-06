@@ -11,7 +11,7 @@ async function fixture(t) {
   const factories = {};
   let config = { agents: { entries: { dev: {}, other: {} } }, plugins: { entries: { "clawdesk-requests": { enabled: true, config: { allowedAgentIds: ["dev", "main"] } } } } };
   const interactive = [];
-  registerRequests({ registerTool: (factory, options) => { for (const name of options.names) factories[name] = { factory, options }; }, registerInteractiveHandler: (registration) => interactive.push(registration) }, { spoolDir, now: () => 1000 });
+  registerRequests({ registerTool: (factory, options) => { for (const name of options.names) factories[name] = { factory, options }; }, registerInteractiveHandler: (registration) => interactive.push(registration) }, { spoolDir, now: () => 1000, waitMs: 300, pollMs: 20 });
   const context = (agentId = "dev", sessionKey = `agent:${agentId}:main`) => ({ agentId, sessionKey, getRuntimeConfig: () => config });
   const spool = async () => Promise.all((await fs.readdir(spoolDir).catch(() => [])).map(async (name) => JSON.parse(await fs.readFile(path.join(spoolDir, name), "utf8"))));
   return { interactive, spoolDir, factories, context, tool: (name, ctx = context()) => factories[name].factory(ctx), spool, setConfig: (value) => { config = value; }, config: () => config };
@@ -155,4 +155,23 @@ test("only the main agent proposes giving the owner's file; the proposal is file
   const filed = await f.spool();
   assert.equal(filed.length, 2);
   assert.ok(filed.every((item) => item.type === "share" && item.agentId === "main" && item.sessionKey === "agent:main:main"));
+});
+
+test("the share tool returns the panel's answer in the same call when it comes in time, and says so when it does not", async (t) => {
+  const f = await fixture(t);
+  const share = f.tool(SHARE, f.context("main"));
+  const args = { to: "dev", file: "Входящие/ТЗ.pdf", instruction: "Изучи" };
+  const waiting = share.execute("w1", args);
+  // The panel reads the entry and writes its answer next to the spool.
+  for (let i = 0; i < 20 && !(await f.spool()).length; i++) await new Promise((r) => setTimeout(r, 10));
+  const [entry] = await f.spool();
+  await fs.mkdir(path.join(f.spoolDir, "results"), { recursive: true });
+  await fs.writeFile(path.join(f.spoolDir, "results", entry.id + ".json"), JSON.stringify({ id: entry.id, text: "это несколько агентов: …" }));
+  const answer = await waiting;
+  assert.equal(answer.details.status, "decided");
+  assert.equal(answer.details.panel, "это несколько агентов: …");
+  await assert.rejects(fs.access(path.join(f.spoolDir, "results", entry.id + ".json")), "the answer is taken, so the panel does not send it again");
+  const late = await share.execute("w2", { ...args, instruction: "Ещё" });
+  assert.equal(late.details.status, "filed");
+  assert.match(late.details.note, /Do not tell the owner the file was given or proposed/);
 });

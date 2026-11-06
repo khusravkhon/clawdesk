@@ -38,6 +38,7 @@
 //   POST /video/cancel       { jobId }        stops that job's worker container
 //   POST /reset              { ownerCode }   factory reset in a helper container; the stack restarts
 //   GET  /openclaw/update                   → { running, supported, offer, status } (see clawdesk-openclaw-update.mjs)
+//   POST /requests/result { id, text }   POST /requests/result/take { id } → { existed }  the panel's answer to a waiting tool call
 //   GET  /owner-files/list                  → { files: [{ path, size, modifiedAt }] } the shared folder (see clawdesk-owner-files.mjs)
 //   POST /owner-files/store  { inbound, name? }  a file sent to the bot/chat (media://inbound) into «Входящие» → { path, size, sha }
 //   POST /owner-files/upload { name, base64 }    a file uploaded in the panel into «Входящие»
@@ -56,7 +57,7 @@ import { cloneTeamRepo, fetchTeamRepo, prepareMemberRepo, pushTeamBranch, remove
 import { isAuthorizationCode, mcpLoginArgs } from "./clawdesk-oauth.mjs";
 import { AudioSetupError, audioSettings, audioStatus, saveAudioKey, verifyAudioKey } from "./clawdesk-audio.mjs";
 import { AgentFolders } from "./clawdesk-agent-folders.mjs";
-import { ackRequestsSpool, readRequestsSpool, requestsSpoolDir } from "./clawdesk-requests-spool.mjs";
+import { ackRequestsSpool, readRequestsSpool, requestsSpoolDir, takeRequestResult, writeRequestResult } from "./clawdesk-requests-spool.mjs";
 import { ProjectGitHub } from "./clawdesk-project-github.mjs";
 import { directoryIdentityWithin } from "./clawdesk-file-sync.mjs";
 import { ClaudeLogin, ClaudeLoginError } from "./clawdesk-claude.mjs";
@@ -656,6 +657,12 @@ async function handle(req) {
       log("a video job failed", { path: url.pathname });
       return { status: 500, body: { error: "download_failed", message: "download_failed" } };
     }
+  }
+  // The panel's answer to a filed entry for the tool call waiting for it, and taking it back when nobody did.
+  if (url.pathname === "/requests/result" || url.pathname === "/requests/result/take") {
+    const dir = requestsSpoolDir(process.env.OPENCLAW_STATE_DIR || "/var/lib/clawdesk/openclaw");
+    try { return { status: 200, body: url.pathname === "/requests/result" ? await writeRequestResult(dir, body.id, body.text) : await takeRequestResult(dir, body.id) }; }
+    catch (error) { if (error.status === 400) return { status: 400, body: { error: "invalid_request", message: "invalid result" } }; throw error; }
   }
   if (url.pathname === "/requests/ack") {
     try { return { status: 200, body: await ackRequestsSpool(requestsSpoolDir(process.env.OPENCLAW_STATE_DIR || "/var/lib/clawdesk/openclaw"), body.ids) }; }

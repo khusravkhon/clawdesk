@@ -105,7 +105,26 @@ function validArgs(args, schema) {
   return out;
 }
 
-export function registerRequests(api, { spoolDir = path.join(process.env.OPENCLAW_STATE_DIR || "/var/lib/clawdesk/openclaw", "clawdesk", "requests"), now = Date.now } = {}) {
+export function registerRequests(api, { spoolDir = path.join(process.env.OPENCLAW_STATE_DIR || "/var/lib/clawdesk/openclaw", "clawdesk", "requests"), now = Date.now, waitMs = 20_000, pollMs = 500 } = {}) {
+  /**
+   * clawdesk_share_file waits for the panel's answer (it reads the spool every few seconds) so the agent tells the
+   * owner what really happened in the same turn. The answer file is used by whoever removes it first; past the
+   * wait the panel delivers it as a message, so it is never lost and never comes twice.
+   */
+  async function decided(id) {
+    const target = path.join(spoolDir, "results", `${id}.json`);
+    for (const until = Date.now() + waitMs; Date.now() < until;) {
+      let text = null;
+      try { text = JSON.parse(await fs.readFile(target, "utf8"))?.text; } catch { /* not there yet */ }
+      if (typeof text === "string" && text) {
+        try { await fs.unlink(target); } catch { break; }
+        return result("decided", null, { panel: text, note: "This is the panel's answer. Tell the owner exactly this; nothing else has happened yet." });
+      }
+      await new Promise((resolve) => setTimeout(resolve, pollMs));
+    }
+    return result("filed", null, { note: "The panel has not answered yet; its answer comes to your chat. Do not tell the owner the file was given or proposed until it does, and do not file it again." });
+  }
+
   async function file(owner, toolCallId, type, args) {
     // An access request names its resource and level; other kinds do not.
     if (type === "up" && (args.kind === "access") !== (args.resource !== undefined && args.access !== undefined)) return result("error", "invalid_arguments");
@@ -120,6 +139,7 @@ export function registerRequests(api, { spoolDir = path.join(process.env.OPENCLA
     } catch (error) {
       if (error?.code !== "EEXIST") return result("error", "requests_unavailable");
     }
+    if (type === "share") return decided(id);
     return result("filed", null, { note: "The panel routes this and delivers the answer to your chat. Do not file it again; wait for the message." });
   }
 
@@ -144,7 +164,7 @@ export function registerRequests(api, { spoolDir = path.join(process.env.OPENCLA
   api.registerTool(tool(REPORT, "Report a company task", "Report the result of a company task WI-… assigned to you: status done with what was done and where to see it (it goes to the owner's acceptance), or failed with the reason. Done without a result is not accepted. Only the task's executor can report.", reportParameters, "task_report"), { names: [REPORT], optional: true });
 
   // The owner's files: only the main agent proposes; the owner confirms with a button, the panel copies and checks.
-  api.registerTool(tool(SHARE, "Give the owner's file to an agent", "When the owner sends you a file (it reaches you as media://inbound/…) or names one in the shared folder and asks to give it to a company agent, propose it with this tool: to (the agent's ID or name), file (exactly as you received it: media://inbound/… or the path of the attached file, e.g. …/media/inbound/openclaw-staged-…/input-ТЗ---….pdf; or the file's path in the shared folder, e.g. Входящие/ТЗ.pdf), name (optional, a clear file name) and instruction (what the owner wants the agent to do with it, in the owner's words). The panel saves the file to the owner's «Входящие» and asks the owner to confirm with a button; only then the agent gets a read-only copy and the instruction. You never give access yourself.", shareParameters, "share", "main"), { names: [SHARE], optional: true });
+  api.registerTool(tool(SHARE, "Give the owner's file to an agent", "When the owner sends you a file (it reaches you as media://inbound/…) or names one in the shared folder and asks to give it to a company agent, propose it with this tool: to (the agent's ID or name), file (exactly as you received it: media://inbound/… or the path of the attached file, e.g. …/media/inbound/openclaw-staged-…/input-ТЗ---….pdf; or the file's path in the shared folder, e.g. Входящие/ТЗ.pdf), name (optional, a clear file name) and instruction (what the owner wants the agent to do with it, in the owner's words). The panel saves the file to the owner's «Входящие» and asks the owner to confirm with a button; only then the agent gets a read-only copy and the instruction. You never give access yourself. The tool returns the panel's answer: pass it to the owner as is; if it lists several agents, ask the owner in a normal message which one and call the tool again with that ID.", shareParameters, "share", "main"), { names: [SHARE], optional: true });
 
   registerOwnerCommand(api, { spoolDir, now });
 

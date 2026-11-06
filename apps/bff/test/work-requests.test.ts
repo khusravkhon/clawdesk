@@ -189,10 +189,12 @@ describe("company requests", () => {
     const patch = requestsPluginPatch(config, ["main", "dev", "strict"]) as Record<string, any>;
     expect(patch.plugins.entries["clawdesk-requests"]).toEqual({ enabled: true, config: { allowedAgentIds: ["dev", "main", "strict"] } });
     expect(patch.plugins.load.paths).toEqual(["/p/ask", "/usr/local/share/clawdesk/plugins/clawdesk-requests"]);
-    expect(patch.agents.entries.dev.tools).toEqual({ alsoAllow: ["clawdesk_ask_main", "clawdesk_request_up", "clawdesk_request_reply", "clawdesk_task_report", "clawdesk_task_review"] });
-    expect(patch.agents.entries.strict.tools).toEqual({ allow: ["read", "clawdesk_request_up", "clawdesk_request_reply", "clawdesk_task_report", "clawdesk_task_review"] });
+    expect(patch.agents.entries.dev.tools).toEqual({ alsoAllow: ["clawdesk_ask_main", "clawdesk_request_up", "clawdesk_request_reply", "clawdesk_task_report", "clawdesk_task_review"], deny: ["ask_user"] });
+    expect(patch.agents.entries.strict.tools).toEqual({ allow: ["read", "clawdesk_request_up", "clawdesk_request_reply", "clawdesk_task_report", "clawdesk_task_review"], deny: ["ask_user"] });
     // Only the main agent proposes giving the owner's file (seen live: without it in the policy the tool never showed).
-    expect(patch.agents.entries.main.tools).toEqual({ alsoAllow: ["clawdesk_request_up", "clawdesk_request_reply", "clawdesk_task_report", "clawdesk_task_review", "clawdesk_share_file"] });
+    expect(patch.agents.entries.main.tools).toEqual({ alsoAllow: ["clawdesk_request_up", "clawdesk_request_reply", "clawdesk_task_report", "clawdesk_task_review", "clawdesk_share_file"], deny: ["ask_user"] });
+    // ask_user waits on a prompt the panel and Telegram do not show; MCP denies already there stay.
+    expect((requestsPluginPatch({ ...config, agents: { entries: { dev: { tools: { deny: ["notion__*"] } } } } }, ["dev"]) as Record<string, any>).agents.entries.dev.tools.deny).toEqual(["notion__*", "ask_user"]);
     const stray = requestsPluginPatch({ ...config, agents: { entries: { dev: { tools: { alsoAllow: ["clawdesk_share_file"] } } } } }, ["dev"]) as Record<string, any>;
     expect(stray.agents.entries.dev.tools.alsoAllow).not.toContain("clawdesk_share_file");
     // An install that already had the four tools gets the fifth for main on the next sync.
@@ -202,13 +204,13 @@ describe("company requests", () => {
     expect(patch.tools).toEqual({ sandbox: { tools: { alsoAllow: ["clawdesk-requests"] } } });
     expect((requestsPluginPatch({ ...config, tools: { sandbox: { tools: { allow: ["read"] } } } }, ["main"]) as Record<string, any>).tools.sandbox.tools).toEqual({ allow: ["read", "clawdesk-requests"] });
     expect((requestsPluginPatch({ ...config, tools: { sandbox: { tools: { deny: ["clawdesk-requests"] } } } }, ["main"]) as Record<string, any>).tools).toBeUndefined();
-    const applied = { tools: patch.tools, agents: { entries: { main: { tools: patch.agents.entries.main.tools }, dev: { tools: patch.agents.entries.dev.tools }, strict: { tools: patch.agents.entries.strict.tools } } }, plugins: { load: patch.plugins.load, entries: patch.plugins.entries } };
+    const applied = { tools: patch.tools, agents: { entries: { main: { tools: patch.agents.entries.main.tools }, dev: { tools: { ...config.agents.entries.dev.tools, ...patch.agents.entries.dev.tools } }, strict: { tools: patch.agents.entries.strict.tools } } }, plugins: { load: patch.plugins.load, entries: patch.plugins.entries } };
     expect(requestsPluginPatch(applied, ["main", "dev", "strict"])).toBeNull();
     // A deleted agent stays in the allowlist (no plugin change right after a delete); personal mode clears it.
     expect(requestsPluginPatch(applied, ["main", "dev"])).toBeNull();
     const personal = requestsPluginPatch(applied, [], false) as Record<string, any>;
     expect(personal.plugins.entries["clawdesk-requests"].config.allowedAgentIds).toEqual([]);
-    expect(personal.agents.entries.dev.tools).toEqual({ alsoAllow: ["clawdesk_ask_main"] });
+    expect(personal.agents.entries.dev.tools).toEqual({ alsoAllow: ["clawdesk_ask_main"], deny: [] });
     expect(requestsPluginPatch({}, [], false)).toBeNull();
   });
 });

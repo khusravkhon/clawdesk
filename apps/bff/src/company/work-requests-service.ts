@@ -47,7 +47,15 @@ export type OwnerTelegram = {
 const BUTTON_LABEL = { grant: "Выдать доступ", deny: "Отказать", cancel: "Закрыть без ответа" } as const;
 /** Applies and checks a grant (AccessService.grant); returns where the agent finds the resource. */
 export type GrantPort = (request: GrantResourceRequest, by: string) => Promise<{ resource: string; access: ResourceAccess; path: string | null }>;
-export type RequestsBridge = { requestsSpool(): Promise<{ entries: SpoolEntry[]; rejected: string[] }>; requestsAck(ids: string[]): Promise<unknown> };
+export type RequestsBridge = {
+  requestsSpool(): Promise<{ entries: SpoolEntry[]; rejected: string[] }>;
+  requestsAck(ids: string[]): Promise<unknown>;
+  /** The answer for a tool call still waiting for it (clawdesk_share_file); absent: it only comes as a message. */
+  requestsResult?(id: string, text: string): Promise<unknown>;
+  requestsResultTake?(id: string): Promise<{ existed: boolean }>;
+};
+/** How long the share tool waits for the panel's answer before the panel delivers it as a message instead. */
+export const SHARE_WAIT_MS = 25_000;
 /** The owner's files (BridgeClient): where a file the owner sent to the bot or chat is saved before it is proposed. */
 export type OwnerFilesPort = { ownerFileStore(inbound: string, name?: string): Promise<{ path: string }>; ownerFiles(): Promise<{ files: { path: string }[] }> };
 
@@ -178,7 +186,9 @@ export class WorkRequestsService {
       if (entry.type === "share") {
         if (!this.deps.db.select().from(workRequestSpool).where(eq(workRequestSpool.id, id)).get()) {
           const outcome = await this.#share(id, entry);
-          this.deps.db.insert(workRequestSpool).values({ id, agentId: "main", outcome: outcome.outcome, notifyText: outcome.notify, createdAt: this.#now() }).onConflictDoNothing().run();
+          // The tool call is waiting for this answer; a message follows only if it does not take it in time.
+          if (outcome.notify) await bridge.requestsResult?.(id, outcome.notify).catch(() => undefined);
+          this.deps.db.insert(workRequestSpool).values({ id, agentId: "main", outcome: `share:${outcome.outcome}`, notifyText: outcome.notify, createdAt: this.#now() }).onConflictDoNothing().run();
         }
         done.push(id);
         continue;
@@ -575,6 +585,14 @@ export class WorkRequestsService {
     const notes = db.select().from(workRequestSpool).where(and(isNull(workRequestSpool.deliveredAt), lt(workRequestSpool.attempts, MAX_ATTEMPTS))).limit(50).all().filter((note) => note.notifyText && AGENT.test(note.agentId));
     for (const note of send ? notes : []) {
       try {
+        if (note.outcome.startsWith("share:") && this.deps.bridge?.requestsResultTake) {
+          // The share tool may have taken the answer already (the agent has it); wait out its time first.
+          if (this.#now() - note.createdAt < SHARE_WAIT_MS) continue;
+          if (!(await this.deps.bridge.requestsResultTake(note.id)).existed) {
+            db.update(workRequestSpool).set({ deliveredAt: this.#now(), attempts: note.attempts + 1 }).where(eq(workRequestSpool.id, note.id)).run();
+            continue;
+          }
+        }
         await send!(note.agentId, note.notifyText!, `clawdesk-request-note-${note.id}`);
         db.update(workRequestSpool).set({ deliveredAt: this.#now(), attempts: note.attempts + 1 }).where(eq(workRequestSpool.id, note.id)).run();
         sent++;

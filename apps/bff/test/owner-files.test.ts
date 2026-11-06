@@ -121,6 +121,30 @@ describe("owner files", () => {
     expect(requests.list().requests).toHaveLength(1);
   });
 
+  it("the waiting share tool gets the panel's answer; a message follows only when it did not take it in time", async () => {
+    let clock = 1000;
+    const results = new Map<string, string>();
+    const quick = new WorkRequestsService({
+      db, companyMode: () => true, files: { ownerFiles: async () => ({ files: [{ path: "Входящие/ТЗ.pdf" }] }), ownerFileStore: async () => ({ path: "x" }) }, now: () => clock,
+      bridge: {
+        requestsSpool: async () => ({ entries: [...spool], rejected: [] }), requestsAck: async (ids) => { spool = spool.filter((item) => !ids.includes(item.id as string)); },
+        requestsResult: async (id, text) => { results.set(id, text); }, requestsResultTake: async (id) => ({ existed: results.delete(id) }),
+      },
+      send: async (agentId, message) => { sent.push({ agentId, message }); },
+    });
+    spool.push({ id: "a".repeat(32), type: "share", agentId: "main", to: "dev", file: "Входящие/ТЗ.pdf", instruction: "Прочитай" });
+    spool.push({ id: "b".repeat(32), type: "share", agentId: "main", to: "никто", file: "Входящие/ТЗ.pdf", instruction: "Прочитай" });
+    await quick.tick();
+    expect(results.get("a".repeat(32))).toContain("REQ-001: предложение передать «ТЗ.pdf»");
+    expect(sent.filter((item) => item.agentId === "main")).toEqual([]);
+    results.delete("a".repeat(32)); // the tool took this one; the other one it did not
+    clock += 30_000;
+    await quick.tick();
+    const toMain = sent.filter((item) => item.agentId === "main").map((item) => item.message);
+    expect(toMain).toHaveLength(1);
+    expect(toMain[0]).toContain("агент «никто» не найден");
+  });
+
   it("refuses proposals from other agents, for unknown agents or files, twice, and an agent asking for a file itself", async () => {
     spool.push({ id: "b".repeat(32), type: "share", agentId: "analyst", to: "dev", file: "Входящие/ТЗ.pdf", instruction: "x" });
     spool.push({ id: "c".repeat(32), type: "share", agentId: "main", to: "никто", file: "Входящие/ТЗ.pdf", instruction: "x" });
