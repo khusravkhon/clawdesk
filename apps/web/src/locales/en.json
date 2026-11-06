@@ -76,7 +76,7 @@
     "allTeams": "Manage teams",
     "teamCount": "Teams: {count}",
     "teamDepartment": "Department for {name}",
-    "scope": "This screen manages organization only. Assignments do not change permissions, schedules or existing agent communication.",
+    "scope": "This screen manages the company's structure. Agents' requests follow it: team lead, department manager, main agent, owner. Assigning a manager or moving a team does not change agents' access or schedules.",
     "offline": "Gateway unavailable. Organization is saved, but manager availability is unverified. New manager assignments require a connection.",
     "managerHint": "Choose an available independent agent. The company lead and project team members cannot manage a department.",
     "createAgent": "Create agent",
@@ -2085,7 +2085,7 @@
       "cancel": "Close without answer",
       "grant": "Grant access"
     },
-    "limits": "First version limits: no team lead level yet; at most four transitions; one open request of a kind per subject and up to five open per agent; one day to answer, after which the work stays blocked. Requests do not grant access to documents or services yet. Telegram messages come in a later stage.",
+    "limits": "Limits: at most four transitions; one open request of a kind per subject and up to five open per agent; one day to answer, after which the work stays blocked. Only the owner grants access to a folder, document or file — in the panel or with a button in Telegram.",
     "failed": "The action failed.",
     "errors": {
       "request_missing": "Request not found.",
@@ -2491,6 +2491,7 @@
     },
     "powers": {
       "title": "What the agent can technically do",
+      "hint": "These come from the panel's settings — sandbox, folders, access, place in the structure. The text above does not change them.",
       "lead": "Team lead",
       "sandbox": "Runs in a sandbox",
       "noSandbox": "Runs without a sandbox",
