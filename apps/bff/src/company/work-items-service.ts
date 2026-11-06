@@ -294,6 +294,7 @@ function leadMessage(label: string, executor: string, row: Row, result: string):
     `Что нужно было сделать: ${row.description}`,
     `Критерии приёмки: ${row.criteria}`,
     `Результат: ${result}`,
+    "Рабочая папка участника тебе не видна: суди по тексту результата. Если в нём только путь к файлу, верни задачу и попроси вставить в отчёт само содержание.",
     "",
     `Реши инструментом clawdesk_task_review: taskId «${label}», decision accept (что проверил) или return (что исправить). Владелец тоже может решить сам.`,
   ].join("\n");
@@ -307,7 +308,7 @@ function startMessage(label: string, row: Row): string {
     row.deadlineAt ? `Срок: ${new Date(row.deadlineAt).toISOString().slice(0, 16).replace("T", " ")} UTC.` : null,
     row.returnComment ? `Работу вернули с замечанием: ${row.returnComment}` : null,
     "",
-    `Когда закончишь, сообщи результат инструментом clawdesk_task_report: taskId «${label}», status done и что сделано (где посмотреть результат), или status failed и почему не получилось. «Сделано» без результата не засчитывается; принимает тимлид твоей команды или владелец.`,
+    `Когда закончишь, сообщи результат инструментом clawdesk_task_report: taskId «${label}», status done и что сделано — сам результат текстом (или главное из файла и путь к нему: тимлид и владелец твою рабочую папку не видят), или status failed и почему не получилось. «Сделано» без результата не засчитывается; принимает тимлид твоей команды или владелец.`,
     `Если чего-то не хватает (сведений, решения, доступа), подай обращение clawdesk_request_up с taskRef «${label}»: задача подождёт ответа и продолжится, когда он придёт.`,
   ].filter((line): line is string => typeof line === "string").join("\n");
 }

@@ -71,7 +71,8 @@ async function assign(id: string, departmentId: string | null, revision: number)
 /** Stage 4: the team's lead — one of its members or a standalone agent; requests of the team reach it first. */
 const leadOptions = (team: CompanyDto["teams"][number]) => [
   ...team.members.map((member) => ({ label: member.name, value: member.id })),
-  ...(data.value?.agents ?? []).filter((agent) => !team.departmentId || agent.departmentId === team.departmentId).map((agent) => ({ label: `${agent.name} · ${t("company.standaloneAgent")}`, value: agent.id })),
+  // A standalone agent of the team's department or of no department: a lead made at company level counts too.
+  ...(data.value?.agents ?? []).filter((agent) => !team.departmentId || !agent.departmentId || agent.departmentId === team.departmentId).map((agent) => ({ label: `${agent.name} · ${t("company.standaloneAgent")}`, value: agent.id })),
 ];
 async function assignLead(id: string, agentId: string | null, revision: number): Promise<void> {
   saving.value = true;
