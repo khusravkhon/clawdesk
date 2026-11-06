@@ -18,6 +18,15 @@ COPY fetch-verified.mjs /tmp/fetch-verified.mjs
 RUN node /tmp/fetch-verified.mjs https://github.com/openclaw/gogcli/releases/download/v${GOG_VERSION}/gogcli_${GOG_VERSION}_linux_amd64.tar.gz ${GOG_SHA256} /tmp/gog.tgz
 RUN mkdir /tmp/gog && tar xzf /tmp/gog.tgz -C /tmp/gog && install -m 0755 /tmp/gog/gog /usr/local/bin/gog
 
+# GitHub CLI: OpenClaw's GitHub sign-in for an agent ("Источники данных → GitHub") stores the token in a gh
+# profile (`gh auth login --with-token`); without gh every approved sign-in ends in setup_failed. Pinned and checksummed.
+FROM node:24-bookworm-slim AS gh
+ARG GH_VERSION=2.103.0
+ARG GH_SHA256=fdd768eb70f6409f80fcfa9f3a1c0adf0fc98d827ab3ce0bed2ac22762c5d786
+COPY fetch-verified.mjs /tmp/fetch-verified.mjs
+RUN node /tmp/fetch-verified.mjs https://github.com/cli/cli/releases/download/v${GH_VERSION}/gh_${GH_VERSION}_linux_amd64.tar.gz ${GH_SHA256} /tmp/gh.tgz
+RUN mkdir /tmp/gh && tar xzf /tmp/gh.tgz -C /tmp/gh && install -m 0755 /tmp/gh/gh_${GH_VERSION}_linux_amd64/bin/gh /usr/local/bin/gh
+
 FROM ${OPENCLAW_IMAGE}:${OPENCLAW_VERSION}
 ARG OPENCLAW_VERSION
 # What this image runs, for the panel and for init.sh (deploy/scripts/openclaw-choice.sh).
@@ -29,6 +38,7 @@ COPY --from=docker-cli /usr/local/bin/docker /usr/local/libexec/docker
 COPY --from=docker-cli /usr/local/libexec/docker/cli-plugins/docker-buildx /usr/local/lib/docker/cli-plugins/docker-buildx
 COPY --chmod=0755 docker-mountpoints.sh /usr/local/bin/docker
 COPY --from=gog /usr/local/bin/gog /usr/local/bin/gog
+COPY --from=gh /usr/local/bin/gh /usr/local/bin/gh
 # ClawDesk bridge: OpenClaw CLI steps without an RPC (MCP sign-in), for the panel, on loopback.
 COPY --chmod=0644 clawdesk-bridge.mjs clawdesk-backup.mjs clawdesk-teams.mjs clawdesk-oauth.mjs clawdesk-audio.mjs clawdesk-agent-folders.mjs clawdesk-file-sync.mjs clawdesk-video.mjs clawdesk-claude.mjs clawdesk-skills.mjs /usr/local/lib/
 COPY --chmod=0644 clawdesk-memory.mjs openclaw.supported clawdesk-openclaw-update.mjs /usr/local/lib/
