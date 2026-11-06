@@ -100,6 +100,25 @@ describe("agent charters", () => {
     expect(files.get("dev")).toContain("Не удалять.");
   });
 
+  it("tells the running session each new version, once, since OpenClaw reads AGENTS.md only at session start", async () => {
+    const sent: { agentId: string; message: string; key: string }[] = [];
+    service = new AgentCharterService({ db, gateway, logger: pino({ level: "silent" }), notify: async (agentId, message, key) => { sent.push({ agentId, message, key }); } });
+    const requestId = randomUUID();
+    const tightened = fields({ forbidden: DEFAULT_CHARTER.forbidden + "\nНе называть конкурентов." });
+    await service.save("dev", { requestId, baseVersion: 0, fields: tightened, note: "" });
+    await service.save("dev", { requestId, baseVersion: 0, fields: tightened, note: "" });
+    expect(sent).toHaveLength(1);
+    expect(sent[0]).toMatchObject({ agentId: "dev", key: "clawdesk-charter-dev-1" });
+    expect(sent[0]!.message).toContain("действует версия 1");
+    expect(sent[0]!.message).toContain("Не называть конкурентов.");
+    expect(sent[0]!.message).not.toContain("<!--");
+    await service.restore("dev", { requestId: randomUUID(), baseVersion: 1, version: 1 });
+    expect(sent.map((item) => item.key)).toEqual(["clawdesk-charter-dev-1", "clawdesk-charter-dev-2"]);
+    // A failed message does not fail the save: the file carries it to the next session.
+    service = new AgentCharterService({ db, gateway, logger: pino({ level: "silent" }), notify: async () => { throw new Error("offline"); } });
+    expect((await service.save("dev", { requestId: randomUUID(), baseVersion: 2, fields: tightened, note: "смена" })).version).toBe(3);
+  });
+
   it("replaces only its own block in AGENTS.md", () => {
     const block = charterBlock(2, fields({ mustDo: "Отвечать" }));
     const text = withBlock("A\n\n" + charterBlock(1, DEFAULT_CHARTER) + "\n\nB", block);

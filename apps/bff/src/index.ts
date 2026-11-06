@@ -89,7 +89,10 @@ const workItems = new WorkItemsService({
   send: async (agentId, message, idempotencyKey) => { await gateway.request("chat.send", { sessionKey: mainSessionKey(agentId), agentId, message, idempotencyKey }); },
 });
 // Stage 4: agents' charters, written into AGENTS.md and put back when the file no longer matches.
-const charters = new AgentCharterService({ db, gateway, logger });
+const charters = new AgentCharterService({
+  db, gateway, logger,
+  notify: async (agentId, message, idempotencyKey) => { await gateway.request("chat.send", { sessionKey: mainSessionKey(agentId), agentId, message, idempotencyKey }); },
+});
 // Stage 9: runs from the Gateway's events plus tasks and requests → one state per agent (list and office).
 const runTracker = new RunTracker();
 const activityListeners = new Set<() => void>();
