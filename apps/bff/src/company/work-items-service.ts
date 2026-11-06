@@ -260,7 +260,7 @@ export class WorkItemsService {
     const by = this.#name(agentId);
     if (entry.decision === "accept") {
       this.#set(tx, row, { status: "done" });
-      this.#event(tx, row.id, "accepted", agentId, comment, { agentId: row.executorAgentId, text: `Тимлид ${by} принял задачу ${label} («${row.title}»). ${comment}` });
+      this.#event(tx, row.id, "accepted", agentId, comment, { agentId: row.executorAgentId, text: `${/^тимлид/iu.test(by) ? by : `Тимлид ${by}`} принял задачу ${label} («${row.title}»). ${comment}` });
       return { outcome: `accepted:${label}`, notify: `${label} принята. Исполнитель узнает об этом.` };
     }
     this.#set(tx, row, { returnComment: `${by}: ${comment}` });

@@ -67,7 +67,7 @@ describe("company tasks", () => {
     review("lead", "WI-001", "accept");
     await tick();
     expect(status()).toEqual({ "WI-001": "done" });
-    expect(to("writer").at(-1)).toContain("Тимлид Тимлид принял задачу WI-001");
+    expect(to("writer").at(-1)).toContain("Тимлид принял задачу WI-001");
     expect(items.list().items[0]!.events.map((event) => event.kind)).toEqual(expect.arrayContaining(["reported", "returned", "accepted"]));
     // Without a lead the owner accepts, as before.
     task("Справка", "analyst");

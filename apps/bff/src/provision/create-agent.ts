@@ -332,10 +332,16 @@ function loadJuniorTemplate(db: Db, req: CreateAgentRequest, forTeam: boolean, o
   return template;
 }
 
+/** Russian and Tajik letters in Latin, so «Соцсети» gives "socseti" and not the fallback "agent". */
+const CYRILLIC: Record<string, string> = {
+  а: "a", б: "b", в: "v", г: "g", д: "d", е: "e", ё: "e", ж: "zh", з: "z", и: "i", й: "y", к: "k", л: "l", м: "m", н: "n", о: "o", п: "p", р: "r", с: "s", т: "t", у: "u", ф: "f", х: "h", ц: "c", ч: "ch", ш: "sh", щ: "sch", ъ: "", ы: "y", ь: "", э: "e", ю: "yu", я: "ya",
+  ғ: "gh", ӣ: "i", қ: "q", ӯ: "u", ҳ: "h", ҷ: "j",
+};
+
 export function slugBase(template: Pick<LoadedTemplate, "id">, displayName: string): string {
   // Custom agents and the owner's own templates are named after the agent.
   if (template.id !== "custom" && !template.id.startsWith("my-")) return template.id;
-  const latin = displayName
+  const latin = [...displayName.toLowerCase()].map((char) => CYRILLIC[char] ?? char).join("")
     .normalize("NFKD")
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, "-")
