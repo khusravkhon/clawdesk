@@ -299,6 +299,28 @@ export class BridgeClient {
     return this.#call("POST", "/google/doc/list", { agentId });
   }
 
+  /** The owner's files in the shared folder (deploy/clawdesk-owner-files.mjs). */
+  ownerFiles(): Promise<{ files: { path: string; size: number; modifiedAt: number }[] }> {
+    return this.#call("GET", "/owner-files/list", undefined, 30_000);
+  }
+  /** A file sent to the bot or the chat (media://inbound/<id>) saved into «Входящие»; returns its path there. */
+  ownerFileStore(inbound: string, name?: string): Promise<{ path: string; size: number; sha: string }> {
+    return this.#call("POST", "/owner-files/store", { inbound, ...(name ? { name } : {}) }, 60_000);
+  }
+  ownerFileUpload(name: string, base64: string): Promise<{ path: string; size: number; sha: string }> {
+    return this.#call("POST", "/owner-files/upload", { name, base64 }, 120_000);
+  }
+  /** One file as a read-only copy in the agent's inbox (/workspace/inbox/…). */
+  ownerFileCopy(agentId: string, file: string): Promise<{ path: string; size: number; sha: string; copiedAt: number }> {
+    return this.#call("POST", "/owner-files/copy", { agentId, file }, 60_000);
+  }
+  ownerFileRemove(agentId: string, file: string): Promise<{ removed: true }> {
+    return this.#call("POST", "/owner-files/remove", { agentId, file });
+  }
+  ownerFileCopies(agentId: string): Promise<{ copies: { file: string; sha: string }[] }> {
+    return this.#call("POST", "/owner-files/copies", { agentId });
+  }
+
   async folderSyncStatus(): Promise<FolderSyncStatusesDto> {
     return FolderSyncStatusesDto.parse(await this.#call("GET", "/files/sync-status", undefined, 5_000));
   }

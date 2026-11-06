@@ -2,6 +2,7 @@ import { randomBytes, randomUUID } from "node:crypto";
 import { normalizeResourceRef, ResourceRef, type GrantResourceRequest, type OwnerRequestAction, type ResourceAccess, type WorkRequestDto, type WorkRequestEventDto, type WorkRequestLevelKind, type WorkRequestsDto } from "@clawdesk/shared";
 import { and, asc, desc, eq, inArray, isNull, lt } from "drizzle-orm";
 import type { Db } from "../db/client.js";
+import { fileMessage } from "./access-service.js";
 import { agents, companyAgentAssignments, companyProjects, departmentManagers, departments, teams, workRequestButtons, workRequestEvents, workRequests, workRequestSpool, channelBindings } from "../db/schema.js";
 
 // Stage 6: requests up the company structure. Agents file them through the clawdesk-requests plugin, which
@@ -26,7 +27,7 @@ export class WorkRequestError extends Error {
 type Level = { kind: WorkRequestLevelKind; agentId: string | null };
 type Row = typeof workRequests.$inferSelect;
 type Tx = Pick<Db, "select" | "insert" | "update">;
-type SpoolEntry = { decision?: unknown; comment?: unknown; id?: unknown; type?: unknown; agentId?: unknown; kind?: unknown; subject?: unknown; details?: unknown; taskRef?: unknown; resource?: unknown; access?: unknown; requestId?: unknown; action?: unknown; text?: unknown; taskId?: unknown; status?: unknown; result?: unknown; token?: unknown; senderId?: unknown };
+type SpoolEntry = { decision?: unknown; comment?: unknown; id?: unknown; type?: unknown; agentId?: unknown; kind?: unknown; subject?: unknown; details?: unknown; taskRef?: unknown; resource?: unknown; access?: unknown; requestId?: unknown; action?: unknown; text?: unknown; taskId?: unknown; status?: unknown; result?: unknown; token?: unknown; senderId?: unknown; to?: unknown; file?: unknown; name?: unknown; instruction?: unknown };
 /** The hooks of the company tasks (WorkItemsService), called in the same transaction as the request change. */
 export type TaskHooks = {
   requestFiled(tx: Tx, request: Row): void;
@@ -47,6 +48,8 @@ const BUTTON_LABEL = { grant: "Выдать доступ", deny: "Отказат
 /** Applies and checks a grant (AccessService.grant); returns where the agent finds the resource. */
 export type GrantPort = (request: GrantResourceRequest, by: string) => Promise<{ resource: string; access: ResourceAccess; path: string | null }>;
 export type RequestsBridge = { requestsSpool(): Promise<{ entries: SpoolEntry[]; rejected: string[] }>; requestsAck(ids: string[]): Promise<unknown> };
+/** The owner's files (BridgeClient): where a file the owner sent to the bot or chat is saved before it is proposed. */
+export type OwnerFilesPort = { ownerFileStore(inbound: string, name?: string): Promise<{ path: string }>; ownerFiles(): Promise<{ files: { path: string }[] }> };
 
 export const REQUEST_TTL_MS = 24 * 60 * 60_000;
 export const MAX_HOPS = 4;
@@ -71,6 +74,8 @@ export class WorkRequestsService {
     telegram?: OwnerTelegram;
     /** For the owner's "grant" button (AccessService.grant). */
     grant?: GrantPort;
+    /** The owner's files, for the main agent's proposals to give one to an agent (clawdesk_share_file). */
+    files?: OwnerFilesPort;
     /** Company tasks (WorkItemsService): blocked by a request with taskRef WI-…, unblocked when it is decided. */
     tasks?: TaskHooks;
     now?: () => number;
@@ -160,6 +165,15 @@ export class WorkRequestsService {
         done.push(id);
         continue;
       }
+      // The main agent proposes to give the owner's file to an agent: saving the file is not part of the transaction.
+      if (entry.type === "share") {
+        if (!this.deps.db.select().from(workRequestSpool).where(eq(workRequestSpool.id, id)).get()) {
+          const outcome = await this.#share(id, entry);
+          this.deps.db.insert(workRequestSpool).values({ id, agentId: "main", outcome: outcome.outcome, notifyText: outcome.notify, createdAt: this.#now() }).onConflictDoNothing().run();
+        }
+        done.push(id);
+        continue;
+      }
       this.deps.db.transaction((tx) => {
         if (tx.select().from(workRequestSpool).where(eq(workRequestSpool.id, id)).get()) return;
         const agentId = typeof entry.agentId === "string" && AGENT.test(entry.agentId) ? entry.agentId : "?";
@@ -189,7 +203,7 @@ export class WorkRequestsService {
     if (!kind || !subject || !details || taskRef === null) return { outcome: "invalid", notify: "Обращение не принято: неверные поля." };
     // An access request names exactly one resource and a level; nothing else does.
     const named = normalizeResourceRef(entry.resource);
-    const resource = kind === "access" && ResourceRef.safeParse(named).success ? named as string : null;
+    const resource = kind === "access" && ResourceRef.safeParse(named).success && !String(named).startsWith("file:") ? named as string : null;
     const access = kind === "access" && (entry.access === "read" || entry.access === "write") ? entry.access : null;
     if (kind === "access" ? !resource || !access : entry.resource !== undefined || entry.access !== undefined) return { outcome: "invalid", notify: "Обращение не принято: для доступа укажи resource (folder:<папка>, mcp:<сервер> или gdoc:<ссылка на Google-документ>) и access (read или write)." };
     const key = subjectKey(subject);
@@ -208,6 +222,55 @@ export class WorkRequestsService {
     this.deps.tasks?.requestFiled(tx, tx.select().from(workRequests).where(eq(workRequests.id, created.id)).get()!);
     const label = code(created.number);
     return { outcome: `created:${label}`, notify: `Обращение ${label} принято и передано: ${this.#name(route[target]!.agentId)}. Ответ придёт в этот чат; повторно не отправляй.` };
+  }
+
+  /** The agent a proposal names: its ID, or its exact name if only one company agent has it. */
+  #agentFor(value: string | null): { id: string; name: string } | null {
+    if (!value) return null;
+    const company = this.deps.db.select({ id: agents.id, name: agents.displayName, role: agents.role }).from(agents).where(inArray(agents.role, ["specialist", "team_member"])).all();
+    const byId = company.find((agent) => agent.id === value);
+    if (byId) return byId;
+    const named = company.filter((agent) => agent.name.toLocaleLowerCase() === value.toLocaleLowerCase());
+    return named.length === 1 ? named[0]! : null;
+  }
+
+  /**
+   * clawdesk_share_file: the main agent proposes to give the owner's file to an agent. The file is saved into
+   * «Входящие» first (OpenClaw prunes its inbound media), then a request goes straight to the owner with the
+   * buttons; the grant on the button copies and checks the file and gives the agent the owner's instruction.
+   */
+  async #share(spoolId: string, entry: SpoolEntry): Promise<{ outcome: string; notify: string | null }> {
+    if (entry.agentId !== "main") return { outcome: "forbidden", notify: null };
+    const files = this.deps.files;
+    if (!files) return { outcome: "unavailable", notify: "Файл не передан: в этой установке нет хранилища файлов владельца." };
+    const to = this.#agentFor(str(entry.to, 80));
+    if (!to) return { outcome: "unknown_agent", notify: `Файл не передан: агент «${String(entry.to ?? "")}» не найден. Укажи ID или точное имя агента компании.` };
+    const instruction = str(entry.instruction, 4000), reference = str(entry.file, 260);
+    if (!instruction || !reference) return { outcome: "invalid", notify: "Файл не передан: нужны to, file и instruction." };
+    let file: string;
+    if (reference.startsWith("media://inbound/")) {
+      try { file = (await files.ownerFileStore(decodeURIComponent(reference.slice("media://inbound/".length)), str(entry.name, 120) ?? undefined)).path; }
+      catch { return { outcome: "file_missing", notify: "Файл не передан: его нет во входящих (возможно, он уже удалён). Попроси владельца прислать его ещё раз." }; }
+    } else {
+      file = reference.replace(/^files\//, "");
+      if (!(await files.ownerFiles().catch(() => ({ files: [] }))).files.some((item) => item.path === file)) return { outcome: "file_missing", notify: `Файл не передан: «${file}» нет в общей папке.` };
+    }
+    const resource = `file:${file}`;
+    if (!ResourceRef.safeParse(resource).success) return { outcome: "invalid", notify: "Файл не передан: недопустимое имя файла." };
+    const name = file.split("/").at(-1)!;
+    return this.deps.db.transaction((tx) => {
+      const same = tx.select().from(workRequests).where(and(eq(workRequests.fromAgentId, to.id), eq(workRequests.resource, resource), inArray(workRequests.status, ["open", "clarify"]))).get();
+      if (same) return { outcome: `duplicate:${code(same.number)}`, notify: `Передать «${name}» агенту ${to.name} уже предложено: ${code(same.number)} ждёт владельца.` };
+      const now = this.#now();
+      const subject = `Файл от владельца: ${name}`.slice(0, 200);
+      const last = tx.select({ number: workRequests.number }).from(workRequests).orderBy(desc(workRequests.number)).get();
+      const row: typeof workRequests.$inferInsert = { id: randomUUID(), number: (last?.number ?? 0) + 1, fromAgentId: to.id, kind: "access", subject, subjectKey: subjectKey(subject), details: instruction, taskRef: "", resource, access: "read", status: "open", route: [{ kind: "owner", agentId: null }], level: 0, hops: 0, deadlineAt: now + REQUEST_TTL_MS, createdAt: now, updatedAt: now, spoolId };
+      tx.insert(workRequests).values(row).run();
+      this.#event(tx, row.id!, "created", "main", `предложение главного агента: ${name} → ${to.name}`);
+      this.#advance(tx, tx.select().from(workRequests).where(eq(workRequests.id, row.id!)).get()!, -1, undefined);
+      const label = code(row.number!);
+      return { outcome: `created:${label}`, notify: `${label}: предложение передать «${name}» агенту ${to.name} отправлено владельцу. Файл сохранён во «Входящие». Владелец подтверждает кнопкой; итог придёт сюда. Повторно не отправляй.` };
+    });
   }
 
   /**
@@ -330,7 +393,8 @@ export class WorkRequestsService {
       const current = tx.select().from(workRequests).where(eq(workRequests.id, id)).get()!;
       const text = `Доступ выдан и проверен: ${granted.resource} (${level})${granted.path ? `, в песочнице: ${granted.path}` : ""}.`;
       this.#set(tx, current, { status: "answered", answerText: text, answeredBy: "owner" });
-      this.#event(tx, id, "granted", "owner", text, { agentId: row.fromAgentId, text: `Владелец выдал доступ по ${label} («${row.subject}»): ${granted.resource}, ${level}.${where} Продолжай работу, которую блокировало обращение.` }, request.requestId);
+      const shared = row.resource!.startsWith("file:");
+      this.#event(tx, id, "granted", "owner", text, { agentId: row.fromAgentId, text: shared ? fileMessage(row.resource!.slice("file:".length), granted.path, row.details) : `Владелец выдал доступ по ${label} («${row.subject}»): ${granted.resource}, ${level}.${where} Продолжай работу, которую блокировало обращение.` }, request.requestId);
       this.#ownerOutcome(tx, current, text);
       return this.#one(tx, id);
     });
@@ -502,6 +566,16 @@ export class WorkRequestsService {
 
 /** What the owner reads in Telegram: who asks, what for, by when; answers with text are in the panel. */
 function ownerMessage(label: string, from: string, row: Row, passed: string[]): string {
+  if (row.resource?.startsWith("file:")) {
+    const file = row.resource.slice("file:".length);
+    return [
+      `${label} · передать файл`,
+      `Главный агент предлагает передать файл «${file.split("/").at(-1)}» агенту ${from} (${row.fromAgentId}), только чтение.`,
+      `Задание: ${row.details.slice(0, 1500)}`,
+      `Файл сохранён в общей папке: ${file}.`,
+      "Кнопки ниже — передать (панель положит агенту копию и проверит её) или отказать.",
+    ].join("\n");
+  }
   const what = row.kind === "access" ? `нужен доступ: ${row.resource}, ${row.access === "read" ? "только чтение" : "чтение и запись"}` : row.kind === "question" ? "нужны сведения" : "нужно решение";
   return [
     `${label} · ${what}`,

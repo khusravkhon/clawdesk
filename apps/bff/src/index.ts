@@ -110,6 +110,8 @@ const requests = new WorkRequestsService({
   db, bridge, companyMode: () => space.mode() === "company", liveAgents: () => liveAgentIds(gateway),
   // Stage 8: requests that reach the owner go to the owner's Telegram too, with buttons the plugin hands back.
   telegram, grant: (request, by) => access.grant(request, by), tasks: workItems,
+  // The main agent proposes to give the owner's file to an agent; the file is saved into «Входящие» first.
+  files: bridge,
   send: async (agentId, message, idempotencyKey) => { await gateway.request("chat.send", { sessionKey: mainSessionKey(agentId), agentId, message, idempotencyKey }); },
 });
 

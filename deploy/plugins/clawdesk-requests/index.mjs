@@ -13,6 +13,7 @@ export const UP = "clawdesk_request_up";
 export const REPLY = "clawdesk_request_reply";
 export const REPORT = "clawdesk_task_report";
 export const REVIEW = "clawdesk_task_review";
+export const SHARE = "clawdesk_share_file";
 const MAX_SPOOL = 500;
 const AGENT = /^[a-z0-9][a-z0-9_-]{0,79}$/;
 const text = (min, max) => ({ type: "string", minLength: min, maxLength: max });
@@ -49,6 +50,16 @@ const reviewParameters = {
     taskId: { type: "string", pattern: "^WI-[0-9]{1,6}$" },
     decision: { type: "string", enum: ["accept", "return"] },
     comment: text(1, 2000),
+  },
+};
+const shareParameters = {
+  type: "object", additionalProperties: false, required: ["to", "file", "instruction"],
+  properties: {
+    to: text(1, 80),
+    // The panel checks the name strictly (clawdesk-owner-files.mjs: fileSegments); here only the shape.
+    file: { type: "string", pattern: "^(media://inbound/[^/]{1,250}|[^/]{1,120}(/[^/]{1,120})?)$" },
+    name: text(1, 120),
+    instruction: text(1, 4000),
   },
 };
 const result = (status, code, extra = {}) => {
@@ -111,9 +122,9 @@ export function registerRequests(api, { spoolDir = path.join(process.env.OPENCLA
     return result("filed", null, { note: "The panel routes this and delivers the answer to your chat. Do not file it again; wait for the message." });
   }
 
-  const tool = (name, label, description, parameters, type) => (ctx) => {
+  const tool = (name, label, description, parameters, type, only) => (ctx) => {
     const owner = identity(ctx);
-    if (!owner || !permitted(owner)) return null;
+    if (!owner || !permitted(owner) || (only && owner.agentId !== only)) return null;
     return {
       name, label, description, parameters,
       execute: async (toolCallId, args) => {
@@ -130,6 +141,9 @@ export function registerRequests(api, { spoolDir = path.join(process.env.OPENCLA
 
   api.registerTool(tool(REVIEW, "Accept or return a team member's task", "As the team lead, decide on a company task WI-… your team member reported as done: accept (the result meets the criteria; say what you checked) or return (with what to fix). Only the lead of the executor's team can decide; the owner can decide too.", reviewParameters, "task_review"), { names: [REVIEW], optional: true });
   api.registerTool(tool(REPORT, "Report a company task", "Report the result of a company task WI-… assigned to you: status done with what was done and where to see it (it goes to the owner's acceptance), or failed with the reason. Done without a result is not accepted. Only the task's executor can report.", reportParameters, "task_report"), { names: [REPORT], optional: true });
+
+  // The owner's files: only the main agent proposes; the owner confirms with a button, the panel copies and checks.
+  api.registerTool(tool(SHARE, "Give the owner's file to an agent", "When the owner sends you a file (it reaches you as media://inbound/…) or names one in the shared folder and asks to give it to a company agent, propose it with this tool: to (the agent's ID or name), file (the media://inbound/… reference as you received it, or the file's path in the shared folder, e.g. Входящие/ТЗ.pdf), name (optional, a clear file name) and instruction (what the owner wants the agent to do with it, in the owner's words). The panel saves the file to the owner's «Входящие» and asks the owner to confirm with a button; only then the agent gets a read-only copy and the instruction. You never give access yourself.", shareParameters, "share", "main"), { names: [SHARE], optional: true });
 
   registerOwnerCommand(api, { spoolDir, now });
 

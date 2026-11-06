@@ -647,8 +647,8 @@
       "s3": "Set up the consent screen",
       "s3text": "Click “Get started”, name it ClawDesk, enter your email, choose “External”.",
       "consent": "Consent screen",
-      "publish": "Publish the app",
-      "publishText": "On the “Audience” page click “Publish app” and confirm. Otherwise Google cuts the access every 7 days. Google review is not needed for personal use.",
+      "publish": "Publish the app or add yourself as a test user",
+      "publishText": "If «Publish app» on the «Audience» page is available, press it. If Google asks for a homepage and privacy policy, stay in «Testing» and add your email under «Test users»: Google then asks to sign in again every 7 days.",
       "audience": "Audience page",
       "s4": "Create an OAuth client",
       "s4text": "Application type: “Desktop app”. Then click “Download JSON”.",
@@ -673,7 +673,9 @@
       "removed": "Google disconnected",
       "confirmRemove": "Disconnect this Google account? The assistant will no longer see your mail and files.",
       "connectedHint": "The assistant works with Google through the gog tool. Its commands go through approvals.",
-      "noGog": "Google is not available on this server — update ClawDesk."
+      "noGog": "Google is not available on this server — update ClawDesk.",
+      "simpler": "Simpler without Google: send the file to the bot in Telegram or upload it in «Company → Documents» and say which agent gets it. Connect Google only if agents should read your mail and Drive themselves.",
+      "advanced": "Connect Google (advanced)"
     },
     "github": {
       "about": "Repositories, issues and pull requests — for the main agent",
@@ -2131,7 +2133,8 @@
       "mcp": "MCP",
       "team-repo": "team repository",
       "project-copy": "project copy",
-      "gdoc": "Google Doc"
+      "gdoc": "Google Doc",
+      "file": "owner's file"
     },
     "level": {
       "read": "read",
@@ -2172,7 +2175,8 @@
     "refreshed": "Copy refreshed",
     "refreshedChanged": "The document changed: the copy was replaced and the agent told.",
     "refreshedSame": "The document has not changed.",
-    "revokeGdoc": "The copy of \"{name}\" will be deleted from {agent}'s workspace. The document in Google does not change. Continue?"
+    "revokeGdoc": "The copy of \"{name}\" will be deleted from {agent}'s workspace. The document in Google does not change. Continue?",
+    "revokeFile": "Take the file «{name}» from «{agent}»? Its copy is deleted from the agent's workspace."
   },
   "workItems": {
     "title": "Company tasks",
@@ -2799,6 +2803,36 @@
       "model_missing": "The main agent's model is unavailable.",
       "existing_workspace_required": "Plans are for an existing project folder.",
       "revision_conflict": "The plan changed — refresh the card."
+    }
+  },
+  "documents": {
+    "title": "Documents",
+    "subtitle": "Files for agents without connecting Google",
+    "howTelegram": "The simplest way: send the file or photo to the bot in Telegram (or to the main agent's chat in the panel) and write whom to give it and what to do, e.g. «give it to the developer, study the spec and plan the work». The main agent proposes it and you get a «Grant access» button.",
+    "howHere": "Or upload a file here and press «Give to an agent». The agent gets a read-only copy; other agents do not see it. Files are in the «Входящие» folder of the shared folder on your computer.",
+    "upload": "Upload a file",
+    "files": "Files",
+    "empty": "No files yet. Send one to the bot or upload it.",
+    "share": "Give to an agent",
+    "shareTitle": "Give «{name}»",
+    "agent": "To",
+    "agentPlaceholder": "A company agent",
+    "instruction": "What to do with the file",
+    "instructionPlaceholder": "E.g. study the spec and plan the work",
+    "shareHint": "The agent gets a read-only copy and this task in its chat. You can take it back here or in «Access».",
+    "shareConfirm": "Give",
+    "cancel": "Cancel",
+    "givenTo": "With {agent}",
+    "uploaded": "«{name}» uploaded to «Входящие».",
+    "shared": "«{name}» given to {agent}: copy checked, task sent.",
+    "revoked": "«{name}» taken back from {agent}.",
+    "failed": "That did not work. Try again.",
+    "errors": {
+      "file_too_large": "The file is larger than 20 MB.",
+      "file_missing": "The file is no longer in the shared folder.",
+      "files_unavailable": "The file store is unavailable right now (is the Gateway restarting?).",
+      "main_folders": "The main agent already sees the shared folder.",
+      "not_applied": "The agent's copy was not confirmed — try again."
     }
   }
 }

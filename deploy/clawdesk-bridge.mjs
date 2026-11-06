@@ -38,6 +38,10 @@
 //   POST /video/cancel       { jobId }        stops that job's worker container
 //   POST /reset              { ownerCode }   factory reset in a helper container; the stack restarts
 //   GET  /openclaw/update                   → { running, supported, offer, status } (see clawdesk-openclaw-update.mjs)
+//   GET  /owner-files/list                  → { files: [{ path, size, modifiedAt }] } the shared folder (see clawdesk-owner-files.mjs)
+//   POST /owner-files/store  { inbound, name? }  a file sent to the bot/chat (media://inbound) into «Входящие» → { path, size, sha }
+//   POST /owner-files/upload { name, base64 }    a file uploaded in the panel into «Входящие»
+//   POST /owner-files/copy | /owner-files/remove { agentId, file }   POST /owner-files/copies { agentId } → { copies: [{ file, sha }] }
 //   POST /openclaw/update    { version }    backup, then a helper container moves the Gateway to that verified OpenClaw
 
 import { spawn } from "node:child_process";
@@ -64,6 +68,7 @@ import { ProjectFolders, ProjectFolderError } from "./clawdesk-project-folders.m
 import { ProjectBuilder } from "./clawdesk-project-builder.mjs";
 import { ProjectWork } from "./clawdesk-project-work.mjs";
 import { GoogleDocCopies } from "./clawdesk-google-docs.mjs";
+import { OwnerFiles } from "./clawdesk-owner-files.mjs";
 import { ProjectTransfer } from "./clawdesk-project-transfer.mjs";
 import { capabilities } from "./clawdesk-capabilities.mjs";
 import { sharedFolderSource } from "./clawdesk-shared-folder.mjs";
@@ -264,6 +269,7 @@ const FILES_IN_GATEWAY = path.join(process.env.OPENCLAW_STATE_DIR || "/var/lib/c
 const projectFolders = new ProjectFolders({ stateDir: process.env.OPENCLAW_STATE_DIR || "/var/lib/clawdesk/openclaw" });
 const projectWork = new ProjectWork({ stateDir: process.env.OPENCLAW_STATE_DIR || "/var/lib/clawdesk/openclaw", configPath: process.env.OPENCLAW_CONFIG_PATH || "/var/lib/clawdesk/openclaw/openclaw.json" });
 const projectTransfer = new ProjectTransfer({ folders: projectFolders });
+const ownerFiles = new OwnerFiles({ stateDir: process.env.OPENCLAW_STATE_DIR || "/var/lib/clawdesk/openclaw", configPath: process.env.OPENCLAW_CONFIG_PATH || "/var/lib/clawdesk/openclaw/openclaw.json" });
 const googleDocs = new GoogleDocCopies({ stateDir: process.env.OPENCLAW_STATE_DIR || "/var/lib/clawdesk/openclaw", configPath: process.env.OPENCLAW_CONFIG_PATH || "/var/lib/clawdesk/openclaw/openclaw.json", gog: (args) => runGog(args, { timeoutMs: 90_000 }) });
 const projectGitHub = new ProjectGitHub({ folders: projectFolders, stateDir: process.env.OPENCLAW_STATE_DIR || "/var/lib/clawdesk/openclaw" });
 const projectBuilder = new ProjectBuilder({ folders: projectFolders, stateDir: process.env.OPENCLAW_STATE_DIR || "/var/lib/clawdesk/openclaw" });
@@ -373,6 +379,16 @@ async function freellmapiReset(body) {
 }
 
 /** A JSON body; most routes take small ones, project files (checks, work copies, transfer) larger. */
+/** Owner files: only the reason code travels back. */
+async function ownerFileCall(run) {
+  try { return { status: 200, body: await run() }; }
+  catch (error) {
+    if (error instanceof ProjectFolderError) return { status: error.status, body: { error: error.code, message: error.code } };
+    if (error?.code === "ENOENT") return { status: 404, body: { error: "file_missing", message: "file_missing" } };
+    throw error;
+  }
+}
+
 function readJson(req, limit = 32_768) {
   return new Promise((resolve, reject) => {
     let raw = "";
@@ -597,6 +613,12 @@ async function handle(req) {
   // P0: what this container can do now (versions and tools), for the capabilities screen.
   if (req.method === "GET" && url.pathname === "/capabilities") return { status: 200, body: await capabilities() };
   if (req.method === "GET" && url.pathname === "/google/status") return googleStatus();
+  if (req.method === "GET" && url.pathname === "/owner-files/list") return ownerFileCall(() => ownerFiles.list());
+  // A file uploaded in the panel: up to 20 MB as base64, so its own body limit.
+  if (req.method === "POST" && url.pathname === "/owner-files/upload") {
+    const body = await readJson(req, 28 * 1024 * 1024);
+    return ownerFileCall(() => ownerFiles.upload(body.name, body.base64));
+  }
   if (req.method === "GET" && url.pathname === "/openclaw/update") return { status: 200, body: await openclawUpdateInfo() };
   if (req.method === "GET" && url.pathname === "/backup/list") return { status: 200, body: { backups: await listBackups() } };
   // Company requests filed by agents (clawdesk-requests plugin): the panel reads, stores, then acknowledges.
@@ -665,6 +687,10 @@ async function handle(req) {
       throw error;
     }
   }
+  if (url.pathname === "/owner-files/store") return ownerFileCall(() => ownerFiles.storeInbound(body.inbound, body.name));
+  if (url.pathname === "/owner-files/copy") return ownerFileCall(() => ownerFiles.copy(body.agentId, body.file));
+  if (url.pathname === "/owner-files/remove") return ownerFileCall(() => ownerFiles.remove(body.agentId, body.file));
+  if (url.pathname === "/owner-files/copies") return ownerFileCall(() => ownerFiles.copies(body.agentId));
   if (url.pathname === "/openclaw/update") {
     try {
       const result = await startOpenClawUpdate(body.version, { identify: () => resetGateway(), backup: () => createBackup("before-update") });
