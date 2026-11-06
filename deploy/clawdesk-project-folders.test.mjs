@@ -3,7 +3,8 @@ import assert from "node:assert/strict";
 import fs from "node:fs/promises";
 import path from "node:path";
 import os from "node:os";
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
+import { readFileSync } from "node:fs";
 import { ProjectFolders, RESTORED_MARKER } from "./clawdesk-project-folders.mjs";
 
 async function fixture(t) {
@@ -73,6 +74,10 @@ test("after a restore the recreated folders are pinned again, once", async (t) =
   const req = request();
   await service.prepare(req);
   await service.prepare(request({ projectId: "project-b", name: "Gone" }));
+  const registryFile = path.join(stateDir, "clawdesk-project-folders.json");
+  const pinned = () => JSON.parse(readFileSync(registryFile, "utf8")).bindings.find((item) => item.projectId === req.projectId).identity;
+  const record = path.join(stateDir, `clawdesk-build-${createHash("sha256").update(req.projectId).digest("hex").slice(0, 32)}.json`);
+  await fs.writeFile(record, JSON.stringify({ identity: pinned(), templateId: "task-board-v1", hashes: {} }));
   // Restore brings the same folder back as a new directory, and a folder may be absent from the copy.
   await fs.cp(path.join(root, req.name), path.join(root, "copy"), { recursive: true });
   await fs.rm(path.join(root, req.name), { recursive: true });
@@ -84,6 +89,8 @@ test("after a restore the recreated folders are pinned again, once", async (t) =
   assert.equal((await service.status(req.projectId)).workspace.state, "ready");
   assert.equal((await service.status("project-b")).workspace.state, "missing");
   await assert.rejects(fs.stat(path.join(stateDir, RESTORED_MARKER)), { code: "ENOENT" });
+  // The builder's record follows the folder, so the app still counts as made by the builder.
+  assert.deepEqual(JSON.parse(await fs.readFile(record, "utf8")), { identity: pinned(), templateId: "task-board-v1", hashes: {} });
   // Without the marker a replacement is still reported.
   await fs.rm(path.join(root, req.name), { recursive: true });
   await fs.mkdir(path.join(root, req.name));

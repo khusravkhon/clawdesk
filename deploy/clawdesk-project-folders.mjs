@@ -1,7 +1,7 @@
 import fs from "node:fs/promises";
 import { constants } from "node:fs";
 import path from "node:path";
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { withDirectoryWithin, withChildDirectoryWithin } from "./clawdesk-file-sync.mjs";
 
 const NAME = /^[\p{L}\p{N}][\p{L}\p{N} _-]{0,59}$/u;
@@ -62,7 +62,21 @@ export class ProjectFolders {
     const marker = `${state}/${RESTORED_MARKER}`;
     if (!(await fs.lstat(marker).catch(() => null))) return registry;
     for (const binding of registry.bindings) {
-      try { binding.identity = await this.#identity(root, binding.name); } catch { /* A missing folder stays missing. */ }
+      let identity;
+      try { identity = await this.#identity(root, binding.name); } catch { continue; /* A missing folder stays missing. */ }
+      // The builder's record names the folder too (clawdesk-project-builder.mjs).
+      const record = `${state}/clawdesk-build-${createHash("sha256").update(binding.projectId).digest("hex").slice(0, 32)}.json`;
+      try {
+        const data = JSON.parse(await fs.readFile(record, "utf8"));
+        if (data.identity === binding.identity) {
+          const temporary = `${record}.${randomUUID()}.tmp`;
+          try {
+            await fs.writeFile(temporary, JSON.stringify({ ...data, identity }), { flag: "wx", mode: 0o600 });
+            await fs.rename(temporary, record);
+          } finally { await fs.unlink(temporary).catch(() => {}); }
+        }
+      } catch { /* No build record: nothing else to update. */ }
+      binding.identity = identity;
     }
     await this.#save(state, registry);
     await fs.unlink(marker);
