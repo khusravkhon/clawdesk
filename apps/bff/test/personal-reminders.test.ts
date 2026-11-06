@@ -39,7 +39,7 @@ describe("fixed owner reminders", () => {
   it("uses only native send with a stable key and confirmed message id, never an agent turn", async () => {
     const h = harness(); const row = create(h.reminders);
     await Promise.all([h.reminders.tick(), h.reminders.tick()]); await h.reminders.tick();
-    expect(h.calls).toEqual([{ method: "send", params: { channel: "telegram", accountId: "default", to: "test-owner", message: row.text, idempotencyKey: `clawdesk-reminder:${row.id}` } }]);
+    expect(h.calls).toEqual([{ method: "send", params: { channel: "telegram", accountId: "default", agentId: "main", to: "test-owner", message: row.text, idempotencyKey: `clawdesk-reminder:${row.id}` } }]);
     expect(h.reminders.list().reminders[0]).toMatchObject({ delivery: "sent", messageId: "42", sentAt: NOW }); h.close();
   });
   it("repeated create is idempotent and changing the payload conflicts", () => {

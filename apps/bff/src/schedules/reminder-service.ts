@@ -105,7 +105,7 @@ export class ReminderService {
       if (!claim.changes) continue;
       try {
         // The native send RPC delivers fixed text and does not invoke an agent turn.
-        const result = await this.deps.gateway.request<{ messageId?: string | number }>("send", { channel: "telegram", accountId: "default", to: target.to, message: row.text, idempotencyKey: `clawdesk-reminder:${row.id}` });
+        const result = await this.deps.gateway.request<{ messageId?: string | number }>("send", { channel: "telegram", accountId: "default", agentId: "main", to: target.to, message: row.text, idempotencyKey: `clawdesk-reminder:${row.id}` });
         if (typeof result?.messageId !== "string" && typeof result?.messageId !== "number") update({ delivery: "unknown", reason: "unconfirmed_response" }, true);
         else update({ delivery: "sent", sentAt: this.#now(), messageId: String(result.messageId), reason: null }, true);
       } catch {

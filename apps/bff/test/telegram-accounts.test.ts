@@ -277,6 +277,8 @@ describe("Telegram bot accounts", () => {
     ]);
     await telegram.sendToOwner("test", "second");
     expect(calls.find((c) => c.method === "send")?.params).toMatchObject({ accountId: "second", to: "42", message: "test" });
+    // OpenClaw 2026.8.35 refuses a send without its agent when several agents exist (seen live).
+    expect((calls.find((c) => c.method === "send")?.params as { agentId?: string }).agentId).toBeTruthy();
     expect((await telegram.status("second")).lastError).toBe("network failure");
     expect((await telegram.status()).running).toBe(true);
   });
@@ -285,7 +287,7 @@ describe("Telegram bot accounts", () => {
     owner();
     await telegram.sendToOwnerWithButtons("REQ-001 · передать файл", [{ label: "Выдать доступ", data: "cdreq:aaaaaaaaaaaaaaaaaaaa", style: "success" }], "key-1");
     const call = calls.filter((c) => c.method === "message.action").at(-1)!;
-    expect(call.params).toEqual({ channel: "telegram", action: "send", accountId: "default", idempotencyKey: "key-1", params: { to: "42", message: "REQ-001 · передать файл", presentation: { blocks: [{ type: "buttons", buttons: [{ label: "Выдать доступ", action: { type: "callback", value: "cdreq:aaaaaaaaaaaaaaaaaaaa" }, style: "success" }] }] } } });
+    expect(call.params).toEqual({ channel: "telegram", action: "send", accountId: "default", agentId: "main", idempotencyKey: "key-1", params: { to: "42", message: "REQ-001 · передать файл", presentation: { blocks: [{ type: "buttons", buttons: [{ label: "Выдать доступ", action: { type: "callback", value: "cdreq:aaaaaaaaaaaaaaaaaaaa" }, style: "success" }] }] } } });
     expect(calls.some((c) => c.method === "send" && "presentation" in (c.params as object))).toBe(false);
     await telegram.sendToTopicWithButtons("-100", "7", "в тему", [{ label: "Отказать", data: "cdreq:bbbbbbbbbbbbbbbbbbbb" }], "key-2");
     expect(calls.filter((c) => c.method === "message.action").at(-1)!.params).toMatchObject({ params: { to: "-100", threadId: "7", message: "в тему" } });
