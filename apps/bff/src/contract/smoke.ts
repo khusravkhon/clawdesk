@@ -24,6 +24,10 @@ import { GatewayService, PANEL_OPERATOR_SCOPES } from "../gateway/gateway-servic
 import { DeviceTokenStore } from "../gateway/token-store.js";
 import { createLogger } from "../lib/logger.js";
 import { PANEL_VERSION } from "../version.js";
+import { telegramSendRequest } from "../telegram/telegram-service.js";
+
+/** The Gateway refusing the call itself, not its delivery: a wrong field, a missing one, no agent named. */
+const SHAPE_REFUSED = /invalid .*params|unexpected property|must have required property|no explicit owner|pass agentid/i;
 
 const PROVIDER = "clawdesk-contract";
 const MODEL = "echo";
@@ -215,6 +219,21 @@ async function main(): Promise<void> {
       const history = await gateway.request<{ messages?: { role: string; content: unknown }[] }>("chat.history", { sessionKey, agentId, limit: 10 });
       assert.ok(Array.isArray(history.messages), "no messages array");
       assert.ok(history.messages.some((m) => m.role === "assistant" && text(m.content).includes(REPLY)), `stub reply not in history: ${text(history.messages).slice(0, 400)}`);
+    });
+
+    // The panel's own Telegram calls, in a Gateway with several agents. Telegram is not connected here, so a
+    // delivery error is expected; a refusal of the call's shape is not (2026.8.35 broke both, unnoticed).
+    await step("send + message.action (Telegram, the panel's params)", async () => {
+      const shapes = [
+        telegramSendRequest("default", agentId!, { to: "100000001", message: "contract" }, [], randomUUID()),
+        telegramSendRequest("default", agentId!, { to: "100000001", message: "contract" }, [{ label: "OK", data: "cdreq:contract", style: "success" }], randomUUID()),
+        telegramSendRequest("default", "main", { to: "-1000000000001", threadId: "7", message: "contract" }, [{ label: "OK", data: "cdreq:contract" }], randomUUID()),
+      ];
+      for (const { method, params } of shapes) {
+        const error = await gateway.request(method, params).then(() => null, (failure: Error) => failure.message);
+        console.log(`    ${method}${(params as { params?: unknown }).params ? " (buttons)" : ""}: ${error ?? "accepted"}`);
+        assert.ok(error === null || !SHAPE_REFUSED.test(error), `${method} refused the panel's call: ${error}`);
+      }
     });
 
     await step("agents.delete", async () => {

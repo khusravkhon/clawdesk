@@ -475,12 +475,8 @@ export class TelegramService {
    * ("unexpected property 'presentation'"), which left every owner request without its message (seen live).
    */
   async #sendWithButtons(accountId: string, agentId: string, target: { to: string; threadId?: string; message: string }, buttons: { label: string; data: string; style?: "success" | "danger" | "primary" }[], idempotencyKey: string): Promise<void> {
-    if (!buttons.length) {
-      // With several agents OpenClaw 2026.8.35 refuses a send that names none ("session key main has no explicit owner").
-      await this.gateway.request("send", { channel: "telegram", accountId, agentId, ...target, idempotencyKey });
-      return;
-    }
-    await this.gateway.request("message.action", { channel: "telegram", action: "send", accountId, agentId, idempotencyKey, params: { ...target, ...presentation(buttons) } });
+    const { method, params } = telegramSendRequest(accountId, agentId, target, buttons, idempotencyKey);
+    await this.gateway.request(method, params);
   }
 
   /** Delivery target for cron jobs, or null when no owner is approved yet. */
@@ -602,6 +598,16 @@ export class TelegramService {
 
 export function telegramDelivery(ownerId: string) {
   return { mode: "announce" as const, channel: "telegram", to: ownerId, bestEffort: true };
+}
+
+/**
+ * The Gateway call for a message to a Telegram chat or topic, with or without buttons. The contract test
+ * (src/contract/smoke.ts) sends exactly these against each OpenClaw version before the panel moves to it.
+ */
+export function telegramSendRequest(accountId: string, agentId: string, target: { to: string; threadId?: string; message: string }, buttons: { label: string; data: string; style?: "success" | "danger" | "primary" }[], idempotencyKey: string): { method: "send" | "message.action"; params: Record<string, unknown> } {
+  // With several agents OpenClaw 2026.8.35 refuses a send that names none ("session key main has no explicit owner").
+  if (!buttons.length) return { method: "send", params: { channel: "telegram", accountId, agentId, ...target, idempotencyKey } };
+  return { method: "message.action", params: { channel: "telegram", action: "send", accountId, agentId, idempotencyKey, params: { ...target, ...presentation(buttons) } } };
 }
 
 function presentation(buttons: { label: string; data: string; style?: "success" | "danger" | "primary" }[]) {
