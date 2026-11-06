@@ -65,7 +65,7 @@ function ghPoll(after: number): void {
       if (res.status === "pending") return ghPoll(res.retryAfterMs);
       gh.value = null;
       if (res.status === "success") message.success(t("sources.github.connected"));
-      else message.error(t(`sources.github.${res.status}`));
+      else message.error(res.reason ? `${t(`sources.github.${res.status}`)} (${res.reason})` : t(`sources.github.${res.status}`));
       await load();
     } catch (e) {
       gh.value = null;
