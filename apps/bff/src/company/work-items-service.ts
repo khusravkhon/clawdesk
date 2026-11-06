@@ -34,6 +34,8 @@ export class WorkItemsService {
     db: Db;
     companyMode: () => boolean;
     send?: (agentId: string, message: string, idempotencyKey: string) => Promise<void>;
+    /** Stops the executor's running turn: a cancelled task is not finished in the background. */
+    abort?: (agentId: string) => Promise<void>;
     now?: () => number;
   }) {}
 
@@ -274,6 +276,8 @@ export class WorkItemsService {
     let sent = 0;
     for (const event of db.select().from(workItemEvents).where(and(isNull(workItemEvents.deliveredAt), lt(workItemEvents.attempts, MAX_ATTEMPTS))).orderBy(asc(workItemEvents.id)).limit(50).all().filter((item) => item.notifyAgentId)) {
       try {
+        // Only on the first attempt: a retry later could stop the turn of the next task.
+        if (event.kind === "cancelled" && event.attempts === 0) await this.deps.abort?.(event.notifyAgentId!).catch(() => undefined);
         await send(event.notifyAgentId!, event.notifyText!, `clawdesk-task-event-${event.id}`);
         db.update(workItemEvents).set({ deliveredAt: this.#now(), attempts: event.attempts + 1 }).where(eq(workItemEvents.id, event.id)).run();
         sent++;

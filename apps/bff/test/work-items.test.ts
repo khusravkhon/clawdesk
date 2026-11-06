@@ -142,6 +142,26 @@ describe("company tasks", () => {
     expect(items.list().items[0]!.status).toBe("running");
   });
 
+  it("cancelling a task in work stops the executor's running turn once, before telling it", async () => {
+    const log: string[] = [];
+    let failSend = true;
+    const service = new WorkItemsService({
+      db, companyMode: () => true, now: () => clock,
+      send: async (agentId, message) => { if (failSend && message.includes("отменил")) { failSend = false; throw new Error("offline"); } log.push(`send ${agentId}: ${message.slice(0, 30)}`); },
+      abort: async (agentId) => { log.push(`abort ${agentId}`); },
+    });
+    const a = service.create({ requestId: randomUUID(), title: "A", description: "d", criteria: "c", executorAgentId: "analyst", deadlineAt: null, start: true });
+    await service.deliver();
+    service.act(a.id, { requestId: randomUUID(), revision: service.list().items[0]!.revision, action: "cancel", comment: "" });
+    await service.deliver();
+    expect(log.filter((line) => line.startsWith("abort"))).toEqual(["abort analyst"]);
+    expect(log.indexOf("abort analyst")).toBeGreaterThan(log.findIndex((line) => line.includes("Задача WI-001")));
+    // The retry of the lost cancel message does not stop the turn again.
+    await service.deliver();
+    expect(log.filter((line) => line.startsWith("abort"))).toEqual(["abort analyst"]);
+    expect(log.some((line) => line.includes("Владелец отменил"))).toBe(true);
+  });
+
   it("cancelling a task in work tells the executor and frees it; actions are idempotent and checked", async () => {
     const a = task("A"); clock++; task("B");
     const request = { requestId: randomUUID(), revision: a.revision, action: "cancel" as const, comment: "" };

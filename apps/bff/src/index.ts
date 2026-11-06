@@ -87,6 +87,7 @@ const access = new AccessService({
 const workItems = new WorkItemsService({
   db, companyMode: () => space.mode() === "company",
   send: async (agentId, message, idempotencyKey) => { await gateway.request("chat.send", { sessionKey: mainSessionKey(agentId), agentId, message, idempotencyKey }); },
+  abort: async (agentId) => { await gateway.request("chat.abort", { sessionKey: mainSessionKey(agentId), agentId }); },
 });
 // Stage 4: agents' charters, written into AGENTS.md and put back when the file no longer matches.
 const charters = new AgentCharterService({
