@@ -227,6 +227,11 @@ export class ProjectBuilder {
                 fail("invalid_builder_request", 400);
             const fingerprint = hash(JSON.stringify(request));
             const previous = await this.#record(state, id);
+            // A transferred app gets this installation's plan once; its files stay as they came.
+            if (previous?.adopted && previous.fingerprint === null) {
+                Object.assign(previous, { planId: request.planId, fingerprint });
+                await this.#save(state, id, previous);
+            }
             if (previous) {
                 if (previous.planId !== request.planId || previous.fingerprint !== fingerprint)
                     fail("builder_plan_changed");
@@ -426,6 +431,39 @@ export class ProjectBuilder {
         }
         const result = parseLoadOutput(stdout, nonce);
         return { conditions, result: result && !result.error ? result : null, error: result?.error ?? (result ? null : "runner_failed") };
+    }
+    /**
+     * A project carried over by a transfer package (clawdesk-project-transfer.mjs): its folder holds only app/
+     * with the builder's note. The record is made again for this folder from the files as they are, so checks
+     * and rule tasks work as on the source installation. Anything else in the folder, or no note: nothing.
+     */
+    adopt(id) {
+        return this.#with(id, async (workspace, state) => {
+            if (workspace.mode !== "new" || await this.#record(state, id))
+                return { adopted: false };
+            const entries = await fs.readdir(workspace.directory);
+            if (entries.length !== 1 || entries[0] !== "app")
+                return { adopted: false };
+            return withChildDirectoryWithin(workspace.directory, "app", async (app) => {
+                let note;
+                try {
+                    note = JSON.parse(await readFile(app, ".clawdesk-build.json"));
+                }
+                catch {
+                    return { adopted: false };
+                }
+                if (note?.templateId !== "task-board-v1" || typeof note.planId !== "string" || !/^[a-zA-Z0-9_-]{1,128}$/.test(note.planId))
+                    return { adopted: false };
+                const hashes = {};
+                for (const entry of await fs.readdir(app, { withFileTypes: true })) {
+                    if (!entry.isFile())
+                        return { adopted: false };
+                    hashes[entry.name] = hash(await readFile(app, entry.name));
+                }
+                await this.#save(state, id, { identity: workspace.identity, planId: note.planId, templateId: note.templateId, fingerprint: null, staging: null, adopted: true, hashes });
+                return { adopted: true };
+            });
+        });
     }
     /** The app's current flat files (see selectCheckFiles), for checks, executors' work copies and reviews. */
     appFiles(id) {

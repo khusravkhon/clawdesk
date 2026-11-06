@@ -496,7 +496,11 @@ async function handle(req) {
       if (req.method !== "POST") return { status: 404, body: { error: "not_found" } };
       const { projectId, files } = await readJson(req, 40 * 1024 * 1024);
       if (url.pathname === "/projects/transfer/read") return { status: 200, body: await projectTransfer.read(projectId) };
-      if (url.pathname === "/projects/transfer/write") return { status: 200, body: await projectTransfer.write(projectId, files) };
+      if (url.pathname === "/projects/transfer/write") {
+        const written = await projectTransfer.write(projectId, files);
+        // The files are written; an app the builder cannot take back only loses its checks.
+        return { status: 200, body: { ...written, ...(await projectBuilder.adopt(projectId).catch(() => ({ adopted: false }))) } };
+      }
       return { status: 404, body: { error: "not_found" } };
     } catch (error) {
       const code = error instanceof ProjectFolderError ? error.code : "transfer_unavailable";
