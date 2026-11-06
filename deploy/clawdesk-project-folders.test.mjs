@@ -91,9 +91,10 @@ test("after a restore the recreated folders are pinned again, once", async (t) =
   await assert.rejects(fs.stat(path.join(stateDir, RESTORED_MARKER)), { code: "ENOENT" });
   // The builder's record follows the folder, so the app still counts as made by the builder.
   assert.deepEqual(JSON.parse(await fs.readFile(record, "utf8")), { identity: pinned(), templateId: "task-board-v1", hashes: {} });
-  // Without the marker a replacement is still reported.
-  await fs.rm(path.join(root, req.name), { recursive: true });
+  // Without the marker a replacement is still reported (the old folder kept until then: no reused inode).
+  await fs.rename(path.join(root, req.name), path.join(root, "old"));
   await fs.mkdir(path.join(root, req.name));
+  await fs.rm(path.join(root, "old"), { recursive: true });
   assert.equal((await service.status(req.projectId)).workspace.state, "changed");
 });
 
