@@ -56,8 +56,9 @@ const shareParameters = {
   type: "object", additionalProperties: false, required: ["to", "file", "instruction"],
   properties: {
     to: text(1, 80),
-    // The panel checks the name strictly (clawdesk-owner-files.mjs: fileSegments); here only the shape.
-    file: { type: "string", pattern: "^(media://inbound/[^/]{1,250}|[^/]{1,120}(/[^/]{1,120})?)$" },
+    // As the agent saw it: media://inbound/…, the staged path …/media/inbound/openclaw-staged-…/input-… OpenClaw
+    // shows it, or a path in the shared folder. The panel resolves and checks it strictly; here one line only.
+    file: { type: "string", pattern: "^[^\r\n]{1,400}$" },
     name: text(1, 120),
     instruction: text(1, 4000),
   },
@@ -143,7 +144,7 @@ export function registerRequests(api, { spoolDir = path.join(process.env.OPENCLA
   api.registerTool(tool(REPORT, "Report a company task", "Report the result of a company task WI-… assigned to you: status done with what was done and where to see it (it goes to the owner's acceptance), or failed with the reason. Done without a result is not accepted. Only the task's executor can report.", reportParameters, "task_report"), { names: [REPORT], optional: true });
 
   // The owner's files: only the main agent proposes; the owner confirms with a button, the panel copies and checks.
-  api.registerTool(tool(SHARE, "Give the owner's file to an agent", "When the owner sends you a file (it reaches you as media://inbound/…) or names one in the shared folder and asks to give it to a company agent, propose it with this tool: to (the agent's ID or name), file (the media://inbound/… reference as you received it, or the file's path in the shared folder, e.g. Входящие/ТЗ.pdf), name (optional, a clear file name) and instruction (what the owner wants the agent to do with it, in the owner's words). The panel saves the file to the owner's «Входящие» and asks the owner to confirm with a button; only then the agent gets a read-only copy and the instruction. You never give access yourself.", shareParameters, "share", "main"), { names: [SHARE], optional: true });
+  api.registerTool(tool(SHARE, "Give the owner's file to an agent", "When the owner sends you a file (it reaches you as media://inbound/…) or names one in the shared folder and asks to give it to a company agent, propose it with this tool: to (the agent's ID or name), file (exactly as you received it: media://inbound/… or the path of the attached file, e.g. …/media/inbound/openclaw-staged-…/input-ТЗ---….pdf; or the file's path in the shared folder, e.g. Входящие/ТЗ.pdf), name (optional, a clear file name) and instruction (what the owner wants the agent to do with it, in the owner's words). The panel saves the file to the owner's «Входящие» and asks the owner to confirm with a button; only then the agent gets a read-only copy and the instruction. You never give access yourself.", shareParameters, "share", "main"), { names: [SHARE], optional: true });
 
   registerOwnerCommand(api, { spoolDir, now });
 

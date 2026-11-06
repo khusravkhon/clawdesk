@@ -60,6 +60,15 @@ const MAX_ATTEMPTS = 8;
 const AGENT = /^[a-z0-9][a-z0-9_-]{0,79}$/;
 const code = (number: number) => `REQ-${String(number).padStart(3, "0")}`;
 const subjectKey = (subject: string) => subject.toLocaleLowerCase().replace(/\s+/g, " ").trim();
+/**
+ * The ID OpenClaw saved a file the owner sent under (<state>/media/inbound/<id>), from what the agent saw: the
+ * media://inbound/<id> reference or the staged copy in its workspace, …/media/inbound/openclaw-staged-<uuid>/input-<id>.
+ */
+export function inboundId(reference: string): string | null {
+  if (reference.startsWith("media://inbound/")) return decodeURIComponent(reference.slice("media://inbound/".length)) || null;
+  if (!/(?:^|\/)media\/inbound\//.test(reference)) return null;
+  return reference.split("/").at(-1)!.replace(/^input-/, "") || null;
+}
 const str = (value: unknown, max: number) => typeof value === "string" && value.trim() && value.length <= max && !value.includes("\0") ? value.trim() : null;
 
 export class WorkRequestsService {
@@ -225,13 +234,18 @@ export class WorkRequestsService {
   }
 
   /** The agent a proposal names: its ID, or its exact name if only one company agent has it. */
-  #agentFor(value: string | null): { id: string; name: string } | null {
-    if (!value) return null;
-    const company = this.deps.db.select({ id: agents.id, name: agents.displayName, role: agents.role }).from(agents).where(inArray(agents.role, ["specialist", "team_member"])).all();
-    const byId = company.find((agent) => agent.id === value);
-    if (byId) return byId;
-    const named = company.filter((agent) => agent.name.toLocaleLowerCase() === value.toLocaleLowerCase());
-    return named.length === 1 ? named[0]! : null;
+  #agentFor(value: string | null): { agent: { id: string; name: string } | null; candidates: { id: string; name: string; team: string | null }[] } {
+    if (!value) return { agent: null, candidates: [] };
+    const { db } = this.deps;
+    const company = db.select({ id: agents.id, name: agents.displayName, teamId: agents.teamId }).from(agents).where(inArray(agents.role, ["specialist", "team_member"])).all();
+    const byId = company.find((agent) => agent.id === value.trim());
+    if (byId) return { agent: byId, candidates: [] };
+    // "🛠️ Разработчик проекта" as the owner wrote it is "Разработчик проекта": compare letters, digits and spaces only.
+    const plain = (text: string) => text.toLocaleLowerCase().replace(/[^\p{L}\p{N}\s]/gu, "").replace(/\s+/g, " ").trim();
+    const named = company.filter((agent) => plain(agent.name) === plain(value));
+    if (named.length === 1) return { agent: named[0]!, candidates: [] };
+    const teamName = (teamId: string | null) => (teamId ? db.select({ name: teams.name }).from(teams).where(eq(teams.id, teamId)).get()?.name ?? null : null);
+    return { agent: null, candidates: named.map((agent) => ({ id: agent.id, name: agent.name, team: teamName(agent.teamId) })) };
   }
 
   /**
@@ -243,16 +257,22 @@ export class WorkRequestsService {
     if (entry.agentId !== "main") return { outcome: "forbidden", notify: null };
     const files = this.deps.files;
     if (!files) return { outcome: "unavailable", notify: "Файл не передан: в этой установке нет хранилища файлов владельца." };
-    const to = this.#agentFor(str(entry.to, 80));
+    const found = this.#agentFor(str(entry.to, 80));
+    if (found.candidates.length) {
+      const list = found.candidates.map((agent) => `${agent.name} — ${agent.id}${agent.team ? ` (команда «${agent.team}»)` : ""}`).join("; ");
+      return { outcome: "ambiguous_agent", notify: `Файл не передан: «${String(entry.to ?? "")}» — это несколько агентов: ${list}. Спроси владельца, какому именно, и повтори с его ID.` };
+    }
+    const to = found.agent;
     if (!to) return { outcome: "unknown_agent", notify: `Файл не передан: агент «${String(entry.to ?? "")}» не найден. Укажи ID или точное имя агента компании.` };
-    const instruction = str(entry.instruction, 4000), reference = str(entry.file, 260);
+    const instruction = str(entry.instruction, 4000), reference = str(entry.file, 400);
     if (!instruction || !reference) return { outcome: "invalid", notify: "Файл не передан: нужны to, file и instruction." };
     let file: string;
-    if (reference.startsWith("media://inbound/")) {
-      try { file = (await files.ownerFileStore(decodeURIComponent(reference.slice("media://inbound/".length)), str(entry.name, 120) ?? undefined)).path; }
+    const inbound = inboundId(reference);
+    if (inbound) {
+      try { file = (await files.ownerFileStore(inbound, str(entry.name, 120) ?? undefined)).path; }
       catch { return { outcome: "file_missing", notify: "Файл не передан: его нет во входящих (возможно, он уже удалён). Попроси владельца прислать его ещё раз." }; }
     } else {
-      file = reference.replace(/^files\//, "");
+      file = reference.replace(/^.*?(?:^|\/)files\//, "");
       if (!(await files.ownerFiles().catch(() => ({ files: [] }))).files.some((item) => item.path === file)) return { outcome: "file_missing", notify: `Файл не передан: «${file}» нет в общей папке.` };
     }
     const resource = `file:${file}`;

@@ -151,7 +151,7 @@ test("only the main agent proposes giving the owner's file; the proposal is file
   const args = { to: "Разработчик проекта", file: "media://inbound/ТЗ---0f8a1b2c-3d4e-4f50-8a6b-7c8d9e0f1a2b.pdf", instruction: "Изучи ТЗ и составь план" };
   assert.equal((await share.execute("s1", args)).details.status, "filed");
   assert.equal((await share.execute("s2", { ...args, file: "Входящие/ТЗ.pdf", name: "ТЗ" })).details.status, "filed");
-  for (const bad of [{ ...args, file: "a/b/c" }, { ...args, instruction: "" }, { to: "x", file: "f" }, { ...args, extra: "1" }]) assert.equal((await share.execute("bad", bad)).details.code, "invalid_arguments");
+  for (const bad of [{ ...args, file: ["a", "b"].join("\n") }, { ...args, instruction: "" }, { to: "x", file: "f" }, { ...args, extra: "1" }]) assert.equal((await share.execute("bad", bad)).details.code, "invalid_arguments");
   const filed = await f.spool();
   assert.equal(filed.length, 2);
   assert.ok(filed.every((item) => item.type === "share" && item.agentId === "main" && item.sessionKey === "agent:main:main"));

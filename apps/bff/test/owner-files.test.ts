@@ -5,9 +5,9 @@ import { randomUUID } from "node:crypto";
 import Fastify from "fastify";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { AccessService } from "../src/company/access-service.js";
-import { WorkRequestsService } from "../src/company/work-requests-service.js";
+import { inboundId, WorkRequestsService } from "../src/company/work-requests-service.js";
 import { openDb, type Db } from "../src/db/client.js";
-import { agents } from "../src/db/schema.js";
+import { agents, teams } from "../src/db/schema.js";
 import { registerWorkRequestRoutes } from "../src/routes/work-requests.js";
 
 // The owner's files without a connection: «Документы» and the main agent's proposals. The fake bridge keeps the
@@ -96,6 +96,29 @@ describe("owner files", () => {
     expect(told).toContain("Владелец передал тебе файл «ТЗ_доски.pdf»: /workspace/inbox/Входящие · ТЗ_доски.pdf (только чтение).");
     expect(told).toContain("Что сделать: Изучи ТЗ и составь план работ");
     await app.close();
+  });
+
+  it("accepts the staged path OpenClaw shows the agent and a name with an emoji; same names get a list to ask about", async () => {
+    expect(inboundId("media://inbound/A---0f8a1b2c-3d4e-4f50-8a6b-7c8d9e0f1a2b.md")).toBe("A---0f8a1b2c-3d4e-4f50-8a6b-7c8d9e0f1a2b.md");
+    expect(inboundId("/var/lib/clawdesk-local/openclaw/workspace/media/inbound/openclaw-staged-2701588c-84a6-4848-a5d4-43f3db7336d2/input-ARCHITECTURE---260fa262-2ca8-4530-91b9-c69b6a9cc01a.md")).toBe("ARCHITECTURE---260fa262-2ca8-4530-91b9-c69b6a9cc01a.md");
+    expect(inboundId("Входящие/ТЗ.pdf")).toBeNull();
+    // Seen live: the owner sent ARCHITECTURE.md to the bot and wrote «надо передать 🛠️ Разработчик проекта».
+    inbound.set("ТЗ_доски---0f8a1b2c-3d4e-4f50-8a6b-7c8d9e0f1a2b.pdf", "тз");
+    spool.push({ id: "a".repeat(32), type: "share", agentId: "main", to: "🛠️ Разработчик проекта", file: "/var/lib/x/workspace/media/inbound/openclaw-staged-2701588c-84a6-4848-a5d4-43f3db7336d2/input-ТЗ_доски---0f8a1b2c-3d4e-4f50-8a6b-7c8d9e0f1a2b.pdf", instruction: "Изучи" });
+    await requests.tick();
+    expect(requests.list().requests[0]).toMatchObject({ from: { agentId: "dev" }, resource: "file:Входящие/ТЗ_доски.pdf" });
+    db.insert(teams).values([{ id: "shop", name: "Магазин" }, { id: "board", name: "Доска" }]).run();
+    db.insert(agents).values([
+      { id: "dev-shop", role: "team_member", teamId: "shop", displayName: "Разработчик проекта", sandbox: true },
+      { id: "dev-board", role: "team_member", teamId: "board", displayName: "Разработчик проекта", sandbox: true },
+    ]).run();
+    spool.push({ id: "b".repeat(32), type: "share", agentId: "main", to: "Разработчик проекта", file: "Входящие/ТЗ.pdf", instruction: "Изучи" });
+    await requests.tick();
+    const told = sent.filter((item) => item.agentId === "main").at(-1)!.message;
+    expect(told).toContain("это несколько агентов");
+    expect(told).toContain("Разработчик проекта — dev-shop (команда «Магазин»)");
+    expect(told).toContain("Разработчик проекта — dev-board (команда «Доска»)");
+    expect(requests.list().requests).toHaveLength(1);
   });
 
   it("refuses proposals from other agents, for unknown agents or files, twice, and an agent asking for a file itself", async () => {

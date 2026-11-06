@@ -191,6 +191,13 @@ describe("company requests", () => {
     expect(patch.plugins.load.paths).toEqual(["/p/ask", "/usr/local/share/clawdesk/plugins/clawdesk-requests"]);
     expect(patch.agents.entries.dev.tools).toEqual({ alsoAllow: ["clawdesk_ask_main", "clawdesk_request_up", "clawdesk_request_reply", "clawdesk_task_report", "clawdesk_task_review"] });
     expect(patch.agents.entries.strict.tools).toEqual({ allow: ["read", "clawdesk_request_up", "clawdesk_request_reply", "clawdesk_task_report", "clawdesk_task_review"] });
+    // Only the main agent proposes giving the owner's file (seen live: without it in the policy the tool never showed).
+    expect(patch.agents.entries.main.tools).toEqual({ alsoAllow: ["clawdesk_request_up", "clawdesk_request_reply", "clawdesk_task_report", "clawdesk_task_review", "clawdesk_share_file"] });
+    const stray = requestsPluginPatch({ ...config, agents: { entries: { dev: { tools: { alsoAllow: ["clawdesk_share_file"] } } } } }, ["dev"]) as Record<string, any>;
+    expect(stray.agents.entries.dev.tools.alsoAllow).not.toContain("clawdesk_share_file");
+    // An install that already had the four tools gets the fifth for main on the next sync.
+    const before = { ...config, agents: { entries: { main: { tools: { alsoAllow: ["clawdesk_request_up", "clawdesk_request_reply", "clawdesk_task_report", "clawdesk_task_review"] } } } } };
+    expect((requestsPluginPatch(before, ["main"]) as Record<string, any>).agents.entries.main.tools.alsoAllow).toContain("clawdesk_share_file");
     // Sandboxed sessions see plugin tools only when the sandbox gate names the plugin.
     expect(patch.tools).toEqual({ sandbox: { tools: { alsoAllow: ["clawdesk-requests"] } } });
     expect((requestsPluginPatch({ ...config, tools: { sandbox: { tools: { allow: ["read"] } } } }, ["main"]) as Record<string, any>).tools.sandbox.tools).toEqual({ allow: ["read", "clawdesk-requests"] });
