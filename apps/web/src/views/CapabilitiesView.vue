@@ -32,13 +32,14 @@ onMounted(load);
     </page-header>
     <n-alert type="info" :bordered="false" class="block">{{ t('capabilities.lead') }}</n-alert>
     <n-alert v-if="failed" type="error" class="block">{{ t('capabilities.failed') }}</n-alert>
+    <p v-if="loading" class="hint block" role="status">{{ t('capabilities.checking') }}</p>
     <n-card v-if="data" class="block">
       <div v-for="item in data.items" :key="item.id" class="row">
         <div>
           <strong>{{ t(`capabilities.items.${item.id}.title`) }}</strong>
           <n-tag size="small" :type="tagType(item.state)" class="tag">{{ t(`capabilities.state.${item.state}`) }}</n-tag>
           <span v-if="item.value" class="value">{{ item.value }}</span>
-          <p class="hint">{{ t(`capabilities.items.${item.id}.${item.state === 'ok' ? 'gives' : 'without'}`) }}</p>
+          <p class="hint">{{ item.state === 'unknown' ? t('capabilities.unknownHint') : t(`capabilities.items.${item.id}.${item.state === 'ok' ? 'gives' : 'without'}`) }}</p>
         </div>
       </div>
       <p class="hint block">{{ t('capabilities.checkedAt', { at: new Date(data.checkedAt).toLocaleString() }) }}</p>

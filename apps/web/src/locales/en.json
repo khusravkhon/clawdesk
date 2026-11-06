@@ -2678,6 +2678,8 @@
   },
   "capabilities": {
     "title": "Installation capabilities",
+    "checking": "Checking the installation… This takes up to 10 seconds.",
+    "unknownHint": "Could not check: the Gateway or the panel's service did not answer. See \"Gateway connection\" and press \"Check again\".",
     "subtitle": "What this installation can do now",
     "lead": "Each row is checked right now on this installation: connection, settings and tools in the container. It is a fact about this machine, not a promise: what is missing here does not work, even if the documentation describes it.",
     "check": "Check again",

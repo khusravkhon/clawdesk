@@ -31,3 +31,17 @@ describe("installation capabilities", () => {
     expect(offline).toMatchObject({ gateway: ["missing", "reconnecting"], openclaw: ["unknown", null], docker: ["unknown", null], model: ["unknown", null], requests_plugin: ["unknown", null], google: ["unknown", null] });
   });
 });
+
+describe("a frozen installation", () => {
+  it("reads a Gateway and a bridge that never answer as unknown, without waiting for them", async () => {
+    const never = new Promise<never>(() => {});
+    const frozen = new CapabilitiesService({
+      gateway: { status: { state: "connected" }, request: (() => never) as never }, bridge: { capabilities: () => never },
+      telegramOwner: () => null, sandboxEnabled: true, companyMode: () => true, probeTimeoutMs: 20,
+    });
+    const started = Date.now();
+    const items = Object.fromEntries((await frozen.check()).items.map((item) => [item.id, item.state]));
+    expect(Date.now() - started).toBeLessThan(1000);
+    expect(items).toMatchObject({ openclaw: "unknown", model: "unknown", docker: "unknown", requests_plugin: "unknown", git: "unknown" });
+  });
+});
