@@ -415,7 +415,7 @@ export class ProjectBuilder {
         await this.#removeChecks(name, install);
         await this.#removeChecks(appName, install);
         const labels = ["--label", `clawdesk.checks.install=${install}`, "--label", `clawdesk.checks.project=${this.#key(id)}`];
-        const conditions = { concurrency, durationMs, appCpus: 0.5, appMemoryMb: 192, requests: ["GET /api/tasks", "POST /api/tasks"], data: "пустая база SQLite во временной памяти контейнера", network: "только внутри контейнеров, без сети" };
+        const conditions = { concurrency, durationMs, appCpus: 0.5, appMemoryMb: 192, requests: ["GET /api/tasks", "POST /api/tasks", "DELETE /api/tasks/:id"], data: "пустая база SQLite во временной памяти контейнера", network: "только внутри контейнеров, без сети" };
         const nonce = randomUUID().replace(/-/g, "");
         let stdout = "";
         try {

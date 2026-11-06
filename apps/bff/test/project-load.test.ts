@@ -11,7 +11,7 @@ import type { SpaceService } from "../src/space/space-service.js";
 
 // P9 (acceptance 15): the verdict never claims more than was run.
 
-const conditions = (concurrency: number): LoadConditionsDto => ({ concurrency, durationMs: 5000, appCpus: 0.5, appMemoryMb: 192, requests: ["GET /api/tasks", "POST /api/tasks"], data: "x", network: "x" });
+const conditions = (concurrency: number): LoadConditionsDto => ({ concurrency, durationMs: 5000, appCpus: 0.5, appMemoryMb: 192, requests: ["GET /api/tasks", "POST /api/tasks", "DELETE /api/tasks/:id"], data: "x", network: "x" });
 const result = (patch: Partial<LoadResultDto> = {}): LoadResultDto => ({ requests: 1000, errors: 0, statuses: { "200": 500, "201": 500 }, p50: 20, p95: 80, p99: 120, max: 200, rps: 200, elapsedMs: 5000, ...patch });
 
 describe("load checks", () => {
