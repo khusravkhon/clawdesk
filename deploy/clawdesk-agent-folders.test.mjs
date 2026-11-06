@@ -4,7 +4,7 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { syncFolders } from "./clawdesk-file-sync.mjs";
-import { AgentFolders } from "./clawdesk-agent-folders.mjs";
+import { AgentFolders, RESTORED_MARKER } from "./clawdesk-agent-folders.mjs";
 
 async function fixture(t) {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "clawdesk-files-"));
@@ -241,6 +241,30 @@ test("an agent ID reused for a different workspace does not inherit the deleted 
   await fs.mkdir(workspace);
   await manager.syncAll();
   await assert.rejects(fs.stat(path.join(workspace, "folders")), { code: "ENOENT" });
+});
+
+test("after a restore the recreated workspaces keep synchronizing, once re-pinned", async (t) => {
+  const { root, host } = await fixture(t);
+  const stateDir = path.join(root, "state"), workspace = path.join(stateDir, "workspace", "trainer");
+  await fs.mkdir(workspace, { recursive: true });
+  const configPath = path.join(stateDir, "openclaw.json");
+  await fs.writeFile(configPath, JSON.stringify({ agents: { entries: { trainer: { workspace } } } }));
+  await fs.mkdir(path.join(host, "Shared"));
+  await fs.writeFile(path.join(host, "Shared", "a.txt"), "before");
+  const manager = new AgentFolders({ stateDir, filesDir: host, configPath });
+  await manager.register("trainer", "Shared");
+  // Restore copies the workspace back as new directories.
+  await fs.cp(workspace, `${workspace}-copy`, { recursive: true });
+  await fs.rm(workspace, { recursive: true });
+  await fs.rename(`${workspace}-copy`, workspace);
+  await manager.syncAll();
+  assert.equal((await manager.statuses()).folders[0].state, "error");
+  await fs.writeFile(path.join(stateDir, "clawdesk", RESTORED_MARKER), "");
+  await fs.writeFile(path.join(host, "Shared", "a.txt"), "after");
+  await manager.syncAll();
+  assert.equal((await manager.statuses()).folders[0].state, "ready");
+  assert.equal(await fs.readFile(path.join(workspace, "folders", "Shared", "a.txt"), "utf8"), "after");
+  await assert.rejects(fs.stat(path.join(stateDir, "clawdesk", RESTORED_MARKER)), { code: "ENOENT" });
 });
 
 test("metadata cache requires personal-mode opt-in and discards cached data when mode changes", () => {

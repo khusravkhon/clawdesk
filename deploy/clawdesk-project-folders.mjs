@@ -8,6 +8,8 @@ const NAME = /^[\p{L}\p{N}][\p{L}\p{N} _-]{0,59}$/u;
 const ID = /^[a-zA-Z0-9_-]{1,128}$/;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const REGISTRY = "clawdesk-project-folders.json";
+// Written by restore: the folders come back with new inodes, so their identities are pinned again once.
+export const RESTORED_MARKER = "clawdesk-project-folders.restored";
 const DIRECTORY = constants.O_RDONLY | constants.O_DIRECTORY | constants.O_NOFOLLOW;
 export class ProjectFolderError extends Error {
   constructor(code, status = 409) { super(code); this.code = code; this.status = status; }
@@ -54,6 +56,19 @@ export class ProjectFolders {
     } finally { await fs.unlink(temporary).catch(() => {}); }
   }
 
+  /** The registry, re-pinned after a restore: the folders and the registry come from the same snapshot. */
+  async #load(root, state) {
+    const registry = await this.#registry(state);
+    const marker = `${state}/${RESTORED_MARKER}`;
+    if (!(await fs.lstat(marker).catch(() => null))) return registry;
+    for (const binding of registry.bindings) {
+      try { binding.identity = await this.#identity(root, binding.name); } catch { /* A missing folder stays missing. */ }
+    }
+    await this.#save(state, registry);
+    await fs.unlink(marker);
+    return registry;
+  }
+
   async #identity(root, name) {
     const handle = await fs.open(`${root}/${name}`, DIRECTORY);
     try { const stat = await handle.stat({ bigint: true }); return `${stat.dev}:${stat.ino}`; }
@@ -83,7 +98,7 @@ export class ProjectFolders {
   status(projectId) {
     if (typeof projectId !== "string" || !ID.test(projectId)) throw new ProjectFolderError("invalid_workspace", 400);
     return this.#run(() => withDirectoryWithin(this.stateDir, "company-projects", async (root) => {
-      return withDirectoryWithin(this.stateDir, "", async (state) => this.#snapshot(root, await this.#registry(state), projectId));
+      return withDirectoryWithin(this.stateDir, "", async (state) => this.#snapshot(root, await this.#load(root, state), projectId));
     }, true));
   }
 
@@ -96,7 +111,7 @@ export class ProjectFolders {
     if (typeof projectId !== "string" || !ID.test(projectId)) throw new ProjectFolderError("invalid_workspace", 400);
     return this.#run(() => withDirectoryWithin(this.stateDir, "company-projects", (root) =>
       withDirectoryWithin(this.stateDir, "", async (state) => {
-        const binding = (await this.#registry(state)).bindings.find((item) => item.projectId === projectId);
+        const binding = (await this.#load(root, state)).bindings.find((item) => item.projectId === projectId);
         if (!binding) throw new ProjectFolderError("workspace_required");
         return withChildDirectoryWithin(root, binding.name, async (directory) => {
           const stat = await fs.stat(directory, { bigint: true });
@@ -110,7 +125,7 @@ export class ProjectFolders {
     if (typeof projectId !== "string" || !ID.test(projectId) || typeof name !== "string" || !NAME.test(name) || !["new", "existing"].includes(mode) || typeof requestId !== "string" || !UUID.test(requestId)) throw new ProjectFolderError("invalid_workspace", 400);
     return this.#run(() => withDirectoryWithin(this.stateDir, "company-projects", async (root) => {
       return withDirectoryWithin(this.stateDir, "", async (state) => {
-        const registry = await this.#registry(state);
+        const registry = await this.#load(root, state);
         const before = registry.bindings.find((item) => item.projectId === projectId);
         if (before) {
           if (before.requestId !== requestId || before.name !== name || before.mode !== mode) throw new ProjectFolderError("workspace_already_linked");

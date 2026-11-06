@@ -207,6 +207,7 @@ test('official OpenClaw backup roundtrip in an isolated Linux fixture', { skip: 
     assert.equal(reopened.prepare('PRAGMA integrity_check').get().integrity_check, 'ok'); reopened.close();
     for (const [name, content] of [['server.mjs', 'company project file'], ['token', 'github_pat_fixture'], ['a.json', '{"type":"up"}'], ['doc.md', 'granted doc copy']]) assert.equal(await fs.readFile(await find(path.join(root, 'target'), name), 'utf8'), content, name);
     assert.ok(await find(path.join(root, 'target'), 'clawdesk-project-folders.json'));
+    assert.ok(await find(path.join(restored, 'oc'), 'clawdesk-project-folders.restored'), 'restore asks the bridge to pin the folders again');
     assert.equal(JSON.parse(await fs.readFile(path.join(restored, 'auth-secrets', 'fake.json'), 'utf8')).fakeSecret, 'fixture-only');
     const model = await find(path.join(root, 'target'), 'fixture.gguf');
     assert.ok(model); assert.equal(await fs.readFile(model, 'utf8'), 'FAKE MODEL — never inference');

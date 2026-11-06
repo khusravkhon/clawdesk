@@ -171,6 +171,11 @@ export async function preparePayload(archive, target, version) {
     if (await fs.stat(path.join(target, name)).catch(() => null)) await sqliteIntegrity(path.join(target, name));
   }
   clearRestoredPluginLeases(path.join(path.dirname(candidates[0]), 'state', 'openclaw.sqlite'));
+  // Project folders and agent workspaces come back with new inodes; the bridge pins them again on first use.
+  const state = path.dirname(candidates[0]);
+  await fs.writeFile(path.join(state, 'clawdesk-project-folders.restored'), '', { mode: 0o600 });
+  await fs.mkdir(path.join(state, 'clawdesk'), { recursive: true, mode: 0o700 });
+  await fs.writeFile(path.join(state, 'clawdesk', 'folder-sync.restored'), '', { mode: 0o600 });
   await fs.writeFile(path.join(target, 'prepared-state.txt'), path.dirname(candidates[0]), { mode: 0o600 });
   // The fully restored payload is now independent of the original (possibly user-editable) archive.
   return manifest;

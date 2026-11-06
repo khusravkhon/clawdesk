@@ -4,7 +4,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import os from "node:os";
 import { randomUUID } from "node:crypto";
-import { ProjectFolders } from "./clawdesk-project-folders.mjs";
+import { ProjectFolders, RESTORED_MARKER } from "./clawdesk-project-folders.mjs";
 
 async function fixture(t) {
   const stateDir = await fs.mkdtemp(path.join(os.tmpdir(), "clawdesk-projects-"));
@@ -66,6 +66,28 @@ test("reports removal and replacement and blocks reassignment of a renamed folde
   await assert.rejects(service.prepare(request({ projectId: "project-b", name: "Moved", mode: "existing" })), { code: "workspace_in_use" });
   await fs.mkdir(path.join(root, req.name));
   assert.equal((await service.prepare(req)).workspace.state, "changed");
+});
+
+test("after a restore the recreated folders are pinned again, once", async (t) => {
+  const { stateDir, root, service } = await fixture(t);
+  const req = request();
+  await service.prepare(req);
+  await service.prepare(request({ projectId: "project-b", name: "Gone" }));
+  // Restore brings the same folder back as a new directory, and a folder may be absent from the copy.
+  await fs.cp(path.join(root, req.name), path.join(root, "copy"), { recursive: true });
+  await fs.rm(path.join(root, req.name), { recursive: true });
+  await fs.rename(path.join(root, "copy"), path.join(root, req.name));
+  await fs.rm(path.join(root, "Gone"), { recursive: true });
+  assert.equal((await service.status(req.projectId)).workspace.state, "changed");
+  await fs.writeFile(path.join(stateDir, RESTORED_MARKER), "");
+  assert.equal(await service.withWorkspace(req.projectId, async ({ name }) => name), req.name);
+  assert.equal((await service.status(req.projectId)).workspace.state, "ready");
+  assert.equal((await service.status("project-b")).workspace.state, "missing");
+  await assert.rejects(fs.stat(path.join(stateDir, RESTORED_MARKER)), { code: "ENOENT" });
+  // Without the marker a replacement is still reported.
+  await fs.rm(path.join(root, req.name), { recursive: true });
+  await fs.mkdir(path.join(root, req.name));
+  assert.equal((await service.status(req.projectId)).workspace.state, "changed");
 });
 
 test("serializes competing claims and fails closed for a corrupted or linked registry", async (t) => {
