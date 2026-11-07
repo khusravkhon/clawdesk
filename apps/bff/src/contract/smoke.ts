@@ -237,7 +237,8 @@ async function main(): Promise<void> {
     });
 
     await step("agents.delete", async () => {
-      await gateway.request("agents.delete", { agentId, deleteFiles: true });
+      const result = await gateway.request<{ failed?: { path: string; reason: string }[] }>("agents.delete", { agentId, deleteFiles: true });
+      assert.deepEqual(result.failed ?? [], [], "deleted agent left files in the Gateway state directory");
       const list = await gateway.request<{ agents: { id: string }[] }>("agents.list", {});
       assert.ok(!list.agents.some((a) => a.id === agentId), "deleted agent still listed");
       agentId = null;
