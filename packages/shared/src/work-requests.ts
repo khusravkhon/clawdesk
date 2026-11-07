@@ -52,7 +52,8 @@ export type OwnerRequestAction = z.infer<typeof OwnerRequestAction>;
 export type ResourceAccess = "read" | "write";
 /** folder: a shared folder synchronized into the agent's workspace; team-docs: its team's docs (same mechanism, fixed folder);
  *  mcp: an MCP server's tools; team-repo / project-copy: given by team membership, changed with the team, not here. */
-export type AgentResourceKind = "folder" | "team-docs" | "mcp" | "team-repo" | "project-copy" | "gdoc";
+/** file: one of the owner's files, given as a read-only copy in the agent's inbox (clawdesk-owner-files.mjs). */
+export type AgentResourceKind = "folder" | "team-docs" | "mcp" | "team-repo" | "project-copy" | "gdoc" | "file";
 export type AgentResourceDto = {
   kind: AgentResourceKind;
   /** Folder or server name; the team's name for team resources. */
@@ -70,8 +71,10 @@ export type AgentResourceDto = {
 export type AgentAccessDto = { agentId: string; name: string; role: "main" | "specialist" | "team_member"; sandboxed: boolean; resources: AgentResourceDto[] };
 export type ResourceGrantDto = { id: string; agentId: string; resource: string; access: ResourceAccess; grantedBy: string; createdAt: number; revokedAt: number | null };
 export type CompanyAccessDto = { agents: AgentAccessDto[]; folders: string[]; servers: string[]; history: ResourceGrantDto[] };
-/** "folder:<shared folder>" (the bridge's folder name rule), "mcp:<server>" (McpServerName) or "gdoc:<Google Doc ID>". */
-export const ResourceRef = z.string().regex(/^(?:folder:[\p{L}\p{N}][\p{L}\p{N} ._-]{0,59}|mcp:[a-z][a-z0-9-]{0,39}|gdoc:[A-Za-z0-9_-]{20,128})$/u);
+/** One of the owner's files, top level or one folder deep ("Входящие/ТЗ.pdf"): the bridge's SEGMENT rule. */
+const FILE_REF = String.raw`file:[\p{L}\p{N}][\p{L}\p{N} ._()+,'-]{0,119}(?:/[\p{L}\p{N}][\p{L}\p{N} ._()+,'-]{0,119})?`;
+/** "folder:<shared folder>" (the bridge's folder name rule), "mcp:<server>" (McpServerName), "gdoc:<Google Doc ID>" or "file:<owner's file>". */
+export const ResourceRef = z.string().regex(new RegExp(String.raw`^(?:folder:[\p{L}\p{N}][\p{L}\p{N} ._-]{0,59}|mcp:[a-z][a-z0-9-]{0,39}|gdoc:[A-Za-z0-9_-]{20,128}|${FILE_REF})$`, "u"));
 /** An agent may name a Google Doc by its link: "gdoc:https://docs.google.com/document/d/<id>/edit" → "gdoc:<id>". */
 export function normalizeResourceRef(value: unknown): unknown {
   if (typeof value !== "string" || !value.startsWith("gdoc:")) return value;
@@ -80,8 +83,23 @@ export function normalizeResourceRef(value: unknown): unknown {
 }
 export const GrantResourceRequest = z.object({ agentId: z.string().regex(/^[a-z0-9][a-z0-9_-]{0,79}$/), resource: ResourceRef, access: z.enum(["read", "write"]) });
 export type GrantResourceRequest = z.infer<typeof GrantResourceRequest>;
-export const RevokeResourceRequest = z.object({ agentId: z.string().regex(/^[a-z0-9][a-z0-9_-]{0,79}$/), resource: z.string().regex(/^(?:folder:[\p{L}\p{N}][\p{L}\p{N} ._-]{0,59}|mcp:[a-z][a-z0-9-]{0,39}|team-docs:[\p{L}\p{N}][\p{L}\p{N} ._-]{0,59}|gdoc:[A-Za-z0-9_-]{20,128})$/u) });
+export const RevokeResourceRequest = z.object({ agentId: z.string().regex(/^[a-z0-9][a-z0-9_-]{0,79}$/), resource: z.string().regex(new RegExp(String.raw`^(?:folder:[\p{L}\p{N}][\p{L}\p{N} ._-]{0,59}|mcp:[a-z][a-z0-9-]{0,39}|team-docs:[\p{L}\p{N}][\p{L}\p{N} ._-]{0,59}|gdoc:[A-Za-z0-9_-]{20,128}|${FILE_REF})$`, "u")) });
 /** Stage 7: export a granted Google Doc again; the agent is told when its version changed. */
 export const RefreshResourceRequest = z.object({ agentId: z.string().regex(/^[a-z0-9][a-z0-9_-]{0,79}$/), resource: z.string().regex(/^gdoc:[A-Za-z0-9_-]{20,128}$/) });
 export type RefreshResourceRequest = z.infer<typeof RefreshResourceRequest>;
 export type RevokeResourceRequest = z.infer<typeof RevokeResourceRequest>;
+
+// The owner's files ("Документы"): sent to the bot or the chat, or uploaded here; one file goes to one agent as a
+// read-only copy with the owner's instruction. No Google or other connection is needed.
+export type OwnerFileDto = { path: string; size: number; modifiedAt: number };
+export type OwnerFileGrantDto = { agentId: string; agentName: string; file: string; path: string | null; grantedBy: string; createdAt: number };
+export type OwnerFilesDto = { files: OwnerFileDto[]; given: OwnerFileGrantDto[]; agents: { agentId: string; name: string }[] };
+export const UploadOwnerFileRequest = z.object({ name: z.string().trim().min(1).max(200), base64: z.string().min(1).max(28 * 1024 * 1024) }).strict();
+export type UploadOwnerFileRequest = z.infer<typeof UploadOwnerFileRequest>;
+export const ShareOwnerFileRequest = z.object({
+  agentId: z.string().regex(/^[a-z0-9][a-z0-9_-]{0,79}$/),
+  file: z.string().min(1).max(250),
+  /** What the agent should do with it, in the owner's words. */
+  instruction: z.string().trim().min(1).max(4000),
+}).strict();
+export type ShareOwnerFileRequest = z.infer<typeof ShareOwnerFileRequest>;

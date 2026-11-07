@@ -15,6 +15,12 @@ type Config = {
 };
 type Probes = { openclaw: string | null; docker: string | null; git: string | null; gog: string | null };
 
+/** A frozen Gateway or bridge answers nothing: the check reads it as "could not check" instead of waiting. */
+const within = <T>(promise: Promise<T>, ms: number): Promise<T | null> => new Promise((resolve) => {
+  const timer = setTimeout(() => resolve(null), ms);
+  promise.then((value) => { clearTimeout(timer); resolve(value); }, () => { clearTimeout(timer); resolve(null); });
+});
+
 export class CapabilitiesService {
   constructor(private readonly deps: {
     gateway: Pick<GatewayService, "request"> & { status: { state: string } };
@@ -23,13 +29,15 @@ export class CapabilitiesService {
     sandboxEnabled: boolean;
     companyMode: () => boolean;
     now?: () => number;
+    probeTimeoutMs?: number;
   }) {}
 
   async check(): Promise<CapabilitiesDto> {
     const connected = this.deps.gateway.status.state === "connected";
+    const limit = this.deps.probeTimeoutMs ?? 8_000;
     const [config, probes] = await Promise.all([
-      connected ? getConfig<Config>(this.deps.gateway as GatewayService).then((result) => result.config, () => null) : Promise.resolve(null),
-      this.deps.bridge ? this.deps.bridge.capabilities().catch(() => null) : Promise.resolve(null),
+      connected ? within(getConfig<Config>(this.deps.gateway as GatewayService).then((result) => result.config), limit) : Promise.resolve(null),
+      this.deps.bridge ? within(this.deps.bridge.capabilities(), limit) : Promise.resolve(null),
     ]);
     const tool = (value: string | null | undefined): Pick<CapabilityDto, "state" | "value"> => probes ? (value ? { state: "ok", value } : { state: "missing", value: null }) : { state: "unknown", value: null };
     const fromConfig = (read: (config: Config) => Pick<CapabilityDto, "state" | "value">): Pick<CapabilityDto, "state" | "value"> => config ? read(config) : { state: "unknown", value: null };

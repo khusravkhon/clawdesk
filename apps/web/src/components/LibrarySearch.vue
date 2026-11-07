@@ -3,7 +3,7 @@
 // transcripts. It searches only this agent's materials — the same boundary the agent itself has —
 // and every hit names its source, so the owner can go back to the page, sheet or timecode.
 import type { LibraryHitDto } from "@clawdesk/shared";
-import { Search, Trash2 } from "@lucide/vue";
+import { Search as SearchIcon, Trash2 } from "@lucide/vue";
 import { NButton, NInput, useMessage } from "naive-ui";
 import { ref } from "vue";
 import { useI18n } from "vue-i18n";
@@ -53,7 +53,7 @@ const when = (hit: LibraryHitDto) => formatRelative(hit.at, locale.value);
     <div class="bar">
       <n-input v-model:value="query" size="small" :placeholder="t('library.placeholder')" :maxlength="200" @keydown.enter="search" />
       <n-button size="small" secondary :loading="busy" :disabled="!query.trim()" @click="search">
-        <search :size="13" /> &nbsp;{{ t("library.search") }}
+        <search-icon :size="13" /> &nbsp;{{ t("library.search") }}
       </n-button>
     </div>
 

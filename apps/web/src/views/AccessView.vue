@@ -93,7 +93,7 @@ onMounted(load);
         <n-button v-if="item.kind === 'gdoc'" size="small" :disabled="busy" @click="refresh(agent, item)">{{ t('access.refresh') }}</n-button>
         <n-popconfirm v-if="item.revocable" @positive-click="revoke(agent, item)">
           <template #trigger><n-button size="small" :disabled="busy">{{ t('access.revoke') }}</n-button></template>
-          <span class="confirm">{{ t(item.kind === 'mcp' ? 'access.revokeMcp' : item.kind === 'gdoc' ? 'access.revokeGdoc' : 'access.revokeFolder', { name: item.title ?? item.name, agent: agent.name }) }}</span>
+          <span class="confirm">{{ t(item.kind === 'mcp' ? 'access.revokeMcp' : item.kind === 'gdoc' ? 'access.revokeGdoc' : item.kind === 'file' ? 'access.revokeFile' : 'access.revokeFolder', { name: item.title ?? item.name, agent: agent.name }) }}</span>
         </n-popconfirm>
         <span v-else class="meta">{{ t('access.viaTeam') }}</span>
       </div>

@@ -73,3 +73,26 @@ test("package paths are checked one segment at a time", () => {
 
 import { createHash } from "node:crypto";
 function awaitHash(text) { return createHash("sha256").update(Buffer.from(text)).digest("hex"); }
+
+test("a builder-made app arrives with its note and keeps its checks on the new installation", linux, async t => {
+  const { ProjectBuilder } = await import("./clawdesk-project-builder.mjs");
+  const f = await fixture(t);
+  const builder = new ProjectBuilder({ folders: f.folders, stateDir: f.stateDir, command: async () => { throw new Error("no docker in this test"); } });
+  const request = { templateId: "task-board-v1", planId: "plan-1", projectName: "Задачи", brief: { purpose: "Учёт" }, rules: [] };
+  await builder.prepare("source", request);
+  const read = await f.transfer.read("source");
+  assert.ok(read.files.some(file => file.path === "app/.clawdesk-build.json"));
+  await f.transfer.write("target", read.files);
+  assert.deepEqual(await builder.adopt("target"), { adopted: true });
+  assert.deepEqual(await builder.adopt("target"), { adopted: false });
+  assert.deepEqual(Object.keys(await builder.appFiles("target")).sort(), Object.keys(await builder.appFiles("source")).sort());
+  // This installation's own plan binds to the app as it came; its files are not rebuilt.
+  const bound = await builder.prepare("target", { ...request, planId: "plan-here" });
+  assert.equal(bound.planId, "plan-here");
+  await assert.rejects(builder.prepare("target", { ...request, planId: "plan-other" }), { code: "builder_plan_changed" });
+  // A folder without the note is not taken for a builder app.
+  await f.folders.prepare({ projectId: "plain", mode: "new", name: "Plain", requestId: randomUUID() });
+  await f.transfer.write("plain", read.files.filter(file => file.path !== "app/.clawdesk-build.json"));
+  assert.deepEqual(await builder.adopt("plain"), { adopted: false });
+  await assert.rejects(builder.appFiles("plain"), { code: "checks_unsupported" });
+});

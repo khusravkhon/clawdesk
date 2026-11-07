@@ -105,7 +105,9 @@ jobs:
 
       - name: Bump OpenClaw ${{ env.CURRENT }} → ${{ env.VERSION }}
         run: |
-          node scripts/openclaw-version.mjs set "$VERSION"
+          # A patch of the default line becomes the default; a newer line is only offered to installs
+          # (System → OpenClaw in the panel) and new installs keep the default until the owner moves it.
+          if [ "$KIND" = minor-line ]; then node scripts/openclaw-version.mjs offer "$VERSION"; else node scripts/openclaw-version.mjs set "$VERSION"; fi
           pnpm install --no-frozen-lockfile
           node scripts/openclaw-version.mjs check
           git diff --stat
@@ -119,7 +121,7 @@ jobs:
         run: pnpm test && node --test deploy/*.test.mjs scripts/*.test.mjs
       - id: contract
         continue-on-error: true
-        run: bash deploy/scripts/contract.sh
+        run: OPENCLAW_VERSION="$VERSION" bash deploy/scripts/contract.sh
 
       - name: Pull request text
         env:
@@ -130,7 +132,7 @@ jobs:
         run: |
           mark() { [[ "$1" == success ]] && echo "✅ passed" || echo "❌ $1"; }
           {
-            echo "Bumps OpenClaw **$CURRENT → $VERSION** (\`$KIND\`) through \`deploy/openclaw.version\` (\`scripts/openclaw-version.mjs set\`) and \`pnpm-lock.yaml\`."
+            echo "Bumps OpenClaw **$CURRENT → $VERSION** (\`$KIND\`) through \`scripts/openclaw-version.mjs\` (\`set\` for a patch of the default line; \`offer\` for a new line, which installs then choose in System → OpenClaw) and \`pnpm-lock.yaml\`."
             echo
             if [[ "$KIND" == patch ]]; then
               echo "A patch inside the line ClawDesk is on."
@@ -166,7 +168,7 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git switch -c "$BRANCH"
-          git add -A deploy/openclaw.version apps/bff/package.json deploy/docker-compose.yml deploy/gateway.Dockerfile pnpm-lock.yaml
+          git add -A deploy/openclaw.version deploy/openclaw.supported apps/bff/package.json deploy/docker-compose.yml deploy/gateway.Dockerfile pnpm-lock.yaml
           git commit -m "chore(openclaw): bump $CURRENT → $VERSION ($KIND)"
           git push origin "$BRANCH"
 

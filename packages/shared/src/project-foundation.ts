@@ -70,7 +70,12 @@ const LOAD = /(\d[\d\s]{1,9})\s*(?:\+\s*)?(пользовател|человек
 
 /** "без чата", "не нужен вход", "no login": the word just before the match denies it. */
 const denied = (text: string, index: number) => /(?:^|[\s,(])(без|не|нет|no|without)\s+(?:\S+\s+)?$/u.test(text.slice(Math.max(0, index - 30), index));
-const sentences = (text: string) => text.split(/(?<=[.!?\n;])\s+|\n+/u).map((part) => part.trim()).filter(Boolean);
+/**
+ * The interview writes "question? — answer" lines into the brief (project-interview-service); only the answer
+ * is the owner's word. A question alone ("…какие роли им нужны?") is no need.
+ */
+const ownerWords = (text: string) => text.split("\n").map((line) => line.replace(/^.*?\?\s+—\s+/u, "")).join("\n");
+const sentences = (text: string) => ownerWords(text).split(/(?<=[.!?\n;])\s+|\n+/u).map((part) => part.trim()).filter(Boolean);
 const quote = (text: string) => text.length > 160 ? `${text.slice(0, 157)}…` : text;
 
 /** The needs found in the brief and the rules, each once, with the first sentence that shows it. */

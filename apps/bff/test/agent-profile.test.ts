@@ -101,7 +101,7 @@ describe("editing an agent and reusing it", () => {
           timezone: "Asia/Dushanbe",
         }),
       );
-      expect(res.agentId).toBe("agent");
+      expect(res.agentId).toBe("seyf");
       expect(files[res.agentId]!["SOUL.md"]).toBe("# Сейф\n\nСчитаю деньги и цели.");
       expect(res.cronJobIds).toHaveLength(1);
     } finally {

@@ -87,9 +87,13 @@ const access = new AccessService({
 const workItems = new WorkItemsService({
   db, companyMode: () => space.mode() === "company",
   send: async (agentId, message, idempotencyKey) => { await gateway.request("chat.send", { sessionKey: mainSessionKey(agentId), agentId, message, idempotencyKey }); },
+  abort: async (agentId) => { await gateway.request("chat.abort", { sessionKey: mainSessionKey(agentId), agentId }); },
 });
 // Stage 4: agents' charters, written into AGENTS.md and put back when the file no longer matches.
-const charters = new AgentCharterService({ db, gateway, logger });
+const charters = new AgentCharterService({
+  db, gateway, logger,
+  notify: async (agentId, message, idempotencyKey) => { await gateway.request("chat.send", { sessionKey: mainSessionKey(agentId), agentId, message, idempotencyKey }); },
+});
 // Stage 9: runs from the Gateway's events plus tasks and requests → one state per agent (list and office).
 const runTracker = new RunTracker();
 const activityListeners = new Set<() => void>();
@@ -110,6 +114,8 @@ const requests = new WorkRequestsService({
   db, bridge, companyMode: () => space.mode() === "company", liveAgents: () => liveAgentIds(gateway),
   // Stage 8: requests that reach the owner go to the owner's Telegram too, with buttons the plugin hands back.
   telegram, grant: (request, by) => access.grant(request, by), tasks: workItems,
+  // The main agent proposes to give the owner's file to an agent; the file is saved into «Входящие» first.
+  files: bridge,
   send: async (agentId, message, idempotencyKey) => { await gateway.request("chat.send", { sessionKey: mainSessionKey(agentId), agentId, message, idempotencyKey }); },
 });
 

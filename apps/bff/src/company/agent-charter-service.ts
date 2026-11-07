@@ -56,8 +56,17 @@ export function blockOf(text: string): string | null {
   return start >= 0 && end > start ? text.slice(start, end + END.length) : null;
 }
 
+/**
+ * OpenClaw reads AGENTS.md when a session starts, so a running session keeps the old text. The new
+ * version is also told to the agent's current session; later sessions read it from the file.
+ */
+export function charterChangedMessage(version: number, fields: AgentCharterFields): string {
+  const block = charterBlock(version, fields).split("\n").filter((line) => line !== START && line !== END).join("\n");
+  return `Владелец изменил твои обязанности и ограничения. С этого сообщения действует версия ${version}, прежние условия больше не действуют. Она уже записана в AGENTS.md.\n\n${block}`;
+}
+
 export class AgentCharterService {
-  constructor(private readonly deps: { db: Db; gateway: Gateway; logger: Logger }) {}
+  constructor(private readonly deps: { db: Db; gateway: Gateway; logger: Logger; notify?: (agentId: string, message: string, idempotencyKey: string) => Promise<void> }) {}
 
   #agent(agentId: string) {
     // The main agent may have no panel row yet (it is created by OpenClaw, not by the builder).
@@ -154,15 +163,18 @@ export class AgentCharterService {
   async #commit(agentId: string, requestId: string, baseVersion: number, fields: AgentCharterFields, source: "owner" | "restore", note: string, confirmExpansion?: boolean): Promise<AgentCharterDto> {
     const replay = this.#replay(agentId, requestId);
     if (replay) return replay;
-    this.deps.db.transaction((tx) => {
+    const created = this.deps.db.transaction((tx) => {
       const current = tx.select().from(agentCharterVersions).where(eq(agentCharterVersions.agentId, agentId)).orderBy(desc(agentCharterVersions.version)).get();
       const version = current?.version ?? 0;
       if (version !== baseVersion) throw new AgentCharterError("version_conflict");
       if (charterExpands(current?.fields ?? DEFAULT_CHARTER, fields) && confirmExpansion !== true) throw new AgentCharterError("expansion_confirmation_required");
       tx.insert(agentCharterVersions).values({ agentId, version: version + 1, fields, source, note, createdAt: Date.now(), requestId }).run();
+      return version + 1;
     });
     // The record is the truth; the file follows now or at the next sweep.
     await this.apply(agentId).catch((error: Error) => this.deps.logger.warn({ err: error, agentId }, "could not write the agent charter now; the next sweep retries"));
+    await this.deps.notify?.(agentId, charterChangedMessage(created, fields), `clawdesk-charter-${agentId}-${created}`)
+      .catch((error: Error) => this.deps.logger.warn({ err: error, agentId }, "could not tell the agent its new charter; it reads it from AGENTS.md in its next session"));
     return this.get(agentId);
   }
 

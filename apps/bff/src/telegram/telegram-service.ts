@@ -443,7 +443,8 @@ export class TelegramService {
   async sendToOwner(text: string, accountId = "default"): Promise<void> {
     const owner = this.#owner(accountId);
     if (!owner?.peerId) throw new TelegramError("no_owner", "approve yourself in the bot first");
-    await this.gateway.request("send", { channel: "telegram", accountId, to: owner.peerId, message: text, idempotencyKey: crypto.randomUUID() });
+    // OpenClaw 2026.8.35 wants the sending agent named when several agents exist: the agent the owner's chat is bound to.
+    await this.gateway.request("send", { channel: "telegram", accountId, agentId: owner.agentId, to: owner.peerId, message: text, idempotencyKey: crypto.randomUUID() });
   }
 
   /** The owner's numeric Telegram user ID (their approved DM with the bot), or null. */
@@ -458,7 +459,7 @@ export class TelegramService {
   async sendToOwnerWithButtons(text: string, buttons: { label: string; data: string; style?: "success" | "danger" | "primary" }[], idempotencyKey: string, accountId = "default"): Promise<void> {
     const owner = this.#owner(accountId);
     if (!owner?.peerId) throw new TelegramError("no_owner", "approve yourself in the bot first");
-    await this.gateway.request("send", { channel: "telegram", accountId, to: owner.peerId, message: text, idempotencyKey, ...presentation(buttons) });
+    await this.#sendWithButtons(accountId, owner.agentId, { to: owner.peerId, message: text }, buttons, idempotencyKey);
   }
 
   /**
@@ -466,7 +467,16 @@ export class TelegramService {
    * the panel acts only on the owner's numeric userId, so another member pressing them changes nothing.
    */
   async sendToTopicWithButtons(chatId: string, topicId: string, text: string, buttons: { label: string; data: string; style?: "success" | "danger" | "primary" }[], idempotencyKey: string, accountId = "default"): Promise<void> {
-    await this.gateway.request("send", { channel: "telegram", accountId, to: chatId, threadId: topicId, message: text, idempotencyKey, ...presentation(buttons) });
+    await this.#sendWithButtons(accountId, "main", { to: chatId, threadId: topicId, message: text }, buttons, idempotencyKey);
+  }
+
+  /**
+   * Buttons travel through message.action (the message tool's send): OpenClaw 2026.8.35 refuses them in "send"
+   * ("unexpected property 'presentation'"), which left every owner request without its message (seen live).
+   */
+  async #sendWithButtons(accountId: string, agentId: string, target: { to: string; threadId?: string; message: string }, buttons: { label: string; data: string; style?: "success" | "danger" | "primary" }[], idempotencyKey: string): Promise<void> {
+    const { method, params } = telegramSendRequest(accountId, agentId, target, buttons, idempotencyKey);
+    await this.gateway.request(method, params);
   }
 
   /** Delivery target for cron jobs, or null when no owner is approved yet. */
@@ -588,6 +598,16 @@ export class TelegramService {
 
 export function telegramDelivery(ownerId: string) {
   return { mode: "announce" as const, channel: "telegram", to: ownerId, bestEffort: true };
+}
+
+/**
+ * The Gateway call for a message to a Telegram chat or topic, with or without buttons. The contract test
+ * (src/contract/smoke.ts) sends exactly these against each OpenClaw version before the panel moves to it.
+ */
+export function telegramSendRequest(accountId: string, agentId: string, target: { to: string; threadId?: string; message: string }, buttons: { label: string; data: string; style?: "success" | "danger" | "primary" }[], idempotencyKey: string): { method: "send" | "message.action"; params: Record<string, unknown> } {
+  // With several agents OpenClaw 2026.8.35 refuses a send that names none ("session key main has no explicit owner").
+  if (!buttons.length) return { method: "send", params: { channel: "telegram", accountId, agentId, ...target, idempotencyKey } };
+  return { method: "message.action", params: { channel: "telegram", action: "send", accountId, agentId, idempotencyKey, params: { ...target, ...presentation(buttons) } } };
 }
 
 function presentation(buttons: { label: string; data: string; style?: "success" | "danger" | "primary" }[]) {

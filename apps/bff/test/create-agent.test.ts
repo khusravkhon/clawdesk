@@ -15,7 +15,10 @@ describe("agent ids", () => {
   it("uses the template id, or a latin slug of the name for custom agents", () => {
     expect(slugBase({ id: "dietitian" }, "Диетолог")).toBe("dietitian");
     expect(slugBase({ id: "custom" }, "Sales Helper 2!")).toBe("sales-helper-2");
-    expect(slugBase({ id: "custom" }, "Помощник по продажам")).toBe("agent");
+    expect(slugBase({ id: "custom" }, "Помощник по продажам")).toBe("pomoschnik-po-prodazham");
+    expect(slugBase({ id: "custom" }, "Соцсети")).toBe("socseti");
+    expect(slugBase({ id: "custom" }, "Ҳисоботи ҷорӣ")).toBe("hisoboti-jori");
+    expect(slugBase({ id: "custom" }, "🛠️")).toBe("agent");
   });
 
   it("never collides with existing agents or main", () => {

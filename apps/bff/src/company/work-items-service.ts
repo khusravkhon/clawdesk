@@ -34,6 +34,8 @@ export class WorkItemsService {
     db: Db;
     companyMode: () => boolean;
     send?: (agentId: string, message: string, idempotencyKey: string) => Promise<void>;
+    /** Stops the executor's running turn: a cancelled task is not finished in the background. */
+    abort?: (agentId: string) => Promise<void>;
     now?: () => number;
   }) {}
 
@@ -258,7 +260,7 @@ export class WorkItemsService {
     const by = this.#name(agentId);
     if (entry.decision === "accept") {
       this.#set(tx, row, { status: "done" });
-      this.#event(tx, row.id, "accepted", agentId, comment, { agentId: row.executorAgentId, text: `Тимлид ${by} принял задачу ${label} («${row.title}»). ${comment}` });
+      this.#event(tx, row.id, "accepted", agentId, comment, { agentId: row.executorAgentId, text: `${/^тимлид/iu.test(by) ? by : `Тимлид ${by}`} принял задачу ${label} («${row.title}»). ${comment}` });
       return { outcome: `accepted:${label}`, notify: `${label} принята. Исполнитель узнает об этом.` };
     }
     this.#set(tx, row, { returnComment: `${by}: ${comment}` });
@@ -274,6 +276,8 @@ export class WorkItemsService {
     let sent = 0;
     for (const event of db.select().from(workItemEvents).where(and(isNull(workItemEvents.deliveredAt), lt(workItemEvents.attempts, MAX_ATTEMPTS))).orderBy(asc(workItemEvents.id)).limit(50).all().filter((item) => item.notifyAgentId)) {
       try {
+        // Only on the first attempt: a retry later could stop the turn of the next task.
+        if (event.kind === "cancelled" && event.attempts === 0) await this.deps.abort?.(event.notifyAgentId!).catch(() => undefined);
         await send(event.notifyAgentId!, event.notifyText!, `clawdesk-task-event-${event.id}`);
         db.update(workItemEvents).set({ deliveredAt: this.#now(), attempts: event.attempts + 1 }).where(eq(workItemEvents.id, event.id)).run();
         sent++;
@@ -290,6 +294,7 @@ function leadMessage(label: string, executor: string, row: Row, result: string):
     `Что нужно было сделать: ${row.description}`,
     `Критерии приёмки: ${row.criteria}`,
     `Результат: ${result}`,
+    "Рабочая папка участника тебе не видна: суди по тексту результата. Если в нём только путь к файлу, верни задачу и попроси вставить в отчёт само содержание.",
     "",
     `Реши инструментом clawdesk_task_review: taskId «${label}», decision accept (что проверил) или return (что исправить). Владелец тоже может решить сам.`,
   ].join("\n");
@@ -303,7 +308,7 @@ function startMessage(label: string, row: Row): string {
     row.deadlineAt ? `Срок: ${new Date(row.deadlineAt).toISOString().slice(0, 16).replace("T", " ")} UTC.` : null,
     row.returnComment ? `Работу вернули с замечанием: ${row.returnComment}` : null,
     "",
-    `Когда закончишь, сообщи результат инструментом clawdesk_task_report: taskId «${label}», status done и что сделано (где посмотреть результат), или status failed и почему не получилось. «Сделано» без результата не засчитывается; принимает тимлид твоей команды или владелец.`,
+    `Когда закончишь, сообщи результат инструментом clawdesk_task_report: taskId «${label}», status done и что сделано — сам результат текстом (или главное из файла и путь к нему: тимлид и владелец твою рабочую папку не видят), или status failed и почему не получилось. «Сделано» без результата не засчитывается; принимает тимлид твоей команды или владелец.`,
     `Если чего-то не хватает (сведений, решения, доступа), подай обращение clawdesk_request_up с taskRef «${label}»: задача подождёт ответа и продолжится, когда он придёт.`,
   ].filter((line): line is string => typeof line === "string").join("\n");
 }

@@ -76,7 +76,7 @@
     "allTeams": "Manage teams",
     "teamCount": "Teams: {count}",
     "teamDepartment": "Department for {name}",
-    "scope": "This screen manages organization only. Assignments do not change permissions, schedules or existing agent communication.",
+    "scope": "This screen manages the company's structure. Agents' requests follow it: team lead, department manager, main agent, owner. Assigning a manager or moving a team does not change agents' access or schedules.",
     "offline": "Gateway unavailable. Organization is saved, but manager availability is unverified. New manager assignments require a connection.",
     "managerHint": "Choose an available independent agent. The company lead and project team members cannot manage a department.",
     "createAgent": "Create agent",
@@ -145,6 +145,7 @@
     "createTeamSubmit": "Create the team ({count})",
     "teamCost": "Each member is a separate agent: it spends model tokens when it works.",
     "teamCreated": "Team \"{name}\" created",
+    "removeTeamConfirm": "Delete the team “{name}” and its agents?",
     "teamRoles": {
       "team-lead": "Team lead",
       "marketing": "Marketing",
@@ -647,8 +648,8 @@
       "s3": "Set up the consent screen",
       "s3text": "Click “Get started”, name it ClawDesk, enter your email, choose “External”.",
       "consent": "Consent screen",
-      "publish": "Publish the app",
-      "publishText": "On the “Audience” page click “Publish app” and confirm. Otherwise Google cuts the access every 7 days. Google review is not needed for personal use.",
+      "publish": "Publish the app or add yourself as a test user",
+      "publishText": "If «Publish app» on the «Audience» page is available, press it. If Google asks for a homepage and privacy policy, stay in «Testing» and add your email under «Test users»: Google then asks to sign in again every 7 days.",
       "audience": "Audience page",
       "s4": "Create an OAuth client",
       "s4text": "Application type: “Desktop app”. Then click “Download JSON”.",
@@ -673,7 +674,9 @@
       "removed": "Google disconnected",
       "confirmRemove": "Disconnect this Google account? The assistant will no longer see your mail and files.",
       "connectedHint": "The assistant works with Google through the gog tool. Its commands go through approvals.",
-      "noGog": "Google is not available on this server — update ClawDesk."
+      "noGog": "Google is not available on this server — update ClawDesk.",
+      "simpler": "Simpler without Google: send the file to the bot in Telegram or upload it in «Company → Documents» and say which agent gets it. Connect Google only if agents should read your mail and Drive themselves.",
+      "advanced": "Connect Google (advanced)"
     },
     "github": {
       "about": "Repositories, issues and pull requests — for the main agent",
@@ -1005,7 +1008,40 @@
     "resettingTitle": "Resetting",
     "resettingText": "The server is wiping the data and restarting — 1–3 minutes. Then the new password screen opens. Your owner code:",
     "resettingHint": "Write the code down: if the page does not open by itself, open the panel and enter it on the password screen.",
-    "openSetup": "Open the password screen"
+    "openSetup": "Open the password screen",
+    "openclaw": {
+      "title": "OpenClaw",
+      "running": "Running OpenClaw {v}.",
+      "about": "A new OpenClaw shows up here only after ClawDesk has verified it. You decide when to update.",
+      "upToDate": "This is the newest verified version.",
+      "offer": "Verified OpenClaw {v} is available.",
+      "newLine": "This is a new OpenClaw line ({from} → {to}). It may store data in a new way: going back to the previous line takes restoring a backup.",
+      "steps": "A backup comes first. Then a new Gateway is built and the Gateway and the panel restart: 5–20 minutes, agents do not answer meanwhile. If the new version fails its checks, the previous one comes back.",
+      "update": "Update OpenClaw to {v}",
+      "confirmTitle": "Update OpenClaw?",
+      "confirmText": "OpenClaw {from} → {to}. The panel and the agents are unavailable for a few minutes.",
+      "confirm": "Update",
+      "cancel": "Cancel",
+      "restarting": "The panel is restarting… This updates by itself.",
+      "backup": "Backup before the update: {backup}",
+      "state": {
+        "backup": "Making a backup…",
+        "building": "Building the Gateway with OpenClaw {v}…",
+        "switching": "Restarting the Gateway and the panel…",
+        "checking": "Checking the new version…",
+        "rolling_back": "That did not work; bringing the previous version back…",
+        "done": "OpenClaw updated to {v}.",
+        "rolled_back": "The update to {v} failed its checks; the previous version runs.",
+        "failed": "The update to {v} failed."
+      },
+      "reason": {
+        "interrupted": "The update was cut short: the computer or Docker restarted. You can start it again.",
+        "backup_failed": "The backup failed, so nothing was changed.",
+        "build_failed": "The Gateway could not be built; nothing was changed. Usually a passing network problem: try again.",
+        "helper_failed": "The update helper did not start.",
+        "rollback_failed": "The previous version could not be brought back. Restore the backup from the list below."
+      }
+    }
   },
   "mode": {
     "title": "What is this panel for?",
@@ -2050,7 +2086,7 @@
       "cancel": "Close without answer",
       "grant": "Grant access"
     },
-    "limits": "First version limits: no team lead level yet; at most four transitions; one open request of a kind per subject and up to five open per agent; one day to answer, after which the work stays blocked. Requests do not grant access to documents or services yet. Telegram messages come in a later stage.",
+    "limits": "Limits: at most four transitions; one open request of a kind per subject and up to five open per agent; one day to answer, after which the work stays blocked. Only the owner grants access to a folder, document or file — in the panel or with a button in Telegram.",
     "failed": "The action failed.",
     "errors": {
       "request_missing": "Request not found.",
@@ -2098,7 +2134,8 @@
       "mcp": "MCP",
       "team-repo": "team repository",
       "project-copy": "project copy",
-      "gdoc": "Google Doc"
+      "gdoc": "Google Doc",
+      "file": "owner's file"
     },
     "level": {
       "read": "read",
@@ -2139,7 +2176,8 @@
     "refreshed": "Copy refreshed",
     "refreshedChanged": "The document changed: the copy was replaced and the agent told.",
     "refreshedSame": "The document has not changed.",
-    "revokeGdoc": "The copy of \"{name}\" will be deleted from {agent}'s workspace. The document in Google does not change. Continue?"
+    "revokeGdoc": "The copy of \"{name}\" will be deleted from {agent}'s workspace. The document in Google does not change. Continue?",
+    "revokeFile": "Take the file «{name}» from «{agent}»? Its copy is deleted from the agent's workspace."
   },
   "workItems": {
     "title": "Company tasks",
@@ -2454,6 +2492,7 @@
     },
     "powers": {
       "title": "What the agent can technically do",
+      "hint": "These come from the panel's settings — sandbox, folders, access, place in the structure. The text above does not change them.",
       "lead": "Team lead",
       "sandbox": "Runs in a sandbox",
       "noSandbox": "Runs without a sandbox",
@@ -2640,6 +2679,8 @@
   },
   "capabilities": {
     "title": "Installation capabilities",
+    "checking": "Checking the installation… This takes up to 10 seconds.",
+    "unknownHint": "Could not check: the Gateway or the panel's service did not answer. See \"Gateway connection\" and press \"Check again\".",
     "subtitle": "What this installation can do now",
     "lead": "Each row is checked right now on this installation: connection, settings and tools in the container. It is a fact about this machine, not a promise: what is missing here does not work, even if the documentation describes it.",
     "check": "Check again",
@@ -2766,6 +2807,36 @@
       "model_missing": "The main agent's model is unavailable.",
       "existing_workspace_required": "Plans are for an existing project folder.",
       "revision_conflict": "The plan changed — refresh the card."
+    }
+  },
+  "documents": {
+    "title": "Documents",
+    "subtitle": "Files for agents without connecting Google",
+    "howTelegram": "The simplest way: send the file or photo to the bot in Telegram (or to the main agent's chat in the panel) and write whom to give it and what to do, e.g. «give it to the developer, study the spec and plan the work». The main agent proposes it and you get a «Grant access» button.",
+    "howHere": "Or upload a file here and press «Give to an agent». The agent gets a read-only copy; other agents do not see it. Files are in the «Входящие» folder of the shared folder on your computer.",
+    "upload": "Upload a file",
+    "files": "Files",
+    "empty": "No files yet. Send one to the bot or upload it.",
+    "share": "Give to an agent",
+    "shareTitle": "Give «{name}»",
+    "agent": "To",
+    "agentPlaceholder": "A company agent",
+    "instruction": "What to do with the file",
+    "instructionPlaceholder": "E.g. study the spec and plan the work",
+    "shareHint": "The agent gets a read-only copy and this task in its chat. You can take it back here or in «Access».",
+    "shareConfirm": "Give",
+    "cancel": "Cancel",
+    "givenTo": "With {agent}",
+    "uploaded": "«{name}» uploaded to «Входящие».",
+    "shared": "«{name}» given to {agent}: copy checked, task sent.",
+    "revoked": "«{name}» taken back from {agent}.",
+    "failed": "That did not work. Try again.",
+    "errors": {
+      "file_too_large": "The file is larger than 20 MB.",
+      "file_missing": "The file is no longer in the shared folder.",
+      "files_unavailable": "The file store is unavailable right now (is the Gateway restarting?).",
+      "main_folders": "The main agent already sees the shared folder.",
+      "not_applied": "The agent's copy was not confirmed — try again."
     }
   }
 }

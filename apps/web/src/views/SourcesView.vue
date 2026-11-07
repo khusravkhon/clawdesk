@@ -38,6 +38,8 @@ async function load(): Promise<void> {
 }
 
 // --- GitHub: OpenClaw gets a code from GitHub; the person types it at github.com/login/device.
+/** Google through the owner's own Google Cloud client is for the experienced; files are the simple way. */
+const googleAdvanced = ref(false);
 const gh = ref<StartGitHubSignInResultDto | null>(null);
 const ghBusy = ref(false);
 let ghTimer: number | undefined;
@@ -65,7 +67,7 @@ function ghPoll(after: number): void {
       if (res.status === "pending") return ghPoll(res.retryAfterMs);
       gh.value = null;
       if (res.status === "success") message.success(t("sources.github.connected"));
-      else message.error(t(`sources.github.${res.status}`));
+      else message.error(res.reason ? `${t(`sources.github.${res.status}`)} (${res.reason})` : t(`sources.github.${res.status}`));
       await load();
     } catch (e) {
       gh.value = null;
@@ -346,7 +348,12 @@ onMounted(async () => {
           <p class="hint">{{ t("sources.google.connectedHint") }}</p>
         </template>
         <n-alert v-else-if="!google?.available" type="info" :bordered="false">{{ t("sources.google.noGog") }}</n-alert>
-        <google-wizard v-else :google="google" @updated="(d) => (data = d)" />
+        <template v-else>
+          <!-- For most people files are simpler: the bot in Telegram or «Документы»; the own Google Cloud client is for the experienced. -->
+          <p class="hint">{{ t("sources.google.simpler") }}</p>
+          <n-button v-if="!googleAdvanced" size="small" secondary @click="googleAdvanced = true">{{ t("sources.google.advanced") }}</n-button>
+          <google-wizard v-else :google="google" @updated="(d) => (data = d)" />
+        </template>
       </section>
 
       <!-- GitHub -->

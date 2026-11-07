@@ -9,7 +9,11 @@ import type { GatewayService } from "../gateway/gateway-service.js";
 // OpenClaw tries in order when the main one fails with a limit, billing, auth or
 // overload error (agents.entries.<id>.model { primary, fallbacks }). An agent's own
 // primary without its own fallbacks is strict in OpenClaw, so the list is always
-// written explicitly. See docs/model-fallback.md.
+// written explicitly, always through patchConfig: agents.update { model } writes a
+// string and drops the fallbacks (checked on the Gateway). Connecting a provider "as
+// a backup": OpenClaw can only make it the main model, so the chain is saved first,
+// then restored with the new model appended last; a rejected key changes nothing.
+// Junior agents that use the main agent's AI follow its whole chain (syncFollowers).
 
 type ModelSetting = string | { primary?: string; fallbacks?: string[] } | undefined;
 type AgentsConfig = { agents?: { defaults?: { model?: ModelSetting }; entries?: Record<string, { model?: ModelSetting }> } };

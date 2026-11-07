@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { registerRequests, REPLY, UP } from "./plugins/clawdesk-requests/index.mjs";
+import { registerRequests, REPLY, SHARE, UP } from "./plugins/clawdesk-requests/index.mjs";
 
 async function fixture(t) {
   const spoolDir = path.join(await fs.mkdtemp(path.join(os.tmpdir(), "clawdesk-requests-")), "spool");
@@ -11,7 +11,7 @@ async function fixture(t) {
   const factories = {};
   let config = { agents: { entries: { dev: {}, other: {} } }, plugins: { entries: { "clawdesk-requests": { enabled: true, config: { allowedAgentIds: ["dev", "main"] } } } } };
   const interactive = [];
-  registerRequests({ registerTool: (factory, options) => { for (const name of options.names) factories[name] = { factory, options }; }, registerInteractiveHandler: (registration) => interactive.push(registration) }, { spoolDir, now: () => 1000 });
+  registerRequests({ registerTool: (factory, options) => { for (const name of options.names) factories[name] = { factory, options }; }, registerInteractiveHandler: (registration) => interactive.push(registration) }, { spoolDir, now: () => 1000, waitMs: 300, pollMs: 20 });
   const context = (agentId = "dev", sessionKey = `agent:${agentId}:main`) => ({ agentId, sessionKey, getRuntimeConfig: () => config });
   const spool = async () => Promise.all((await fs.readdir(spoolDir).catch(() => [])).map(async (name) => JSON.parse(await fs.readFile(path.join(spoolDir, name), "utf8"))));
   return { interactive, spoolDir, factories, context, tool: (name, ctx = context()) => factories[name].factory(ctx), spool, setConfig: (value) => { config = value; }, config: () => config };
@@ -20,7 +20,8 @@ async function fixture(t) {
 test("manifest declares both optional tools with a strict agent allowlist", async () => {
   const manifest = JSON.parse(await fs.readFile(new URL("./plugins/clawdesk-requests/openclaw.plugin.json", import.meta.url), "utf8"));
   assert.equal(manifest.configSchema.additionalProperties, false);
-  assert.deepEqual(manifest.contracts.tools, [UP, REPLY, "clawdesk_task_report", "clawdesk_task_review"]);
+  assert.deepEqual(manifest.contracts.tools, [UP, REPLY, "clawdesk_task_report", "clawdesk_task_review", SHARE]);
+  assert.equal(manifest.toolMetadata[SHARE].optional, true);
   assert.equal(manifest.toolMetadata[UP].optional, true);
 });
 
@@ -140,4 +141,37 @@ test("the owner's /req command in Telegram is filed with the sender's ID, never 
   await run("REQ-004 уточни Для какого месяца?");
   const filed = await Promise.all((await fs.readdir(spoolDir)).map(async (name) => JSON.parse(await fs.readFile(path.join(spoolDir, name), "utf8"))));
   assert.deepEqual(filed.map((item) => [item.type, item.senderId, item.requestId, item.action, item.text]).sort(), [["owner_text", "4242", "REQ-003", "answer", "Отчёт в папке Sales"], ["owner_text", "4242", "REQ-004", "clarify", "Для какого месяца?"]]);
+});
+
+test("only the main agent proposes giving the owner's file; the proposal is filed with its identity", async (t) => {
+  const f = await fixture(t);
+  assert.equal(f.tool(SHARE, f.context("dev")), null, "a company agent has no such tool");
+  const share = f.tool(SHARE, f.context("main"));
+  assert.equal(share.parameters.additionalProperties, false);
+  const args = { to: "Разработчик проекта", file: "media://inbound/ТЗ---0f8a1b2c-3d4e-4f50-8a6b-7c8d9e0f1a2b.pdf", instruction: "Изучи ТЗ и составь план" };
+  assert.equal((await share.execute("s1", args)).details.status, "filed");
+  assert.equal((await share.execute("s2", { ...args, file: "Входящие/ТЗ.pdf", name: "ТЗ" })).details.status, "filed");
+  for (const bad of [{ ...args, file: ["a", "b"].join("\n") }, { ...args, instruction: "" }, { to: "x", file: "f" }, { ...args, extra: "1" }]) assert.equal((await share.execute("bad", bad)).details.code, "invalid_arguments");
+  const filed = await f.spool();
+  assert.equal(filed.length, 2);
+  assert.ok(filed.every((item) => item.type === "share" && item.agentId === "main" && item.sessionKey === "agent:main:main"));
+});
+
+test("the share tool returns the panel's answer in the same call when it comes in time, and says so when it does not", async (t) => {
+  const f = await fixture(t);
+  const share = f.tool(SHARE, f.context("main"));
+  const args = { to: "dev", file: "Входящие/ТЗ.pdf", instruction: "Изучи" };
+  const waiting = share.execute("w1", args);
+  // The panel reads the entry and writes its answer next to the spool.
+  for (let i = 0; i < 20 && !(await f.spool()).length; i++) await new Promise((r) => setTimeout(r, 10));
+  const [entry] = await f.spool();
+  await fs.mkdir(path.join(f.spoolDir, "results"), { recursive: true });
+  await fs.writeFile(path.join(f.spoolDir, "results", entry.id + ".json"), JSON.stringify({ id: entry.id, text: "это несколько агентов: …" }));
+  const answer = await waiting;
+  assert.equal(answer.details.status, "decided");
+  assert.equal(answer.details.panel, "это несколько агентов: …");
+  await assert.rejects(fs.access(path.join(f.spoolDir, "results", entry.id + ".json")), "the answer is taken, so the panel does not send it again");
+  const late = await share.execute("w2", { ...args, instruction: "Ещё" });
+  assert.equal(late.details.status, "filed");
+  assert.match(late.details.note, /Do not tell the owner the file was given or proposed/);
 });

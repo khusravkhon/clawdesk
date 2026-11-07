@@ -67,7 +67,7 @@ describe("company tasks", () => {
     review("lead", "WI-001", "accept");
     await tick();
     expect(status()).toEqual({ "WI-001": "done" });
-    expect(to("writer").at(-1)).toContain("Тимлид Тимлид принял задачу WI-001");
+    expect(to("writer").at(-1)).toContain("Тимлид принял задачу WI-001");
     expect(items.list().items[0]!.events.map((event) => event.kind)).toEqual(expect.arrayContaining(["reported", "returned", "accepted"]));
     // Without a lead the owner accepts, as before.
     task("Справка", "analyst");
@@ -140,6 +140,26 @@ describe("company tasks", () => {
     add({ type: "up", agentId: "writer", kind: "question", subject: "x", details: "y", taskRef: "WI-001" });
     await tick();
     expect(items.list().items[0]!.status).toBe("running");
+  });
+
+  it("cancelling a task in work stops the executor's running turn once, before telling it", async () => {
+    const log: string[] = [];
+    let failSend = true;
+    const service = new WorkItemsService({
+      db, companyMode: () => true, now: () => clock,
+      send: async (agentId, message) => { if (failSend && message.includes("отменил")) { failSend = false; throw new Error("offline"); } log.push(`send ${agentId}: ${message.slice(0, 30)}`); },
+      abort: async (agentId) => { log.push(`abort ${agentId}`); },
+    });
+    const a = service.create({ requestId: randomUUID(), title: "A", description: "d", criteria: "c", executorAgentId: "analyst", deadlineAt: null, start: true });
+    await service.deliver();
+    service.act(a.id, { requestId: randomUUID(), revision: service.list().items[0]!.revision, action: "cancel", comment: "" });
+    await service.deliver();
+    expect(log.filter((line) => line.startsWith("abort"))).toEqual(["abort analyst"]);
+    expect(log.indexOf("abort analyst")).toBeGreaterThan(log.findIndex((line) => line.includes("Задача WI-001")));
+    // The retry of the lost cancel message does not stop the turn again.
+    await service.deliver();
+    expect(log.filter((line) => line.startsWith("abort"))).toEqual(["abort analyst"]);
+    expect(log.some((line) => line.includes("Владелец отменил"))).toBe(true);
   });
 
   it("cancelling a task in work tells the executor and frees it; actions are idempotent and checked", async () => {

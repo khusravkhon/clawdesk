@@ -17,9 +17,13 @@ const SEGMENT = /^[^\0/\\]{1,255}$/;
 const fail = (code, status = 409) => { throw new ProjectFolderError(code, status); };
 const sha = (value) => createHash("sha256").update(value).digest("hex");
 
+/** The builder's note in app/: not a secret, and without it the project is no longer "made by the builder" (no checks). */
+export const BUILD_FILE = "app/.clawdesk-build.json";
+
 /** A package path: relative, forward slashes, no "." or "..", nothing the export would have left out. */
 export function safePath(value) {
   if (typeof value !== "string" || value.length > 1000 || value.startsWith("/")) return false;
+  if (value === BUILD_FILE) return true;
   const parts = value.split("/");
   if (parts.length > MAX_DEPTH) return false;
   return parts.every((part, index) => SEGMENT.test(part) && part !== "." && part !== ".." && !(index < parts.length - 1 ? SKIP_DIRS.has(part) || part.startsWith(".clawdesk") : SKIP_FILE.test(part)));
@@ -45,7 +49,7 @@ export class ProjectTransfer {
             continue;
           }
           if (!entry.isFile()) continue;
-          if (SKIP_FILE.test(entry.name)) { excluded.push({ path: name, reason: "secret_or_local" }); continue; }
+          if (SKIP_FILE.test(entry.name) && name !== BUILD_FILE) { excluded.push({ path: name, reason: "secret_or_local" }); continue; }
           const handle = await fs.open(`${workspace.directory}/${name}`, READ);
           try {
             const stat = await handle.stat();

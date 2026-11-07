@@ -111,6 +111,22 @@ describe("company organization", () => {
     expect(db.select().from(teams).get()?.departmentId).toBeNull();
   });
 
+  it("offers removal in Company for manually created teams without a repository or Telegram group", async () => {
+    db.insert(teams).values([
+      { id: "organizational", name: "Organizational", requestId: randomUUID() },
+      { id: "project-executors", name: "Project executors" },
+      { id: "with-telegram", name: "With Telegram", requestId: randomUUID(), telegramGroupId: "-100789" },
+    ]).run();
+
+    const result = await company.list();
+    expect(Object.fromEntries(result.teams.map((team) => [team.id, team.canRemove]))).toEqual({
+      "existing-team": false,
+      organizational: true,
+      "project-executors": false,
+      "with-telegram": false,
+    });
+  });
+
   it("makes a team member or a standalone agent the team lead, with revision checks", async () => {
     db.insert(teams).values({ id: "other-team", name: "Other team" }).run();
     db.insert(agents).values({ id: "stranger", role: "team_member", teamId: "other-team", displayName: "Stranger" }).run();

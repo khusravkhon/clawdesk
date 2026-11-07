@@ -32,6 +32,15 @@ export type GatewayServiceOptions = {
 type EventListener = (event: EventFrame) => void;
 
 /**
+ * The Gateway sends a tick every tickIntervalMs. Its client checks them only while no request is
+ * pending, and the panel nearly always has one, so a frozen Gateway (open socket, no answers) stayed
+ * "connected". The panel counts any event, ticks included, and gives up after two missed ticks.
+ */
+export function gatewayStale(now: number, lastFrameAt: number, tickIntervalMs: number): boolean {
+  return now - lastFrameAt > Math.max(2 * tickIntervalMs, 20_000) + 5_000;
+}
+
+/**
  * The BFF's single connection to the OpenClaw Gateway. Owns reconnects, device
  * pairing state and event fan-out; the browser never talks to the Gateway.
  */
@@ -44,6 +53,9 @@ export class GatewayService {
   /** Incremented on every hello-ok; lets callers wait for a reconnect after a Gateway restart. */
   #generation = 0;
   #retryTimer: NodeJS.Timeout | undefined;
+  #watchTimer: NodeJS.Timeout | undefined;
+  #lastFrameAt = 0;
+  #tickIntervalMs = 30_000;
   #status: GatewayStatusDto = {
     state: "idle",
     serverVersion: null,
@@ -136,6 +148,7 @@ export class GatewayService {
       },
       onGap: (info) => logger.warn(info, "gateway event sequence gap"),
       onEvent: (event) => {
+        this.#lastFrameAt = Date.now();
         for (const listener of this.#listeners) {
           try {
             listener(event);
@@ -150,6 +163,8 @@ export class GatewayService {
 
   async stop(): Promise<void> {
     clearTimeout(this.#retryTimer);
+    clearInterval(this.#watchTimer);
+    this.#watchTimer = undefined;
     const client = this.#client;
     this.#client = null;
     // Set before closing so onClose does not report an intentional stop as a lost connection.
@@ -204,6 +219,12 @@ export class GatewayService {
   #onHello(hello: HelloOk): void {
     this.#hello = hello;
     this.#generation++;
+    this.#lastFrameAt = Date.now();
+    this.#tickIntervalMs = typeof hello.policy?.tickIntervalMs === "number" && hello.policy.tickIntervalMs > 0 ? hello.policy.tickIntervalMs : 30_000;
+    if (!this.#watchTimer) {
+      this.#watchTimer = setInterval(() => this.#checkStale(), 5_000);
+      this.#watchTimer.unref();
+    }
     this.#setStatus({
       state: "connected",
       serverVersion: hello.server.version,
@@ -218,6 +239,14 @@ export class GatewayService {
     );
     for (const waiter of this.#waiters) waiter.resolve();
     this.#waiters.clear();
+  }
+
+  #checkStale(): void {
+    if (this.#status.state !== "connected" || !gatewayStale(Date.now(), this.#lastFrameAt, this.#tickIntervalMs)) return;
+    const seconds = Math.round((Date.now() - this.#lastFrameAt) / 1000);
+    this.#opts.logger.warn({ seconds }, "gateway stopped answering; reconnecting");
+    this.#setStatus({ state: "disconnected", lastError: `gateway stopped answering (no events for ${seconds}s)` });
+    void this.#reconnectFresh();
   }
 
   #onConnectError(error: Error): void {

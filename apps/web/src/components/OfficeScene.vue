@@ -86,13 +86,23 @@ function person(ctx: CanvasRenderingContext2D, agent: AgentActivityDto, actor: A
 }
 
 function label(ctx: CanvasRenderingContext2D, agent: AgentActivityDto, actor: Actor): void {
-  const text = props.labels[agent.agentId] ?? "";
+  let text = props.labels[agent.agentId] ?? "";
   if (!text) return;
+  const selected = agent.agentId === props.selected;
+  // The lounge itself says "free" and its places are close together: a label there only for the selected one.
+  const lounging = !AT_DESK.includes(agent.state) && agent.state !== "offline" && agent.state !== "unknown";
+  if (lounging && !selected) return;
   ctx.font = "5px sans-serif";
-  const width = Math.min(70, ctx.measureText(text).width + 4);
+  // Within its desk's width, so neighbours' labels never overlap; the full text is in the card and the list.
+  const max = selected ? 90 : 40;
+  if (ctx.measureText(text).width + 4 > max) {
+    while (text.length > 1 && ctx.measureText(`${text}…`).width + 4 > max) text = text.slice(0, -1);
+    text = `${text.trimEnd()}…`;
+  }
+  const width = ctx.measureText(text).width + 4;
   const x = Math.round(actor.x - width / 2), y = Math.round(actor.y) - 27;
   ctx.fillStyle = "rgba(20, 24, 33, 0.85)"; ctx.fillRect(x, y, width, 7);
-  ctx.fillStyle = "#fff"; ctx.fillText(text.length > 26 ? `${text.slice(0, 25)}…` : text, x + 2, y + 5.3);
+  ctx.fillStyle = "#fff"; ctx.fillText(text, x + 2, y + 5.3);
 }
 
 function lines(ctx: CanvasRenderingContext2D): void {
@@ -130,7 +140,8 @@ function draw(): boolean {
   }
   lines(ctx);
   for (const agent of [...props.agents].sort((a, b) => (actors.get(a.agentId)?.y ?? 0) - (actors.get(b.agentId)?.y ?? 0))) { const actor = actors.get(agent.agentId); if (actor) person(ctx, agent, actor, frame); }
-  for (const agent of props.agents) { const actor = actors.get(agent.agentId); if (actor) label(ctx, agent, actor); }
+  // The selected agent's (wider) label last, on top of its neighbours.
+  for (const agent of [...props.agents].sort((a, b) => Number(a.agentId === props.selected) - Number(b.agentId === props.selected))) { const actor = actors.get(agent.agentId); if (actor) label(ctx, agent, actor); }
   return moving || props.agents.some((agent) => agent.state === "working");
 }
 

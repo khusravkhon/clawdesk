@@ -10,6 +10,13 @@ describe("foundation assessment", () => {
     expect(assessFoundation(brief({ scenarios: "Создать задачу, отметить выполненной", data: "Название и срок" }))).toMatchObject({ fit: "fits", needs: [] });
   });
 
+  it("reads only the owner's answer in an interview line, never the question", () => {
+    const asked = assessFoundation(brief({ audience: "Кто будет пользоваться приложением и какие роли им нужны? — Только я, один пекарь." }));
+    expect(asked).toMatchObject({ fit: "fits", needs: [] });
+    const answered = assessFoundation(brief({ audience: "Кто будет пользоваться приложением? — Пекари и администратор с отдельным входом." }));
+    expect(answered.needs).toEqual([expect.objectContaining({ need: "roles", evidence: "Пекари и администратор с отдельным входом." })]);
+  });
+
   it("names each need once with the sentence that shows it", () => {
     const result = assessFoundation(brief({
       goal: "Магазин книг. Покупатель оплачивает заказ картой.",

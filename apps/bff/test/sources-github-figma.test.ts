@@ -70,4 +70,15 @@ describe("GitHub and Figma sources", () => {
     const inherited = await service(gateway({ selected: { configured: false, identity: null } }).gw).status();
     expect(inherited.github.connected).toBe(false);
   });
+
+  it("GitHub sign-in keeps polling on slow_down and network_error, and names why it failed", async () => {
+    const answer = (poll: Json) => service({ request: async (method: string) => (method === "tools.github.authorize.poll" ? poll : {}) } as unknown as GatewayService);
+    expect(await answer({ status: "slow_down", retryAfterMs: 10_000 }).pollGitHubSignIn("r")).toEqual({ status: "pending", retryAfterMs: 10_000, reason: null });
+    expect(await answer({ status: "network_error", retryAfterMs: 7000 }).pollGitHubSignIn("r")).toEqual({ status: "pending", retryAfterMs: 7000, reason: null });
+    expect(await answer({ status: "pending", retryAfterMs: 5000 }).pollGitHubSignIn("r")).toMatchObject({ status: "pending" });
+    expect(await answer({ status: "success", githubStatus: {} }).pollGitHubSignIn("r")).toMatchObject({ status: "success", reason: null });
+    expect(await answer({ status: "expired" }).pollGitHubSignIn("r")).toMatchObject({ status: "expired", reason: null });
+    expect(await answer({ status: "failed", reason: "setup_failed" }).pollGitHubSignIn("r")).toMatchObject({ status: "failed", reason: "setup_failed" });
+    expect(await answer({ status: "incorrect_device_code" }).pollGitHubSignIn("r")).toMatchObject({ status: "failed", reason: "incorrect_device_code" });
+  });
 });

@@ -218,10 +218,20 @@ export class SourcesService {
   }
 
   async pollGitHubSignIn(requestId: string): Promise<PollGitHubSignInResultDto> {
-    const res = await this.deps.gateway.request<{ status: string; retryAfterMs?: number }>("tools.github.authorize.poll", { requestId });
-    const status = (["pending", "success", "access_denied", "expired"] as const).find((s) => s === res.status) ?? "failed";
-    if (status === "success") this.deps.logger.info("github connected for the main agent");
-    return { status, retryAfterMs: res.retryAfterMs ?? 5000 };
+    const res = await this.deps.gateway.request<{ status: string; retryAfterMs?: number; reason?: string }>("tools.github.authorize.poll", { requestId });
+    const retryAfterMs = res.retryAfterMs ?? 5000;
+    // GitHub asks to poll slower (slow_down) or the request did not get through (network_error): the sign-in goes
+    // on. Stopping here left an approved app without its token (seen live on 2026.8.35).
+    if (res.status === "pending" || res.status === "slow_down" || res.status === "network_error") return { status: "pending", retryAfterMs, reason: null };
+    if (res.status === "success") {
+      this.deps.logger.info("github connected for the main agent");
+      return { status: "success", retryAfterMs, reason: null };
+    }
+    if (res.status === "access_denied" || res.status === "expired") return { status: res.status, retryAfterMs, reason: null };
+    // incorrect_device_code, failed (identity_changed | setup_failed) or something new: say which.
+    const reason = res.status === "failed" ? (res.reason ?? "failed") : res.status;
+    this.deps.logger.warn({ status: res.status, reason: res.reason }, "github sign-in failed");
+    return { status: "failed", retryAfterMs, reason };
   }
 
   async disconnectGitHub(): Promise<SourcesDto> {

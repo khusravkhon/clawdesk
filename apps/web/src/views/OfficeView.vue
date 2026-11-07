@@ -82,6 +82,8 @@ const tagType = (state: AgentActivityState) => ({ working: "info", idle: "defaul
 watch(motion, (value) => { try { localStorage.setItem("clawdesk.office.motion", value ? "on" : "off"); } catch { /* storage may be unavailable */ } });
 watch(zoom, (value) => { try { localStorage.setItem("clawdesk.office.zoom", String(value)); } catch { /* storage may be unavailable */ } });
 watch(scope, (value) => { try { localStorage.setItem("clawdesk.office.scope", value); } catch { /* storage may be unavailable */ } });
+// A remembered team or department that is not here (deleted, or the demo is on): show everyone, not a raw ID.
+watch([scopes, all], () => { if (all.value.length && !scopes.value.some((option) => option.value === scope.value)) scope.value = "all"; }, { immediate: true });
 watch(demo, (value) => {
   clearInterval(demoTimer);
   if (!value) return;

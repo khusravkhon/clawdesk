@@ -89,6 +89,8 @@ export type PollGitHubSignInRequest = z.infer<typeof PollGitHubSignInRequest>;
 export const PollGitHubSignInResultDto = z.object({
   status: z.enum(["pending", "success", "access_denied", "expired", "failed"]),
   retryAfterMs: z.number(),
+  /** Why it failed, as OpenClaw says: incorrect_device_code, identity_changed, setup_failed… */
+  reason: z.string().nullable(),
 });
 export type PollGitHubSignInResultDto = z.infer<typeof PollGitHubSignInResultDto>;
 

@@ -34,13 +34,19 @@ jobs:
       - name: Install scripts
         run: shellcheck -S warning deploy/install.sh deploy/scripts/*.sh
 
-  # The RPCs ClawDesk relies on, against the real Gateway of the pinned OpenClaw (deploy/scripts/contract.sh).
+  # The RPCs ClawDesk relies on, against the real Gateway of every OpenClaw this code builds
+  # (deploy/openclaw.supported: the default and a newer line installs may choose in the panel).
   contract:
     runs-on: ubuntu-24.04
-    timeout-minutes: 40
+    timeout-minutes: 80
     steps:
       - uses: actions/checkout@v4
-      - run: bash deploy/scripts/contract.sh
+      - run: |
+          for version in $(sed "s/#.*//" deploy/openclaw.supported); do
+            echo "::group::contract OpenClaw $version"
+            OPENCLAW_VERSION="$version" bash deploy/scripts/contract.sh
+            echo "::endgroup::"
+          done
 
   desktop:
     runs-on: ubuntu-22.04

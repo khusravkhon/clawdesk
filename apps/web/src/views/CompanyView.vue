@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import type { CompanyDto, DepartmentDto } from "@clawdesk/shared";
-import { NAlert, NButton, NCard, NEmpty, NFormItem, NInput, NModal, NSelect, NSkeleton, NSpace, NSwitch, NTag, useMessage } from "naive-ui";
+import { NAlert, NButton, NCard, NEmpty, NFormItem, NInput, NModal, NPopconfirm, NSelect, NSkeleton, NSpace, NSwitch, NTag, useMessage } from "naive-ui";
 import { computed, onMounted, reactive, ref } from "vue";
 import { useI18n } from "vue-i18n";
 import { useRoute, useRouter } from "vue-router";
@@ -71,7 +71,8 @@ async function assign(id: string, departmentId: string | null, revision: number)
 /** Stage 4: the team's lead — one of its members or a standalone agent; requests of the team reach it first. */
 const leadOptions = (team: CompanyDto["teams"][number]) => [
   ...team.members.map((member) => ({ label: member.name, value: member.id })),
-  ...(data.value?.agents ?? []).filter((agent) => !team.departmentId || agent.departmentId === team.departmentId).map((agent) => ({ label: `${agent.name} · ${t("company.standaloneAgent")}`, value: agent.id })),
+  // A standalone agent of the team's department or of no department: a lead made at company level counts too.
+  ...(data.value?.agents ?? []).filter((agent) => !team.departmentId || !agent.departmentId || agent.departmentId === team.departmentId).map((agent) => ({ label: `${agent.name} · ${t("company.standaloneAgent")}`, value: agent.id })),
 ];
 async function assignLead(id: string, agentId: string | null, revision: number): Promise<void> {
   saving.value = true;
@@ -100,6 +101,13 @@ async function createTeam(): Promise<void> {
     await load();
   } catch (e) { message.error(errorText(e)); }
   finally { saving.value = false; }
+}
+
+async function removeTeam(id: string): Promise<void> {
+  saving.value = true;
+  try { await api.teams.remove(id); }
+  catch (e) { message.error(errorText(e)); }
+  finally { await load(); saving.value = false; }
 }
 
 async function assignAgent(id: string, departmentId: string | null, revision: number): Promise<void> {
@@ -132,6 +140,7 @@ onMounted(load);
         <n-button v-if="!selectedId" key="activity" @click="router.push('/company/activity')">{{ t('activity.title') }}</n-button>
         <n-button v-if="!selectedId" key="work-items" @click="router.push('/company/work-items')">{{ t('workItems.title') }}</n-button>
         <n-button v-if="!selectedId" key="requests" @click="router.push('/company/requests')">{{ t('requests.title') }}</n-button>
+        <n-button v-if="!selectedId" key="documents" @click="router.push('/company/documents')">{{ t('documents.title') }}</n-button>
         <n-button v-if="!selectedId" key="access" @click="router.push('/company/access')">{{ t('access.title') }}</n-button>
         <n-button v-if="!selectedId" key="capabilities" @click="router.push('/company/capabilities')">{{ t('capabilities.title') }}</n-button>
         <n-button v-if="!selectedId" key="create" type="primary" :disabled="!data || saving" @click="edit()">{{ t('company.create') }}</n-button>
@@ -184,7 +193,15 @@ onMounted(load);
         <n-empty v-if="!visibleTeams.length" :description="t('company.noTeams')" />
         <div v-for="team in visibleTeams" :key="team.id" class="team">
           <div class="team-name">
-            <span>{{ team.name }}</span>
+            <n-space align="center">
+              <span>{{ team.name }}</span>
+              <n-popconfirm v-if="team.canRemove" @positive-click="removeTeam(team.id)">
+                <template #trigger>
+                  <n-button text type="error" :aria-label="`${t('teams.remove')} ${team.name}`" :disabled="saving || !data.gatewayAvailable">{{ t('teams.remove') }}</n-button>
+                </template>
+                {{ t('company.removeTeamConfirm', { name: team.name }) }}
+              </n-popconfirm>
+            </n-space>
             <n-select size="small" :value="team.leadAgentId" :options="leadOptions(team)" clearable :placeholder="t('company.noLead')" :aria-label="t('company.teamLead', { name: team.name })" :disabled="saving" @update:value="value => assignLead(team.id, value, team.revision)" />
           </div>
           <n-select :value="team.departmentId" :options="teamOptions" clearable :placeholder="t('company.unassigned')" :aria-label="t('company.teamDepartment', { name: team.name })" :disabled="saving" @update:value="value => assign(team.id, value, team.revision)" />

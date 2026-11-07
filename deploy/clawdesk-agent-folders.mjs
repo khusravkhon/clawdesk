@@ -3,6 +3,8 @@ import path from "node:path";
 import { randomUUID } from "node:crypto";
 import { directoryIdentityWithin, ensureDirectoryWithin, FolderSyncError, SyncMetadataCache, syncFolders } from "./clawdesk-file-sync.mjs";
 
+/** Written by restore next to folder-sync.json. */
+export const RESTORED_MARKER = "folder-sync.restored";
 const NAME = /^[\p{L}\p{N}][\p{L}\p{N} ._-]{0,59}$/u;
 const AGENT = /^[a-z0-9][a-z0-9_-]{0,79}$/;
 /** A team member's docs live at <workspace>/docs (the path its instructions name), not under folders/. */
@@ -51,11 +53,25 @@ export class AgentFolders {
       const value = JSON.parse(await fs.readFile(path.join(this.stateDir, "clawdesk", "folder-sync.json"), "utf8"));
       if (value.version !== 1 || !Array.isArray(value.folders) || value.folders.length > 1000) throw new Error("invalid folder sync registry");
       for (const item of value.folders) this.validate(item);
+      await this.#repinAfterRestore(value);
       return value;
     } catch (error) {
       if (error.code === "ENOENT") return { version: 1, folders: [] };
       throw error;
     }
+  }
+
+  /** Restore recreates agent workspaces with new inodes; the registry comes from the same snapshot, so pin them again once. */
+  async #repinAfterRestore(registry) {
+    const marker = path.join(this.stateDir, "clawdesk", RESTORED_MARKER);
+    if (!(await fs.lstat(marker).catch(() => null))) return;
+    const config = JSON.parse(await fs.readFile(this.configPath, "utf8"));
+    for (const item of registry.folders) {
+      delete item.workspaceIdentity;
+      try { await this.paths(item, config); } catch { /* The next sync reports it. */ }
+    }
+    await this.save(registry);
+    await fs.unlink(marker);
   }
 
   validate({ agentId, name, dir, readOnly }) {

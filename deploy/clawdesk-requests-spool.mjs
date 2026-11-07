@@ -40,3 +40,24 @@ export async function ackRequestsSpool(dir, ids) {
   for (const id of ids) await fs.rm(path.join(dir, `${id}.json`), { force: true });
   return { removed: ids.length };
 }
+
+/**
+ * The panel's answer to one filed entry, for the tool call still waiting for it (clawdesk_share_file): written as
+ * <spool>/results/<id>.json. Whoever removes it first uses it — the plugin (the agent gets it in the same turn) or
+ * the panel, which then delivers it to the agent's chat as a message instead.
+ */
+export const resultsDir = (dir) => path.join(dir, "results");
+export async function writeRequestResult(dir, id, text) {
+  if (typeof id !== "string" || !/^[a-f0-9]{32}$/.test(id) || typeof text !== "string" || !text || text.length > 8000) throw Object.assign(new Error("invalid result"), { status: 400 });
+  await fs.mkdir(resultsDir(dir), { recursive: true, mode: 0o700 });
+  const target = path.join(resultsDir(dir), `${id}.json`), part = `${target}.${process.pid}.tmp`;
+  await fs.writeFile(part, JSON.stringify({ id, text }), { mode: 0o600 });
+  await fs.rename(part, target);
+  return { written: true };
+}
+/** Removes the answer if nobody took it yet; `existed` tells the panel it still has to deliver it itself. */
+export async function takeRequestResult(dir, id) {
+  if (typeof id !== "string" || !/^[a-f0-9]{32}$/.test(id)) throw Object.assign(new Error("invalid result"), { status: 400 });
+  try { await fs.unlink(path.join(resultsDir(dir), `${id}.json`)); return { existed: true }; }
+  catch (error) { if (error.code === "ENOENT") return { existed: false }; throw error; }
+}

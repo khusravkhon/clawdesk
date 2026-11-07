@@ -75,7 +75,7 @@ onMounted(load);
       <n-button type="primary" class="block" :loading="busy" :disabled="!dirty || (expands && !confirm)" @click="save">{{ t("agentCharter.save") }}</n-button>
 
       <h3 class="sub">{{ t("agentCharter.powers.title") }}</h3>
-      <p class="hint">{{ t("agentCharter.powers.lead") }}</p>
+      <p class="hint">{{ t("agentCharter.powers.hint") }}</p>
       <ul class="powers">
         <li>{{ t(data.powers.sandbox ? "agentCharter.powers.sandbox" : "agentCharter.powers.noSandbox") }}</li>
         <li>{{ data.powers.folder ? t("agentCharter.powers.folder", { name: data.powers.folder }) : t("agentCharter.powers.noFolder") }}</li>

@@ -8,6 +8,7 @@ import { useI18n } from "vue-i18n";
 import { api, ApiError } from "../api/client";
 import { authErrorText, usePasswordPair } from "../auth";
 import AuditLog from "../components/AuditLog.vue";
+import OpenClawUpdateCard from "../components/OpenClawUpdateCard.vue";
 import StorageUsage from "../components/StorageUsage.vue";
 import { useSpaceStore } from "../stores/space";
 import PageHeader from "../components/ui/PageHeader.vue";
@@ -167,6 +168,7 @@ onUnmounted(() => window.clearInterval(poll));
         <p>{{ t("status.restart.about") }}</p>
         <n-button tag="a" href="/status#gateway-restart" secondary>{{ t("status.restart.open") }}</n-button>
       </n-card>
+      <open-claw-update-card />
       <storage-usage v-if="space.mode === 'personal'" />
       <n-card :title="t('system.backups')">
         <template #header-extra>

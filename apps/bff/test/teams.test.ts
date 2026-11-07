@@ -3,12 +3,14 @@ import os from "node:os";
 import path from "node:path";
 import { CreateSpaceRequest, CreateTeamRequest, parseTopicLink } from "@clawdesk/shared";
 import { eq } from "drizzle-orm";
+import Fastify from "fastify";
 import pino from "pino";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { openDb } from "../src/db/client.js";
-import { agents, agentSourceGrants, schedules, teams as teamsTable } from "../src/db/schema.js";
+import { agents, agentSourceGrants, channelBindings, companyProjects, schedules, teams as teamsTable } from "../src/db/schema.js";
 import type { BridgeClient } from "../src/gateway/bridge-client.js";
 import type { GatewayService } from "../src/gateway/gateway-service.js";
+import { registerTeamRoutes } from "../src/routes/teams.js";
 import { SpaceService } from "../src/space/space-service.js";
 import { TeamError, TeamService } from "../src/teams/team-service.js";
 import type { TelegramService } from "../src/telegram/telegram-service.js";
@@ -146,16 +148,56 @@ describe("project teams (screen 11)", () => {
   it("assigns Telegram topics from their links and sends scheduled reports there", async () => {
     const { service, calls, linked } = setup();
     await service.create(request(["pm", "developer"]));
-    const team = await service.linkTelegram("shop-app", [
+    const linking = service.linkTelegram("shop-app", [
       { role: "pm", link: "https://t.me/c/2234567890/12" },
       { role: "developer", link: "https://t.me/c/2234567890/14/301" },
     ]);
+    await expect(service.remove("shop-app")).rejects.toMatchObject({ code: "team_busy" });
+    const team = await linking;
     expect(linked).toEqual([{ chatId: "-1002234567890", topics: [{ topicId: "12", agentId: "shop-app-pm" }, { topicId: "14", agentId: "shop-app-developer" }] }]);
     expect(team.telegramChatId).toBe("-1002234567890");
     expect(team.members.find((m) => m.role === "pm")!.topicId).toBe("12");
     const update = calls.find((c) => c.method === "cron.update")!;
     expect(update.params.patch).toEqual({ delivery: { mode: "announce", channel: "telegram", to: "-1002234567890", threadId: "12", bestEffort: true } });
     await expect(service.linkTelegram("shop-app", [{ role: "pm", link: "https://t.me/c/1/2" }, { role: "developer", link: "https://t.me/c/22345678/3" }])).rejects.toThrow();
+  });
+
+  it("returns 409 before removing project executor teams or Telegram-linked teams", async () => {
+    const { service, calls, bridgeCalls } = setup();
+    const app = Fastify();
+    registerTeamRoutes(app, { teams: service });
+    try {
+      db.insert(companyProjects).values({ id: "project", name: "Project", requestId: "project-request", requestPayload: "{}" }).run();
+      db.insert(teamsTable).values([
+        { id: "executors", name: "Executors", projectId: "project" },
+        { id: "manual", name: "Manual team", projectId: "project", requestId: "manual-request" },
+      ]).run();
+      db.insert(agents).values({ id: "project-qa", displayName: "QA", role: "team_member", templateId: "project-qa", teamId: "executors" }).run();
+      await service.create(request(["pm"]));
+      await service.linkTelegram("shop-app", [{ role: "pm", link: "https://t.me/c/2234567890/12" }]);
+      calls.length = 0;
+      bridgeCalls.length = 0;
+
+      const remove = (id: string) => app.inject({ method: "DELETE", url: `/api/teams/${id}` });
+      for (const [id, error] of [["executors", "project_executors"], ["shop-app", "telegram_group_linked"]] as const) {
+        const response = await remove(id);
+        expect(response.statusCode).toBe(409);
+        expect(response.json()).toMatchObject({ error });
+      }
+      db.update(teamsTable).set({ projectId: null }).where(eq(teamsTable.id, "executors")).run();
+      expect((await remove("executors")).statusCode).toBe(409);
+      expect(calls).toEqual([]);
+      expect(bridgeCalls).toEqual([]);
+      expect(db.select().from(teamsTable).all()).toHaveLength(3);
+      expect(db.select().from(agents).where(eq(agents.id, "project-qa")).get()?.teamId).toBe("executors");
+      expect(db.select().from(channelBindings).all()).toHaveLength(1);
+
+      expect((await remove("manual")).statusCode).toBe(200);
+      expect(bridgeCalls).toEqual(["remove:manual"]);
+      expect(db.select().from(teamsTable).where(eq(teamsTable.id, "manual")).get()).toBeUndefined();
+    } finally {
+      await app.close();
+    }
   });
 
   it("moves members of an older team off the binds OpenClaw now refuses, keeping their other binds", async () => {

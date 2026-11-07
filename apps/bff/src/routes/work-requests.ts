@@ -1,4 +1,4 @@
-import { GrantResourceRequest, OwnerRequestAction, RefreshResourceRequest, RevokeResourceRequest } from "@clawdesk/shared";
+import { GrantResourceRequest, OwnerRequestAction, RefreshResourceRequest, RevokeResourceRequest, ShareOwnerFileRequest, UploadOwnerFileRequest } from "@clawdesk/shared";
 import type { FastifyInstance } from "fastify";
 import { z, ZodError } from "zod";
 import { AccessError, type AccessService } from "../company/access-service.js";
@@ -28,6 +28,10 @@ export function registerWorkRequestRoutes(app: FastifyInstance, deps: { requests
     scope.get("/api/company/access", () => access.list());
     scope.post("/api/company/access/grant", async (request) => { await access.grant(GrantResourceRequest.parse(request.body), "owner"); return access.list(); });
     scope.post("/api/company/access/revoke", async (request) => { await access.revoke(RevokeResourceRequest.parse(request.body), "owner"); return access.list(); });
+    // «Документы»: the owner's files without any connection — upload, give one to an agent with an instruction.
+    scope.get("/api/company/documents", () => access.files());
+    scope.post("/api/company/documents/upload", { bodyLimit: 30 * 1024 * 1024 }, async (request) => { const { name, base64 } = UploadOwnerFileRequest.parse(request.body); await access.uploadFile(name, base64); return access.files(); });
+    scope.post("/api/company/documents/share", async (request) => { const { agentId, file, instruction } = ShareOwnerFileRequest.parse(request.body); const result = await access.shareFile(agentId, file, instruction); return { ...(await access.files()), path: result.path }; });
     scope.post("/api/company/access/refresh", async (request) => { const result = await access.refresh(RefreshResourceRequest.parse(request.body)); return { ...(await access.list()), changed: result.changed }; });
   });
 }

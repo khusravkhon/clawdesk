@@ -1,4 +1,4 @@
-import { FolderSyncStatusesDto, type PullRequestDto, type TeamRepoStatusDto } from "@clawdesk/shared";
+import { FolderSyncStatusesDto, type OpenClawUpdateDto, type PullRequestDto, type TeamRepoStatusDto } from "@clawdesk/shared";
 
 // Client for the ClawDesk bridge in the Gateway container (deploy/clawdesk-bridge.mjs):
 // OpenClaw CLI steps that have no RPC, such as signing in to an OAuth MCP server.
@@ -299,6 +299,28 @@ export class BridgeClient {
     return this.#call("POST", "/google/doc/list", { agentId });
   }
 
+  /** The owner's files in the shared folder (deploy/clawdesk-owner-files.mjs). */
+  ownerFiles(): Promise<{ files: { path: string; size: number; modifiedAt: number }[] }> {
+    return this.#call("GET", "/owner-files/list", undefined, 30_000);
+  }
+  /** A file sent to the bot or the chat (media://inbound/<id>) saved into «Входящие»; returns its path there. */
+  ownerFileStore(inbound: string, name?: string): Promise<{ path: string; size: number; sha: string }> {
+    return this.#call("POST", "/owner-files/store", { inbound, ...(name ? { name } : {}) }, 60_000);
+  }
+  ownerFileUpload(name: string, base64: string): Promise<{ path: string; size: number; sha: string }> {
+    return this.#call("POST", "/owner-files/upload", { name, base64 }, 120_000);
+  }
+  /** One file as a read-only copy in the agent's inbox (/workspace/inbox/…). */
+  ownerFileCopy(agentId: string, file: string): Promise<{ path: string; size: number; sha: string; copiedAt: number }> {
+    return this.#call("POST", "/owner-files/copy", { agentId, file }, 60_000);
+  }
+  ownerFileRemove(agentId: string, file: string): Promise<{ removed: true }> {
+    return this.#call("POST", "/owner-files/remove", { agentId, file });
+  }
+  ownerFileCopies(agentId: string): Promise<{ copies: { file: string; sha: string }[] }> {
+    return this.#call("POST", "/owner-files/copies", { agentId });
+  }
+
   async folderSyncStatus(): Promise<FolderSyncStatusesDto> {
     return FolderSyncStatusesDto.parse(await this.#call("GET", "/files/sync-status", undefined, 5_000));
   }
@@ -367,6 +389,14 @@ export class BridgeClient {
   }
 
   /** Removes spool entries the panel has stored. */
+  /** The panel's answer for the tool call waiting for it (clawdesk_share_file), and taking it back if nobody did. */
+  requestsResult(id: string, text: string): Promise<{ written: true }> {
+    return this.#call("POST", "/requests/result", { id, text });
+  }
+  requestsResultTake(id: string): Promise<{ existed: boolean }> {
+    return this.#call("POST", "/requests/result/take", { id });
+  }
+
   requestsAck(ids: string[]): Promise<{ removed: number }> {
     return this.#call("POST", "/requests/ack", { ids });
   }
@@ -382,6 +412,16 @@ export class BridgeClient {
 
   backupDelete(name: string): Promise<{ deleted: true; name: string }> {
     return this.#call("POST", "/backup/delete", { name, confirm: true }, 30_000);
+  }
+
+  /** The running OpenClaw, the verified newer one and the last update (deploy/clawdesk-openclaw-update.mjs). */
+  openclawUpdate(): Promise<Omit<OpenClawUpdateDto, "available">> {
+    return this.#call("GET", "/openclaw/update", undefined, 30_000);
+  }
+
+  /** Starts the backup and the update helper; the Gateway and the panel restart a few minutes later. */
+  startOpenclawUpdate(version: string): Promise<{ started: true; version: string }> {
+    return this.#call("POST", "/openclaw/update", { version }, 60_000);
   }
 
   /** Starts the factory reset; the Gateway and the panel stop shortly after this returns. */

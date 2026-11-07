@@ -15,22 +15,27 @@ export function oneShot(gateway: Pick<GatewayService, "request" | "onEvent">, { 
   return async (message, key) => {
     const sessionKey = `agent:main:clawdesk-${key}`;
     let off = () => {};
+    let timer: ReturnType<typeof setTimeout> | undefined;
     // Listening starts before the message goes out, so a quick reply is not missed.
-    const ended = new Promise<string>((resolve, reject) => {
-      const timer = setTimeout(() => { off(); reject(new OneShotError("timeout")); }, timeoutMs);
+    const ended = new Promise<string>((resolve) => {
+      timer = setTimeout(() => resolve("timeout"), timeoutMs);
       off = gateway.onEvent((event) => {
         const payload = event.payload as { sessionKey?: string; state?: string } | undefined;
         if (event.event !== "chat" || payload?.sessionKey !== sessionKey || !["final", "error", "aborted"].includes(payload.state ?? "")) return;
-        clearTimeout(timer); off(); resolve(payload.state!);
+        resolve(payload.state!);
       });
     });
     try {
-      await gateway.request("chat.send", { sessionKey, agentId: "main", message, idempotencyKey: `clawdesk-${key}` }, { timeoutMs: 60_000 });
-    } catch {
+      try {
+        await gateway.request("chat.send", { sessionKey, agentId: "main", message, idempotencyKey: `clawdesk-${key}` }, { timeoutMs: 60_000 });
+      } catch { throw new OneShotError("model_unavailable"); }
+      const state = await ended;
+      if (state === "timeout") throw new OneShotError("timeout");
+      if (state !== "final") throw new OneShotError("model_unavailable");
+    } finally {
+      clearTimeout(timer);
       off();
-      throw new OneShotError("model_unavailable");
     }
-    if ((await ended) !== "final") throw new OneShotError("model_unavailable");
     const history = await gateway.request<{ messages?: RawChatMessage[] }>("chat.history", { sessionKey, agentId: "main", limit: 8 });
     const reply = toChatMessages(history.messages ?? []).filter((item) => item.role === "assistant" && item.status === "ok").at(-1)?.text;
     if (!reply) throw new OneShotError("model_unavailable");
