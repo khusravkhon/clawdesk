@@ -192,6 +192,7 @@ export class CompanyService {
         return {
           id: team.id, name: team.name, departmentId: team.departmentId, projectId: team.projectId, revision: team.organizationRevision,
           leadAgentId: lead ? lead.id : null, leadName: lead?.displayName ?? null,
+          canRemove: team.requestId !== null && team.repoUrl === null && team.telegramGroupId === null,
           members: metadata.filter((agent) => agent.teamId === team.id).map((agent) => ({ id: agent.id, name: agent.displayName })),
         };
       }),

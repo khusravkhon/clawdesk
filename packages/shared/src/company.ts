@@ -101,5 +101,5 @@ export type CompanyDto = {
   projects: ProjectDto[];
   managers: { id: string; name: string; departmentId: string | null }[];
   agents: { id: string; name: string; departmentId: string | null; revision: number; managerOf: string | null; available: boolean }[];
-  teams: { id: string; name: string; departmentId: string | null; projectId: string | null; revision: number; leadAgentId: string | null; leadName: string | null; members: { id: string; name: string }[] }[];
+  teams: { id: string; name: string; departmentId: string | null; projectId: string | null; revision: number; leadAgentId: string | null; leadName: string | null; canRemove: boolean; members: { id: string; name: string }[] }[];
 };

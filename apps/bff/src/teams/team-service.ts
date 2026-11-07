@@ -28,7 +28,8 @@ const LEGACY_BINDS = [`:${REPO}:`, `:${DOCS}:`];
 
 export class TeamError extends Error {
   constructor(
-    readonly code: "wrong_mode" | "repo_not_found" | "token_rejected" | "no_push_permission" | "github_unreachable" | "no_team" | "telegram_links" | "no_bridge",
+    readonly code: "wrong_mode" | "repo_not_found" | "token_rejected" | "no_push_permission" | "github_unreachable" | "no_team" | "telegram_links" | "no_bridge"
+      | "project_executors" | "telegram_group_linked" | "team_busy",
     message: string,
   ) {
     super(message);
@@ -49,6 +50,7 @@ export type TeamDeps = {
 
 export class TeamService {
   readonly #fetch: typeof fetch;
+  readonly #busy = new Set<string>();
 
   constructor(private readonly deps: TeamDeps) {
     this.#fetch = deps.fetchImpl ?? fetch;
@@ -225,7 +227,11 @@ export class TeamService {
   }
 
   /** Each topic link (Copy link on the topic in Telegram) assigns that topic to one role of the team. */
-  async linkTelegram(teamId: string, links: { role: TeamRole; link: string }[]): Promise<TeamDto> {
+  linkTelegram(teamId: string, links: { role: TeamRole; link: string }[]): Promise<TeamDto> {
+    return this.#changeTeam(teamId, () => this.#linkTelegram(teamId, links));
+  }
+
+  async #linkTelegram(teamId: string, links: { role: TeamRole; link: string }[]): Promise<TeamDto> {
     const team = this.#team(teamId);
     const members = this.list().teams.find((t) => t.id === teamId)!.members;
     const parsed = links.map((l) => ({ ...l, ...parseTopicLink(l.link)! }));
@@ -251,9 +257,14 @@ export class TeamService {
     await this.deps.telegram.linkGroup(chatId, topics, dropTopics);
 
     const { db, gateway } = this.deps;
-    db.delete(channelBindings).where(and(eq(channelBindings.channel, "telegram"), eq(channelBindings.peerKind, "group"), eq(channelBindings.peerId, team.telegramGroupId ?? chatId))).run();
+    db.transaction((tx) => {
+      tx.delete(channelBindings).where(and(eq(channelBindings.channel, "telegram"), eq(channelBindings.peerKind, "group"), eq(channelBindings.peerId, team.telegramGroupId ?? chatId))).run();
+      for (const t of topics) {
+        tx.insert(channelBindings).values({ id: crypto.randomUUID(), agentId: t.agentId, channel: "telegram", accountId: null, peerKind: "group", peerId: chatId, topicId: t.topicId }).run();
+      }
+      tx.update(teams).set({ telegramGroupId: chatId }).where(eq(teams.id, teamId)).run();
+    });
     for (const t of topics) {
-      db.insert(channelBindings).values({ id: crypto.randomUUID(), agentId: t.agentId, channel: "telegram", accountId: null, peerKind: "group", peerId: chatId, topicId: t.topicId }).run();
       // Scheduled reports (the PM's daily status) go to the agent's topic.
       for (const s of db.select().from(schedules).where(eq(schedules.agentId, t.agentId)).all()) {
         if (!s.openclawCronId) continue;
@@ -261,22 +272,37 @@ export class TeamService {
         db.update(schedules).set({ deliverTo: `telegram:${chatId}:${t.topicId}` }).where(eq(schedules.id, s.id)).run();
       }
     }
-    db.update(teams).set({ telegramGroupId: chatId }).where(eq(teams.id, teamId)).run();
     return this.list().teams.find((t) => t.id === teamId)!;
   }
 
-  async remove(teamId: string): Promise<void> {
+  remove(teamId: string): Promise<void> {
+    return this.#changeTeam(teamId, () => this.#remove(teamId));
+  }
+
+  async #remove(teamId: string): Promise<void> {
     const team = this.#team(teamId);
+    if (team.telegramGroupId) throw new TeamError("telegram_group_linked", "a team linked to a Telegram group cannot be removed");
+    // Only project executors are provisioned without either a repository or a creation request.
+    // They retain that identity when detached from a project.
+    if (team.repoUrl === null && team.requestId === null) {
+      throw new TeamError("project_executors", "a project executor team cannot be removed");
+    }
     const { db } = this.deps;
     for (const member of db.select().from(agents).where(eq(agents.teamId, teamId)).all()) await deleteJuniorAgent(this.deps, member.id);
-    if (team.telegramGroupId) {
-      await this.deps.telegram.unlinkGroup(team.telegramGroupId).catch((error: Error) => this.deps.logger.warn({ err: error }, "could not unlink the team's group"));
-      db.delete(channelBindings).where(and(eq(channelBindings.peerKind, "group"), eq(channelBindings.peerId, team.telegramGroupId))).run();
-    }
     await this.deps.bridge.teamRemove(teamId);
     db.delete(dataSources).where(inArray(dataSources.id, [`team-docs:${teamId}`, `github:${teamId}`])).run();
     db.delete(teams).where(eq(teams.id, teamId)).run();
     this.deps.logger.info({ teamId }, "team removed (its docs folder stays)");
+  }
+
+  async #changeTeam<T>(teamId: string, run: () => Promise<T>): Promise<T> {
+    if (this.#busy.has(teamId)) throw new TeamError("team_busy", "a change is already in progress for this team");
+    this.#busy.add(teamId);
+    try {
+      return await run();
+    } finally {
+      this.#busy.delete(teamId);
+    }
   }
 
   #team(teamId: string) {

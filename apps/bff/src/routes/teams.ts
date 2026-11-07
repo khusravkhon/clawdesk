@@ -41,7 +41,7 @@ export function registerTeamRoutes(app: FastifyInstance, deps: { teams: TeamServ
   );
 }
 
-const CONFLICT = new Set(["wrong_mode", "nothing_to_push", "no_owner", "no_token"]);
+const CONFLICT = new Set(["wrong_mode", "nothing_to_push", "no_owner", "no_token", "project_executors", "telegram_group_linked", "team_busy"]);
 
 async function withTeamErrors<T>(reply: FastifyReply, run: () => Promise<T>, okStatus = 200): Promise<T | ApiErrorDto> {
   try {

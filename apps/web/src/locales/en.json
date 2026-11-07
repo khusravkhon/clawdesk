@@ -145,6 +145,7 @@
     "createTeamSubmit": "Create the team ({count})",
     "teamCost": "Each member is a separate agent: it spends model tokens when it works.",
     "teamCreated": "Team \"{name}\" created",
+    "removeTeamConfirm": "Delete the team “{name}” and its agents?",
     "teamRoles": {
       "team-lead": "Team lead",
       "marketing": "Marketing",

@@ -145,6 +145,7 @@
     "createTeamSubmit": "Сохтани даста ({count})",
     "teamCost": "Ҳар аъзо агенти алоҳида аст: ҳангоми кор токенҳои моделро сарф мекунад.",
     "teamCreated": "Дастаи «{name}» сохта шуд",
+    "removeTeamConfirm": "Дастаи «{name}» ва агентҳои онро нест кунем?",
     "teamRoles": {
       "team-lead": "Сардори даста",
       "marketing": "Маркетолог",

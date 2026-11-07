@@ -145,6 +145,7 @@
     "createTeamSubmit": "Создать команду ({count})",
     "teamCost": "Каждый участник — отдельный агент: он тратит токены модели, когда работает.",
     "teamCreated": "Команда «{name}» создана",
+    "removeTeamConfirm": "Удалить команду «{name}» и её агентов?",
     "teamRoles": {
       "team-lead": "Тимлид",
       "marketing": "Маркетолог",
