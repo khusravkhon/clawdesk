@@ -4,7 +4,7 @@ import path from "node:path";
 import { randomUUID } from "node:crypto";
 import { CreateProjectRequest, type InterviewReply } from "@clawdesk/shared";
 import Fastify from "fastify";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { CompanyService } from "../src/company/company-service.js";
 import { interviewPrompt, parseReply } from "../src/company/project-interview-service.js";
 import { OneShotError, oneShot } from "../src/chat/one-shot.js";
@@ -93,6 +93,23 @@ describe("project requirements interview", () => {
     expect(() => offline.interview.ask(projectId, { requestId: randomUUID(), revision: company.interview.get(projectId).revision })).toThrow("model_missing");
   });
 
+  it("finishes an interview when the model returns more summary items than the panel displays", async () => {
+    const exclusions = Array.from({ length: 11 }, (_, index) => `Не входит ${index + 1}`);
+    replies.push(reply({
+      questions: [],
+      done: true,
+      summary: { building: "Мы создаём чат", users: "Команда", inFirstVersion: ["Общий чат"], notInFirstVersion: exclusions, scenarios: [], openQuestions: [] },
+    }));
+
+    company.interview.ask(projectId, { requestId: randomUUID(), revision: 0 });
+    await settle();
+    expect(company.interview.get(projectId)).toMatchObject({
+      status: "done",
+      failure: null,
+      summary: { notInFirstVersion: exclusions.slice(0, 10) },
+    });
+  });
+
   it("a call cut off by a restart reads as interrupted, and a brief edited meanwhile is not overwritten", async () => {
     let release = () => {};
     replies.push(new Promise<string>((resolve) => { release = () => resolve(reply()); }) as unknown as string);
@@ -155,5 +172,16 @@ describe("project requirements interview", () => {
     await settle();
     expect((await app.inject({ method: "POST", url: `/api/company/projects/${projectId}/interview/ask`, payload: { requestId: randomUUID(), revision: 0 } })).statusCode).toBe(409);
     await app.close();
+  });
+
+  it("does not leave a timeout behind when sending to the Gateway fails", async () => {
+    vi.useFakeTimers();
+    try {
+      const off = vi.fn();
+      const gateway = { onEvent: () => off, request: async () => { throw new Error("offline"); } } as unknown as GatewayService;
+      await expect(oneShot(gateway)("вопрос", "brief-offline")).rejects.toMatchObject({ code: "model_unavailable" });
+      expect(off).toHaveBeenCalledOnce();
+      expect(vi.getTimerCount()).toBe(0);
+    } finally { vi.useRealTimers(); }
   });
 });

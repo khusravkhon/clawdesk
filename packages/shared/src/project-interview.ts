@@ -62,6 +62,10 @@ export const InterviewAnswerRequest = z.object({
 });
 export type InterviewAnswerRequest = z.infer<typeof InterviewAnswerRequest>;
 
+/** Keep recaps short even when the model gives a longer list of valid points. */
+const summaryItems = (limit: number, itemLength = 300) =>
+  z.array(z.string().trim().min(1).max(itemLength)).transform((items) => items.slice(0, limit)).default([]);
+
 /** What the model must return; anything else is "invalid_reply". */
 export const InterviewReply = z.object({
   questions: z.array(z.object({ field: z.enum(BRIEF_FIELDS), text: z.string().trim().min(3).max(500), options: z.array(z.string().trim().min(1).max(200)).max(5).default([]) })).max(3),
@@ -69,10 +73,10 @@ export const InterviewReply = z.object({
   summary: z.object({
     building: z.string().trim().max(600).default(""),
     users: z.string().trim().max(600).default(""),
-    inFirstVersion: z.array(z.string().trim().min(1).max(300)).max(10).default([]),
-    notInFirstVersion: z.array(z.string().trim().min(1).max(300)).max(10).default([]),
-    scenarios: z.array(z.string().trim().min(1).max(400)).max(5).default([]),
-    openQuestions: z.array(z.string().trim().min(1).max(300)).max(10).default([]),
+    inFirstVersion: summaryItems(10),
+    notInFirstVersion: summaryItems(10),
+    scenarios: summaryItems(5, 400),
+    openQuestions: summaryItems(10),
   }),
   done: z.boolean().default(false),
 });
