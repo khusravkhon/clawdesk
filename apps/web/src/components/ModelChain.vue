@@ -1,5 +1,5 @@
 <script setup lang="ts">
-// The agent's main model and its backups (docs/model-fallback.md). When the main
+// The agent's main model and its backups (see apps/bff/src/ai-setup/model-chain.ts). When the main
 // model hits a limit, runs out of money or its provider is overloaded, OpenClaw
 // answers that one message with the next model in this list.
 import { MAX_BACKUP_MODELS, type ModelChainDto, type ModelOptionDto } from "@clawdesk/shared";
