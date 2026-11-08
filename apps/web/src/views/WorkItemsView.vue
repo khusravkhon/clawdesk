@@ -63,9 +63,16 @@ onBeforeUnmount(() => clearInterval(timer));
 
 <template>
   <div>
-    <page-header :title="t('workItems.title')">
+    <page-header
+      :title="t('workItems.title')"
+      :breadcrumbs="[
+        { label: t('company.title'), to: '/company' },
+        { label: t('workItems.title') },
+      ]"
+      :back-to="'/company'"
+      :back-label="t('company.title')"
+    >
       <n-space>
-        <n-button key="company" @click="router.push('/company')">{{ t('projects.toCompany') }}</n-button>
         <n-button key="refresh" :loading="loading" @click="load">{{ t('company.refresh') }}</n-button>
       </n-space>
     </page-header>

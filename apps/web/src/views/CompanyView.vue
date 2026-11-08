@@ -1,5 +1,21 @@
 <script setup lang="ts">
 import type { CompanyDto, DepartmentDto } from "@clawdesk/shared";
+import {
+  Activity,
+  Bot,
+  Building2,
+  CheckSquare,
+  ChevronRight,
+  Cpu,
+  FileText,
+  FolderKanban,
+  Inbox,
+  Plus,
+  RotateCw,
+  Shield,
+  Trash2,
+  Users,
+} from "@lucide/vue";
 import { NAlert, NButton, NCard, NEmpty, NFormItem, NInput, NModal, NPopconfirm, NSelect, NSkeleton, NSpace, NSwitch, NTag, useMessage } from "naive-ui";
 import { computed, onMounted, reactive, ref } from "vue";
 import { useI18n } from "vue-i18n";
@@ -71,7 +87,6 @@ async function assign(id: string, departmentId: string | null, revision: number)
 /** Stage 4: the team's lead — one of its members or a standalone agent; requests of the team reach it first. */
 const leadOptions = (team: CompanyDto["teams"][number]) => [
   ...team.members.map((member) => ({ label: member.name, value: member.id })),
-  // A standalone agent of the team's department or of no department: a lead made at company level counts too.
   ...(data.value?.agents ?? []).filter((agent) => !team.departmentId || !agent.departmentId || agent.departmentId === team.departmentId).map((agent) => ({ label: `${agent.name} · ${t("company.standaloneAgent")}`, value: agent.id })),
 ];
 async function assignLead(id: string, agentId: string | null, revision: number): Promise<void> {
@@ -132,57 +147,190 @@ onMounted(load);
 </script>
 
 <template>
-  <div :key="selectedId ?? 'company'">
-    <page-header :key="selectedId ?? 'company'" :title="selected?.name ?? (selectedId ? t('company.department') : t('company.title'))" :subtitle="data?.name">
+  <div :key="selectedId ?? 'company'" class="company-view">
+    <!-- Header when viewing a specific department -->
+    <page-header
+      v-if="selectedId"
+      :key="selectedId"
+      :title="selected?.name ?? t('company.department')"
+      :subtitle="data?.name"
+      :breadcrumbs="[
+        { label: t('company.title'), to: '/company' },
+        { label: selected?.name ?? t('company.department') },
+      ]"
+      :back-to="'/company'"
+      :back-label="t('company.title')"
+    >
       <n-space>
-        <n-button v-if="selectedId" key="back" @click="router.push('/company')">{{ t('company.back') }}</n-button>
-        <n-button key="refresh" :loading="loading" :disabled="saving" @click="load">{{ t('company.refresh') }}</n-button>
-        <n-button v-if="!selectedId" key="activity" @click="router.push('/company/activity')">{{ t('activity.title') }}</n-button>
-        <n-button v-if="!selectedId" key="work-items" @click="router.push('/company/work-items')">{{ t('workItems.title') }}</n-button>
-        <n-button v-if="!selectedId" key="requests" @click="router.push('/company/requests')">{{ t('requests.title') }}</n-button>
-        <n-button v-if="!selectedId" key="documents" @click="router.push('/company/documents')">{{ t('documents.title') }}</n-button>
-        <n-button v-if="!selectedId" key="access" @click="router.push('/company/access')">{{ t('access.title') }}</n-button>
-        <n-button v-if="!selectedId" key="capabilities" @click="router.push('/company/capabilities')">{{ t('capabilities.title') }}</n-button>
-        <n-button v-if="!selectedId" key="create" type="primary" :disabled="!data || saving" @click="edit()">{{ t('company.create') }}</n-button>
+        <n-button key="refresh" :loading="loading" :disabled="saving" @click="load">
+          <template #icon><rotate-cw :size="15" /></template>
+          {{ t('company.refresh') }}
+        </n-button>
+        <n-button v-if="selected" key="edit" secondary :disabled="saving" @click="edit(selected)">
+          {{ t('company.edit') }}
+        </n-button>
       </n-space>
     </page-header>
+
+    <!-- Header for Company Root -->
+    <page-header
+      v-else
+      key="company"
+      :title="t('company.title')"
+      :subtitle="data?.name"
+      :breadcrumbs="[{ label: t('company.title') }]"
+    >
+      <n-space>
+        <n-button key="refresh" :loading="loading" :disabled="saving" @click="load">
+          <template #icon><rotate-cw :size="15" /></template>
+          {{ t('company.refresh') }}
+        </n-button>
+        <n-button key="create" type="primary" :disabled="!data || saving" @click="edit()">
+          <template #icon><plus :size="15" /></template>
+          {{ t('company.create') }}
+        </n-button>
+      </n-space>
+    </page-header>
+
+    <!-- Sub-navigation Pills for Company Modules -->
+    <nav v-if="!selectedId" class="subnav-bar">
+      <router-link to="/company" class="subnav-pill active">
+        <building-2 :size="15" />
+        <span>{{ t('company.structure') || 'Структура' }}</span>
+      </router-link>
+      <router-link to="/company/activity" class="subnav-pill">
+        <activity :size="15" />
+        <span>{{ t('activity.title') }}</span>
+      </router-link>
+      <router-link to="/company/work-items" class="subnav-pill">
+        <check-square :size="15" />
+        <span>{{ t('workItems.title') }}</span>
+      </router-link>
+      <router-link to="/company/requests" class="subnav-pill">
+        <inbox :size="15" />
+        <span>{{ t('requests.title') }}</span>
+      </router-link>
+      <router-link to="/company/documents" class="subnav-pill">
+        <file-text :size="15" />
+        <span>{{ t('documents.title') }}</span>
+      </router-link>
+      <router-link to="/company/access" class="subnav-pill">
+        <shield :size="15" />
+        <span>{{ t('access.title') }}</span>
+      </router-link>
+      <router-link to="/company/capabilities" class="subnav-pill">
+        <cpu :size="15" />
+        <span>{{ t('capabilities.title') }}</span>
+      </router-link>
+    </nav>
+
     <n-alert type="info" :bordered="false" class="notice">{{ t("company.scope") }}</n-alert>
     <n-alert v-if="error" type="error" class="notice">{{ error }}</n-alert>
     <n-alert v-if="data && !data.gatewayAvailable" type="warning" class="notice">{{ t("company.offline") }}</n-alert>
     <n-skeleton v-if="!data && loading" height="180px" />
+
     <template v-if="data">
-      <n-card v-if="!selectedId" class="notice" :title="t('company.main')">
-        <n-button secondary @click="router.push('/assistant')">{{ t('company.mainEdit') }}</n-button>
-      </n-card>
-      <n-empty v-if="!visible.length" :description="t(selectedId ? 'company.notFound' : 'company.empty')" class="notice" />
-      <div class="departments">
-        <n-card v-for="department in visible" :key="department.id" :title="department.name">
-          <template #header-extra><n-tag v-if="department.archived" size="small">{{ t('company.archived') }}</n-tag></template>
-          <p v-if="department.description" class="description">{{ department.description }}</p>
-          <p>{{ t('company.manager') }}: {{ department.managerName ?? t('company.noManager') }}</p>
-          <p v-if="department.managerState !== 'ready'" class="muted">{{ t(`company.managerState.${department.managerState}`) }}</p>
-          <p>{{ t('company.teamCount', { count: data.teams.filter(team => team.departmentId === department.id).length }) }}</p>
-          <n-space>
-            <n-button v-if="!selectedId" key="open" secondary @click="router.push(`/company/departments/${department.id}`)">{{ t('company.open') }}</n-button>
-            <n-button key="edit" :disabled="saving" @click="edit(department)">{{ t('company.edit') }}</n-button>
-            <n-button v-if="department.managerAgentId" key="manager" quaternary @click="router.push(`/agents/${department.managerAgentId}/edit`)">{{ t('company.managerEdit') }}</n-button>
-            <n-button v-if="selectedId && !department.managerAgentId && !department.archived" key="new-manager" :disabled="saving || !data.gatewayAvailable" @click="createAgent('manager')">{{ t('company.createManager') }}</n-button>
-          </n-space>
-        </n-card>
+      <!-- Main Agent Hero Section -->
+      <div v-if="!selectedId" class="main-agent-hero">
+        <div class="main-agent-info">
+          <div class="main-agent-badge">
+            <bot :size="18" class="main-agent-icon" />
+            <span class="main-agent-title">{{ t('company.main') }}</span>
+          </div>
+          <p class="main-agent-desc">Координирует работу отделов, принимает эскалации и распределяет задачи</p>
+        </div>
+        <n-button secondary class="main-agent-btn" @click="router.push('/assistant')">
+          {{ t('company.mainEdit') }}
+          <template #icon><chevron-right :size="14" /></template>
+        </n-button>
       </div>
-      <n-card class="notice" :title="t('projects.title')">
+
+      <n-empty v-if="!visible.length" :description="t(selectedId ? 'company.notFound' : 'company.empty')" class="notice" />
+
+      <!-- Departments Grid -->
+      <div class="departments-grid">
+        <div v-for="department in visible" :key="department.id" class="department-card">
+          <div class="dept-header">
+            <div class="dept-title-group">
+              <h3 class="dept-name">{{ department.name }}</h3>
+              <n-tag v-if="department.archived" size="small" type="warning">{{ t('company.archived') }}</n-tag>
+            </div>
+          </div>
+          <p v-if="department.description" class="dept-desc">{{ department.description }}</p>
+          <div class="dept-meta">
+            <div class="meta-row">
+              <span class="meta-label">{{ t('company.manager') }}:</span>
+              <span class="meta-val">{{ department.managerName ?? t('company.noManager') }}</span>
+            </div>
+            <p v-if="department.managerState !== 'ready'" class="meta-sub muted">
+              {{ t(`company.managerState.${department.managerState}`) }}
+            </p>
+            <div class="meta-row">
+              <span class="meta-label">Команды:</span>
+              <span class="meta-val">{{ data.teams.filter(team => team.departmentId === department.id).length }}</span>
+            </div>
+          </div>
+          <div class="dept-actions">
+            <n-button v-if="!selectedId" secondary size="small" class="open-dept-btn" @click="router.push(`/company/departments/${department.id}`)">
+              {{ t('company.open') }}
+              <template #icon><chevron-right :size="14" /></template>
+            </n-button>
+            <n-button size="small" :disabled="saving" @click="edit(department)">
+              {{ t('company.edit') }}
+            </n-button>
+            <n-button v-if="department.managerAgentId" size="small" quaternary @click="router.push(`/agents/${department.managerAgentId}/edit`)">
+              {{ t('company.managerEdit') }}
+            </n-button>
+            <n-button v-if="selectedId && !department.managerAgentId && !department.archived" size="small" type="primary" :disabled="saving || !data.gatewayAvailable" @click="createAgent('manager')">
+              {{ t('company.createManager') }}
+            </n-button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Projects Section -->
+      <n-card class="notice projects-card" :title="t('projects.title')">
         <template #header-extra>
-          <n-space>
-            <n-button text @click="router.push({ path: '/company/projects', query: projectsQuery })">{{ t('projects.catalog') }}</n-button>
-            <n-button v-if="!selected?.archived" text @click="router.push({ path: '/company/projects', query: { ...projectsQuery, create: '1' } })">{{ t('projects.create') }}</n-button>
+          <n-space align="center">
+            <n-button text @click="router.push({ path: '/company/projects', query: projectsQuery })">
+              {{ t('projects.catalog') }}
+              <template #icon><chevron-right :size="14" /></template>
+            </n-button>
+            <n-button v-if="!selected?.archived" size="small" secondary @click="router.push({ path: '/company/projects', query: { ...projectsQuery, create: '1' } })">
+              <template #icon><plus :size="14" /></template>
+              {{ t('projects.create') }}
+            </n-button>
           </n-space>
         </template>
+
         <n-empty v-if="!visibleProjects.length" :description="t('projects.empty')" />
-        <div v-for="project in visibleProjects" :key="project.id" class="team">
-          <n-button text @click="router.push(`/company/projects/${project.id}`)">{{ project.name }}</n-button>
-          <n-tag size="small">{{ t(`projects.status.${project.status}`) }}</n-tag>
+
+        <div v-else class="company-projects-list">
+          <div
+            v-for="project in visibleProjects"
+            :key="project.id"
+            class="interactive-item company-project-row"
+            @click="router.push(`/company/projects/${project.id}`)"
+          >
+            <div class="project-info-cluster">
+              <div class="project-name-line">
+                <folder-kanban :size="17" class="project-item-icon" />
+                <span class="project-item-name">{{ project.name }}</span>
+              </div>
+              <p v-if="project.description" class="project-item-desc">{{ project.description }}</p>
+            </div>
+            <div class="project-status-cluster">
+              <span class="status-pill" :class="project.status">
+                <span class="status-dot"></span>
+                {{ t(`projects.status.${project.status}`) }}
+              </span>
+              <chevron-right :size="16" class="row-chevron" />
+            </div>
+          </div>
         </div>
       </n-card>
+
+      <!-- Teams Section -->
       <n-card class="notice" :title="t(selectedId ? 'company.teams' : 'company.unassigned')">
         <template #header-extra>
           <n-space>
@@ -193,20 +341,28 @@ onMounted(load);
         <n-empty v-if="!visibleTeams.length" :description="t('company.noTeams')" />
         <div v-for="team in visibleTeams" :key="team.id" class="team">
           <div class="team-name">
-            <n-space align="center">
-              <span>{{ team.name }}</span>
+            <div class="team-header-row">
+              <span class="team-label">{{ team.name }}</span>
+              <span v-if="team.members?.length" class="team-members-tag">
+                <users :size="12" />
+                <span>{{ team.members.length }}</span>
+              </span>
               <n-popconfirm v-if="team.canRemove" @positive-click="removeTeam(team.id)">
                 <template #trigger>
-                  <n-button text type="error" :aria-label="`${t('teams.remove')} ${team.name}`" :disabled="saving || !data.gatewayAvailable">{{ t('teams.remove') }}</n-button>
+                  <n-button quaternary circle size="tiny" type="error" :aria-label="`${t('teams.remove')} ${team.name}`" :disabled="saving || !data.gatewayAvailable">
+                    <trash-2 :size="13" />
+                  </n-button>
                 </template>
                 {{ t('company.removeTeamConfirm', { name: team.name }) }}
               </n-popconfirm>
-            </n-space>
+            </div>
             <n-select size="small" :value="team.leadAgentId" :options="leadOptions(team)" clearable :placeholder="t('company.noLead')" :aria-label="t('company.teamLead', { name: team.name })" :disabled="saving" @update:value="value => assignLead(team.id, value, team.revision)" />
           </div>
           <n-select :value="team.departmentId" :options="teamOptions" clearable :placeholder="t('company.unassigned')" :aria-label="t('company.teamDepartment', { name: team.name })" :disabled="saving" @update:value="value => assign(team.id, value, team.revision)" />
         </div>
       </n-card>
+
+      <!-- Agents Section -->
       <n-card class="notice" :title="t(selectedId ? 'company.departmentAgents' : 'company.independentAgents')">
         <template #header-extra>
           <n-space v-if="selected && !selected.archived">
@@ -226,6 +382,7 @@ onMounted(load);
         <p v-if="visibleAgents.some(agent => agent.managerOf)" class="muted">{{ t('company.managerMoveHint') }}</p>
       </n-card>
     </template>
+
     <n-modal v-model:show="creatingTeam" preset="card" :title="t('company.createTeam')" class="editor" :mask-closable="!saving" :closable="!saving" :close-on-esc="!saving">
       <form @submit.prevent="createTeam">
         <p class="muted">{{ t('company.teamHint') }}</p>
@@ -249,6 +406,7 @@ onMounted(load);
         <p class="muted">{{ t('company.teamCost') }}</p>
       </form>
     </n-modal>
+
     <n-modal v-model:show="addingAgent" preset="card" :title="t('company.addExistingAgent')" class="editor" :mask-closable="!saving" :closable="!saving" :close-on-esc="!saving">
       <form @submit.prevent="addAgent">
         <n-form-item :label="t('company.selectAgent')"><n-select v-model:value="pickedAgent" :aria-label="t('company.selectAgent')" :options="agentOptions" filterable :disabled="saving" /></n-form-item>
@@ -256,6 +414,7 @@ onMounted(load);
         <n-button type="primary" attr-type="submit" :loading="saving" :disabled="!pickedAgent">{{ t('company.addExistingAgent') }}</n-button>
       </form>
     </n-modal>
+
     <n-modal v-model:show="editing" preset="card" :title="t(draft.id ? 'company.edit' : 'company.create')" class="editor" :mask-closable="!saving" :closable="!saving" :close-on-esc="!saving">
       <form @submit.prevent="save">
         <n-form-item :label="t('company.name')"><n-input v-model:value="draft.name" :aria-label="t('company.name')" :maxlength="80" :disabled="saving" /></n-form-item>
@@ -272,16 +431,249 @@ onMounted(load);
 </template>
 
 <style scoped>
-.member-row { display: grid; gap: 6px; padding: 10px 0; border-bottom: 1px solid var(--border); }
-.lead-pick { display: inline-flex; gap: 6px; align-items: center; font-size: 0.92em; }
+.company-view {
+  display: flex;
+  flex-direction: column;
+}
+
+.notice {
+  margin-bottom: 20px;
+}
+
+/* Main Agent Hero Card */
+.main-agent-hero {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 16px 20px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  margin-bottom: 20px;
+  flex-wrap: wrap;
+}
+.main-agent-badge {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text);
+  margin-bottom: 4px;
+}
+.main-agent-icon {
+  color: var(--accent);
+}
+.main-agent-desc {
+  margin: 0;
+  font-size: 13px;
+  color: var(--text-2);
+}
+.main-agent-btn {
+  border-radius: 8px;
+}
+
+/* Departments Grid */
+.departments-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 340px), 1fr));
+  gap: 16px;
+  margin-bottom: 20px;
+}
+
+.department-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 18px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  transition: all 0.18s ease;
+}
+.department-card:hover {
+  border-color: var(--border-hover);
+  box-shadow: var(--card-shadow);
+}
+
+.dept-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.dept-name {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--text);
+}
+.dept-desc {
+  margin: 0;
+  font-size: 13px;
+  color: var(--text-2);
+  line-height: 1.5;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.dept-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px 12px;
+  background: var(--surface-2);
+  border-radius: 8px;
+}
+.meta-row {
+  display: flex;
+  justify-content: space-between;
+  font-size: 13px;
+}
+.meta-label {
+  color: var(--muted);
+}
+.meta-val {
+  font-weight: 500;
+  color: var(--text);
+}
+.meta-sub {
+  margin: 0;
+  font-size: 12px;
+}
+
+.dept-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-top: auto;
+  padding-top: 4px;
+}
+
+/* Projects list on /company */
+.company-projects-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.company-project-row {
+  padding: 12px 16px;
+}
+
+.project-info-cluster {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.project-name-line {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.project-item-icon {
+  color: var(--accent);
+  flex-shrink: 0;
+}
+.project-item-name {
+  font-size: 14.5px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.project-item-desc {
+  margin: 0;
+  font-size: 12.5px;
+  color: var(--text-2);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.project-status-cluster {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-shrink: 0;
+}
+
+.row-chevron {
+  color: var(--muted);
+  transition: transform 0.15s ease, color 0.15s ease;
+}
+.company-project-row:hover .row-chevron {
+  color: var(--text);
+  transform: translateX(2px);
+}
+
+.team {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(180px, 260px);
+  gap: 16px;
+  align-items: center;
+  padding: 12px 14px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  margin-bottom: 10px;
+  transition: all 0.15s ease;
+}
+.team:last-child {
+  margin-bottom: 0;
+}
+.team:hover {
+  border-color: var(--border-hover);
+}
+@media (max-width: 600px) {
+  .team { grid-template-columns: 1fr; }
+}
+
+.team-name {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+.team-header-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.team-label {
+  font-weight: 600;
+  font-size: 14px;
+  color: var(--text);
+}
+.team-members-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  color: var(--text-2);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  padding: 1px 6px;
+  border-radius: 4px;
+}
+
+.member-row {
+  display: grid;
+  gap: 6px;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--border);
+}
+.lead-pick {
+  display: inline-flex;
+  gap: 6px;
+  align-items: center;
+  font-size: 0.92em;
+}
+
 .block { margin-top: 12px; }
-.notice { margin-bottom: 18px; }
-.departments { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 320px), 1fr)); gap: 16px; margin-bottom: 18px; }
 .description { white-space: pre-wrap; overflow-wrap: anywhere; }
 .muted { color: var(--text-2); font-size: 13px; line-height: 1.6; }
-.team-name { display: grid; gap: 6px; min-width: 0; }
-.team { display: grid; grid-template-columns: minmax(0, 1fr) minmax(160px, 300px); gap: 12px; align-items: center; padding: 12px 0; }
-@media (max-width: 600px) { .team { grid-template-columns: 1fr; } }
 </style>
 
 <style>

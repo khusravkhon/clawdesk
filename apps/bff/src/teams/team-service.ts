@@ -20,7 +20,12 @@ import type { TelegramService } from "../telegram/telegram-service.js";
 // /workspace. Sandboxes have no network and never see the token; the owner pushes the developer's branch
 // and opens the pull request from the panel. Merging stays with people.
 
-const ROLE_ORDER: TeamRole[] = ["pm", "developer", "reviewer"];
+const ROLE_ORDER = ["pm", "developer", "reviewer"] as const;
+type GitHubTeamRole = (typeof ROLE_ORDER)[number];
+const roleRank = (role: string) => {
+  const idx = ROLE_ORDER.indexOf(role as GitHubTeamRole);
+  return idx === -1 ? 99 : idx;
+};
 const REPO = "/workspace/repo";
 const DOCS = "/workspace/docs";
 /** Targets of the binds teams used before members got copies in their workspaces. */
@@ -58,9 +63,8 @@ export class TeamService {
 
   list(): TeamsDto {
     const { db } = this.deps;
-    // GitHub teams only: a project's executors (P6.2) are a team without a repository, managed on the project.
-    const rows = db.select().from(teams).where(isNotNull(teams.repoUrl)).all();
-    const members = db.select().from(agents).where(eq(agents.role, "team_member")).all();
+    const rows = db.select().from(teams).all();
+    const members = db.select().from(agents).where(isNotNull(agents.teamId)).all();
     const topics = db.select().from(channelBindings).where(and(eq(channelBindings.channel, "telegram"), eq(channelBindings.peerKind, "group"))).all();
     const docs = db.select().from(dataSources).where(eq(dataSources.kind, "folder")).all();
     return {
@@ -75,12 +79,12 @@ export class TeamService {
           .filter((m) => m.teamId === team.id)
           .map((m) => ({
             agentId: m.id,
-            role: (m.templateId ?? "pm") as TeamRole,
+            role: (m.templateId ?? "member") as TeamRole,
             name: m.displayName,
-            emoji: m.avatar,
+            emoji: m.avatar || "🤖",
             topicId: topics.find((t) => t.agentId === m.id)?.topicId ?? null,
           }))
-          .sort((a, b) => ROLE_ORDER.indexOf(a.role) - ROLE_ORDER.indexOf(b.role)),
+          .sort((a, b) => roleRank(a.role) - roleRank(b.role)),
       })),
     };
   }
@@ -145,7 +149,7 @@ export class TeamService {
           }),
         );
         created.push(result.agentId);
-        await bridge.teamMember(teamId, result.agentId, role);
+        await bridge.teamMember(teamId, result.agentId, role as GitHubTeamRole);
         await docsReady(result.agentId, role);
         db.insert(agentSourceGrants).values({ agentId: result.agentId, sourceId: `github:${teamId}`, access: role === "developer" ? "write" : "read" }).run();
         db.insert(agentSourceGrants).values({ agentId: result.agentId, sourceId: `team-docs:${teamId}`, access: role === "pm" ? "write" : "read" }).run();
@@ -172,9 +176,9 @@ export class TeamService {
     return this.deps.bridge.teamFetch(teamId, this.#members(teamId));
   }
 
-  #members(teamId: string): { agentId: string; role: TeamRole }[] {
+  #members(teamId: string): { agentId: string; role: GitHubTeamRole }[] {
     return this.deps.db.select().from(agents).where(and(eq(agents.teamId, teamId), eq(agents.role, "team_member"))).all()
-      .filter((m) => ROLE_ORDER.includes(m.templateId as TeamRole)).map((m) => ({ agentId: m.id, role: m.templateId as TeamRole }));
+      .filter((m) => ROLE_ORDER.includes(m.templateId as GitHubTeamRole)).map((m) => ({ agentId: m.id, role: m.templateId as GitHubTeamRole }));
   }
 
   /**

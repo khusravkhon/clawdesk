@@ -24,9 +24,17 @@ onMounted(load);
 
 <template>
   <div>
-    <page-header :title="t('capabilities.title')" :subtitle="t('capabilities.subtitle')">
+    <page-header
+      :title="t('capabilities.title')"
+      :subtitle="t('capabilities.subtitle')"
+      :breadcrumbs="[
+        { label: t('company.title'), to: '/company' },
+        { label: t('capabilities.title') },
+      ]"
+      :back-to="'/company'"
+      :back-label="t('company.title')"
+    >
       <n-space>
-        <n-button key="company" @click="router.push('/company')">{{ t('projects.toCompany') }}</n-button>
         <n-button key="refresh" :loading="loading" @click="load">{{ t('capabilities.check') }}</n-button>
       </n-space>
     </page-header>
