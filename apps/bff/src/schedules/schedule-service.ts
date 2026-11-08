@@ -53,10 +53,10 @@ export function toSchedule(job: RawJob): ScheduleDto | null {
 }
 
 export class ScheduleService {
-  readonly timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+  get timeZone(): string { return this.deps.timeZone?.() ?? Intl.DateTimeFormat().resolvedOptions().timeZone; }
 
   constructor(
-    private readonly deps: { gateway: GatewayService; db: Db; telegram: TelegramService; logger: Logger },
+    private readonly deps: { gateway: GatewayService; db: Db; telegram: TelegramService; logger: Logger; timeZone?: () => string | undefined; checkAutomaticWork?: () => Promise<void> },
   ) {}
 
   async list(): Promise<ScheduleListDto> {
@@ -71,13 +71,15 @@ export class ScheduleService {
   }
 
   async create(req: CreateScheduleRequest): Promise<ScheduleListDto> {
+    await this.deps.checkAutomaticWork?.();
+    const timeZone = this.deps.timeZone?.() ?? req.tz;
     const delivery = this.deps.telegram.ownerDelivery();
     const job = await this.deps.gateway.request<{ id: string }>("cron.add", {
       name: `${req.agentId}:custom-${randomUUID().slice(0, 8)}`,
       displayName: req.label,
       agentId: req.agentId,
       enabled: true,
-      schedule: { kind: "cron", expr: req.cron, tz: req.tz },
+      schedule: { kind: "cron", expr: req.cron, tz: timeZone },
       sessionTarget: "isolated",
       wakeMode: "now",
       payload: { kind: "agentTurn", message: req.prompt },
@@ -92,7 +94,7 @@ export class ScheduleService {
           id: randomUUID(),
           agentId: req.agentId,
           cron: req.cron,
-          tz: req.tz,
+          tz: timeZone,
           prompt: req.prompt,
           deliverTo: delivery ? `telegram:${delivery.to}` : null,
           openclawCronId: job.id,
@@ -104,6 +106,7 @@ export class ScheduleService {
   }
 
   async update(id: string, req: UpdateScheduleRequest): Promise<ScheduleListDto> {
+    if (req.enabled === true) await this.deps.checkAutomaticWork?.();
     const current = (await this.list()).schedules.find((s) => s.id === id);
     if (!current) throw new ScheduleError("not_found", "this schedule does not exist or belongs to OpenClaw");
     const patch: Record<string, unknown> = {};

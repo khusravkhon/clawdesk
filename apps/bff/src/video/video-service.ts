@@ -10,6 +10,7 @@ import { videoJobs } from "../db/schema.js";
 import { BridgeError, type BridgeClient, type BridgeVideoResult } from "../gateway/bridge-client.js";
 export type { VideoJobMode };
 import { framesMessage, parseCues, timecode, toTranscript, transcriptMessage } from "./subtitles.js";
+import type { NewLibraryItem } from "../library/library-service.js";
 
 // One video at a time. The work itself happens in the worker the bridge starts; this keeps the
 // durable part: whose job it is, what state it is in, and what the agent was actually told.
@@ -28,7 +29,7 @@ type Deps = {
   chat: ChatService;
   logger: Logger;
   /** Keeps a transcript, so the owner can search what a video said. */
-  library?: { add(item: { agentId: string; kind: "document" | "video"; title: string; source: string; locator?: string | null; text: string }): string | null };
+  library?: { add(item: NewLibraryItem): string | null };
   /** Where kept originals live, read-only for the panel; absent when this install keeps none. */
   videoDir?: string | undefined;
   waitUntilReady?: () => Promise<void>;
@@ -187,6 +188,7 @@ export class VideoService {
         framesMessage({ ...about, url: job.url }, frames.map((frame) => timecode(frame.atSec))),
         frames.map((frame) => ({ mimeType: frame.mimeType, fileName: frame.fileName, content: frame.content })),
       );
+      this.#keepVideo(job, about.title, "video_frames");
       this.#done(job.id, { source: "frames", chars: 0, language: null, frames: frames.length, ...about });
       return;
     }
@@ -198,6 +200,7 @@ export class VideoService {
       // The agent is told the file is kept in the panel, not placed in its folder: a 2 GiB file
       // in an exchanged folder would hold up every other file there.
       await this.deps.chat.send(job.agentId, fileMessage({ ...about, url: job.url }, result.file.bytes));
+      this.#keepVideo(job, about.title, "video_file");
       this.#done(job.id, { source: "file", chars: 0, language: null, fileName: result.file.name, fileBytes: result.file.bytes, ...about });
       return;
     }
@@ -209,7 +212,8 @@ export class VideoService {
       }
       const message = transcriptMessage({ title: result.title ?? null, url: job.url, durationSec: result.durationSec ?? null, language: result.language ?? null, source: "subtitles" }, transcript);
       await this.deps.chat.send(job.agentId, message);
-      this.deps.library?.add({ agentId: job.agentId, kind: "video", title: result.title ?? job.url, source: job.url, locator: "таймкод", text: transcript.text });
+      this.deps.library?.add({ agentId: job.agentId, kind: "video", title: result.title ?? job.url, source: job.url, locator: "таймкод", text: transcript.text,
+        processing: transcript.truncated ? "subtitles_partial" : "subtitles" });
       this.#done(job.id, { source: "subtitles", chars: transcript.chars, title: result.title ?? null, language: result.language ?? null, durationSec: result.durationSec ?? null });
       return;
     }
@@ -233,7 +237,12 @@ export class VideoService {
       content: result.audio.content,
       durationMs: result.audio.durationMs ?? null,
     });
+    this.#keepVideo(job, about.title, "video_speech");
     this.#done(job.id, { source: "speech", chars: 0, title: result.title ?? null, language: null, durationSec: result.durationSec ?? null });
+  }
+
+  #keepVideo(job: Row, title: string | null, processing: "video_frames" | "video_file" | "video_speech"): void {
+    this.deps.library?.add({ agentId: job.agentId, kind: "video", title: title ?? job.url, source: job.url, text: "", processing });
   }
 
   #done(id: string, fields: { source: "subtitles" | "speech" | "frames" | "file"; chars: number; title: string | null; language: string | null; durationSec: number | null; frames?: number; fileName?: string; fileBytes?: number }): void {

@@ -47,8 +47,9 @@ const assignmentPending = ref(false);
 const assignmentError = ref<string | null>(null);
 const assigned = ref(false);
 const assignmentStorageKey = computed(() => department.value ? `clawdesk.department-create.${department.value.id}.${assignmentRole}` : null);
-const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
 const space = useSpaceStore();
+const deviceTimeZone = Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
+const timezone = computed(() => space.mode === "personal" ? space.space?.timezone ?? deviceTimeZone : deviceTimeZone);
 
 const step = ref(1);
 const templates = ref<TemplateDto[]>([]);
@@ -178,7 +179,7 @@ async function create(): Promise<void> {
       canAskMain: canAskMain.value,
       ai: aiMode.value,
       schedules: payload,
-      timezone,
+      timezone: timezone.value,
       deliverToTelegram: telegramReady.value && deliverToTelegram.value,
       folder: useFolder.value ? folderName.value.trim() : null,
     });

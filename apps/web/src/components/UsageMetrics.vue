@@ -28,7 +28,7 @@ const breakdown = computed(() => totals.value?.tokenBreakdown);
       <span v-else>{{ t('usageMetrics.unavailable') }}</span>
     </template>
   </stat-tile>
-  <stat-tile :icon="Coins" :label="t('usageMetrics.estimatedCost')" :value="totals ? formatCost(totals.cost, locale) : '—'">
+  <stat-tile :icon="Coins" :label="t('usageMetrics.estimatedCost')" :value="totals && !usage?.costIncomplete ? formatCost(totals.cost, locale) : '—'">
     <template #note>
       <p class="line">{{ t('usageMetrics.estimateHint') }}</p>
       <p v-if="usage?.costIncomplete" class="line">{{ t('dash.kpi.costIncomplete') }}</p>

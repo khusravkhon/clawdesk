@@ -65,17 +65,18 @@ async function save(): Promise<void> {
     </n-alert>
     <n-alert v-if="data.usageAvailable && data.costIncomplete" type="warning" :bordered="false" class="block">
       {{ t("budget.incomplete") }}
+      <span v-if="data.lastUsageAt">{{ t("budget.lastUsage", { at: formatDateTime(new Date(data.lastUsageAt).toISOString(), locale) }) }}</span>
       <template v-if="data.pausedSchedules">&nbsp;{{ t("budget.paused", { count: data.pausedSchedules }) }}</template>
     </n-alert>
 
     <dl class="spent">
       <div>
         <dt>{{ t("budget.today") }}</dt>
-        <dd>{{ data.usageAvailable ? money(data.spentTodayUsd) : "—" }}<span v-if="data.dailyUsd"> / {{ money(data.dailyUsd) }}</span></dd>
+        <dd>{{ data.usageAvailable && !data.costIncomplete ? money(data.spentTodayUsd) : "—" }}<span v-if="data.dailyUsd"> / {{ money(data.dailyUsd) }}</span></dd>
       </div>
       <div>
         <dt>{{ t("budget.month") }}</dt>
-        <dd>{{ data.usageAvailable ? money(data.spentMonthUsd) : "—" }}<span v-if="data.monthlyUsd"> / {{ money(data.monthlyUsd) }}</span></dd>
+        <dd>{{ data.usageAvailable && !data.costIncomplete ? money(data.spentMonthUsd) : "—" }}<span v-if="data.monthlyUsd"> / {{ money(data.monthlyUsd) }}</span></dd>
       </div>
     </dl>
 

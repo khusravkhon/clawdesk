@@ -212,11 +212,19 @@ test('official OpenClaw backup roundtrip in an isolated Linux fixture', { skip: 
     const model = await find(path.join(root, 'target'), 'fixture.gguf');
     assert.ok(model); assert.equal(await fs.readFile(model, 'utf8'), 'FAKE MODEL — never inference');
     const mounted = path.join(root, 'fake-mounted-panel'); await fs.mkdir(mounted);
+    await fs.copyFile(path.join(staging, 'panel', 'panel.sqlite'), path.join(mounted, 'panel.sqlite'));
+    const changed = new DatabaseSync(path.join(mounted, 'panel.sqlite'));
+    changed.prepare('UPDATE notes SET content=? WHERE id=?').run('changed after the backup', 'fixture');
+    changed.prepare('INSERT INTO notes VALUES(?,?)').run('later', 'created after the backup');
+    assert.equal(changed.prepare('SELECT content FROM notes WHERE id=?').get('fixture').content, 'changed after the backup');
+    changed.close();
     await fs.writeFile(path.join(mounted, 'obsolete'), 'old');
     await applyPayload([[path.join(restored, 'panel'), mounted]], 'roundtrip');
     assert.equal(await fs.stat(path.join(mounted, 'obsolete')).catch(() => null), null);
     const live = new DatabaseSync(path.join(mounted, 'panel.sqlite'), { readOnly: true });
-    assert.equal(live.prepare('SELECT content FROM notes WHERE id=?').get('fixture').content, 'personal note from SQLite'); live.close();
+    assert.equal(live.prepare('SELECT content FROM notes WHERE id=?').get('fixture').content, 'personal note from SQLite');
+    assert.equal(live.prepare('SELECT content FROM notes WHERE id=?').get('later'), undefined);
+    live.close();
     console.log(JSON.stringify({ officialBackupRoundtrip: true, note: true, sqliteIntegrity: true, telegramConfigOnly: true, schedule: true, fakeSecrets: true, modelIncludedBySdk: Boolean(await find(path.join(root, 'target'), 'fixture.gguf')), embeddingInferenceChecked: false }));
   } finally { await fs.rm(root, { recursive: true, force: true }); }
 });

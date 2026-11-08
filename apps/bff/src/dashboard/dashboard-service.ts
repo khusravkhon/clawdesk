@@ -69,10 +69,16 @@ export type RawCronRun = {
 
 const RANGE_DAYS: Record<DashboardRange, number> = { "7d": 7, "30d": 30, "90d": 90 };
 
+const dayFormatters = new Map<string, Intl.DateTimeFormat>();
 /** YYYY-MM-DD of `ms` in `timeZone`. */
 export function dayKey(ms: number, timeZone: string): string {
-  // en-CA formats as ISO date.
-  return new Intl.DateTimeFormat("en-CA", { timeZone, year: "numeric", month: "2-digit", day: "2-digit" }).format(ms);
+  let formatter = dayFormatters.get(timeZone);
+  if (!formatter) {
+    formatter = new Intl.DateTimeFormat("en-CA", { timeZone, year: "numeric", month: "2-digit", day: "2-digit" });
+    if (dayFormatters.size >= 32) dayFormatters.delete(dayFormatters.keys().next().value!);
+    dayFormatters.set(timeZone, formatter);
+  }
+  return formatter.format(ms);
 }
 
 /** Every day of the range ending today, oldest first. */
@@ -173,17 +179,20 @@ export function buildSchedules(jobs: RawCronJob[], runs: RawCronRun[], days: str
   const userJobs = jobs.filter((j) => !isSystemJob(j));
   const userIds = new Map(userJobs.map((j) => [j.id, j]));
   const firstDay = days[0] ?? "";
-  const selectedDays = new Set(days);
-  const inRange = runs.filter((r) => userIds.has(r.jobId) && Number.isFinite(r.ts) && r.ts <= now && dayKey(r.ts, timeZone) >= firstDay && selectedDays.has(dayKey(r.ts, timeZone)));
-
+  const inRange: RawCronRun[] = [];
   const daily = new Map(days.map((date) => [date, { date, ok: 0, error: 0, skipped: 0 }]));
   const totals = { ok: 0, error: 0, skipped: 0 };
-  for (const run of inRange) {
+  for (const run of runs) {
+    if (!userIds.has(run.jobId) || !Number.isFinite(run.ts) || run.ts > now) continue;
+    const date = dayKey(run.ts, timeZone);
+    if (date < firstDay) continue;
+    const day = daily.get(date);
+    if (!day) continue;
+    inRange.push(run);
     const status = runStatus(run.status);
     if (!status) continue;
     totals[status] += 1;
-    const day = daily.get(dayKey(run.ts, timeZone));
-    if (day) day[status] += 1;
+    day[status] += 1;
   }
 
   const nextRun = (j: RawCronJob) => j.nextRunAtMs ?? j.state?.nextRunAtMs ?? null;

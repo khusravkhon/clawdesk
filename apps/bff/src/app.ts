@@ -18,9 +18,9 @@ import { registerCompanyRoutes } from "./routes/company.js";
 import type { TeamService } from "./teams/team-service.js";
 import type { AuditService } from "./audit/audit-service.js";
 import type { SignInSessionManager } from "./ai-setup/signin-sessions.js";
-import { ChatService } from "./chat/chat-service.js";
+import { ChatSendError, ChatService } from "./chat/chat-service.js";
 import { VideoService } from "./video/video-service.js";
-import { BudgetService } from "./budget/budget-service.js";
+import { BudgetExceededError, BudgetService, BudgetUsageUnavailableError } from "./budget/budget-service.js";
 import { LibraryService } from "./library/library-service.js";
 import { MemoryNoteService } from "./library/memory-note-service.js";
 import { DashboardService } from "./dashboard/dashboard-service.js";
@@ -124,6 +124,12 @@ export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
   app.setErrorHandler((error, request, reply) => {
     const send = (status: number, body: ApiErrorDto) => reply.status(status).send(body);
     if (error instanceof ZodError) return send(400, { error: "invalid_request", message: "request validation failed", details: error.issues });
+    if (error instanceof BudgetUsageUnavailableError) return send(503, { error: "budget_usage_unavailable", message: error.message });
+    if (error instanceof BudgetExceededError) return send(409, { error: "budget_exceeded", message: error.reason });
+    if (error instanceof ChatSendError) {
+      const status = { send_conflict: 409, send_unknown: 503, send_rejected: 422, conversation_missing: 404 }[error.code];
+      return send(status, { error: error.code, message: error.message });
+    }
     if (error instanceof GatewayUnavailableError) {
       return send(503, { error: "gateway_unavailable", message: error.message, details: { state: error.status.state, hint: error.status.hint } });
     }
@@ -152,19 +158,22 @@ export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
   registerApprovalRoutes(app, deps);
   registerAssistantRoutes(app, deps);
   registerStorageRoutes(app, deps);
-  registerScheduleRoutes(app, { schedules: new ScheduleService(deps) });
-  const reminders = deps.reminders ?? new ReminderService({ db: deps.db, gateway: deps.gateway, telegram: deps.telegram, mode: () => deps.space.mode(), timeZone: () => deps.space.get()?.timezone ?? "UTC" });
+  const personalTimeZone = () => deps.space.mode() === "personal" ? deps.space.get()?.timezone : undefined;
+  const budget = deps.budget ?? new BudgetService({ gateway: deps.gateway, db: deps.db, logger: deps.logger.child({ component: "budget" }) });
+  registerScheduleRoutes(app, { schedules: new ScheduleService({ ...deps, timeZone: personalTimeZone, checkAutomaticWork: async () => {
+    if (deps.space.mode() === "personal") await budget.guard(personalTimeZone() ?? "UTC");
+  } }) });
+  const reminders = deps.reminders ?? new ReminderService({ db: deps.db, gateway: deps.gateway, telegram: deps.telegram, mode: () => deps.space.mode(), timeZone: personalTimeZone });
   registerReminderRoutes(app, { reminders });
   const library = deps.library ?? new LibraryService(deps.db);
-  const budget = deps.budget ?? new BudgetService({ gateway: deps.gateway, db: deps.db, logger: deps.logger.child({ component: "budget" }) });
-  const chat = new ChatService(deps.gateway, library);
-  registerChatRoutes(app, { chat });
+  const chat = new ChatService(deps.gateway, library, deps.db);
+  registerChatRoutes(app, { chat, personal: () => deps.space.mode() === "personal" });
 
   const notes = deps.notes ?? new MemoryNoteService({ db: deps.db, gateway: deps.gateway, logger: deps.logger.child({ component: "memory-notes" }) });
   registerLibraryRoutes(app, { library, notes, budget });
-  registerTodayRoutes(app, { ...deps, notes, reminders });
+  registerTodayRoutes(app, { ...deps, notes, reminders, chat, library, budget });
   registerVideoRoutes(app, { video: deps.video ?? new VideoService({ db: deps.db, bridge: deps.bridge, chat, logger: deps.logger.child({ component: "video" }), videoDir: deps.videoDir, library }), budget });
-  registerDashboardRoutes(app, { dashboard: new DashboardService(deps) });
+  registerDashboardRoutes(app, { dashboard: new DashboardService(deps), timeZone: personalTimeZone });
   registerSystemRoutes(app, deps);
   registerOpenClawUpdateRoutes(app, deps);
   registerSpaceRoutes(app, deps);
@@ -176,7 +185,7 @@ export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
   registerCapabilityRoutes(app, deps);
   registerCompanyRoutes(app, new CompanyService({ ...deps, model: oneShot(deps.gateway) }));
   registerAuditRoutes(app, deps);
-  registerUsageRoutes(app, { usage: new UsageService(deps) });
+  registerUsageRoutes(app, { usage: new UsageService(deps), timeZone: personalTimeZone });
 
   if (deps.webDist && fs.existsSync(path.join(deps.webDist, "index.html"))) {
     await app.register(fastifyStatic, { root: deps.webDist, wildcard: false });

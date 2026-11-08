@@ -11,10 +11,12 @@ describe("usage screen", () => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), "clawdesk-usage-"));
     const { db, close } = openDb(path.join(dir, "panel.sqlite"));
     const asked: Record<string, unknown>[] = [];
+    let failAgent = false;
     const gateway = {
       request: async (method: string, params: Record<string, unknown>) => {
         if (method === "agents.list") return { defaultId: "main", agents: [{ id: "main" }, { id: "dietitian" }] };
         asked.push(params);
+        if (failAgent && params.agentId === "main") throw new Error("usage unavailable");
         const daily =
           params.agentId === "dietitian"
             ? [{ date: "2026-10-12", tokens: 900, cost: 0.01 }]
@@ -26,14 +28,20 @@ describe("usage screen", () => {
       },
     } as unknown as GatewayService;
     try {
-      const res = await new UsageService({ gateway, db, sandboxEnabled: true }).get("7d", "UTC", Date.UTC(2026, 9, 13, 12));
+      const service = new UsageService({ gateway, db, sandboxEnabled: true });
+      const now = Date.UTC(2026, 9, 13, 12);
+      const res = await service.get("7d", "UTC", now);
       expect(res.days).toHaveLength(7);
-      expect(res.usage.totals.tokens).toBe(1200);
+      expect(res.usage?.totals.tokens).toBe(1200);
       expect(res.agents.map((a) => [a.agentId, a.tokens, a.daily.slice(-2)])).toEqual([
         ["dietitian", 900, [900, 0]],
         ["main", 300, [0, 300]],
       ]);
       expect(asked.filter((p) => p.agentId).map((p) => p.agentId).sort()).toEqual(["dietitian", "main"]);
+      failAgent = true;
+      const partial = await service.get("7d", "UTC", now + 1_000);
+      expect(partial.usage?.totals.tokens).toBe(1200);
+      expect(partial.agents.find((agent) => agent.agentId === "main")).toMatchObject({ available: false, tokens: null, cost: null, daily: [], checkedAt: now });
     } finally {
       close();
       fs.rmSync(dir, { recursive: true, force: true });

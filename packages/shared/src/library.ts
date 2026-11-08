@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { ChatAttachmentState } from "./chat.js";
 
 // The owner's library and their agents' notes (screen 9 and 4), plus the spending limits that keep
 // automatic work from running up a bill. Everything here is per agent: a search finds only what
@@ -6,6 +7,8 @@ import { z } from "zod";
 
 export const LibraryItemKind = z.enum(["document", "video"]);
 export type LibraryItemKind = z.infer<typeof LibraryItemKind>;
+export const LibraryProcessing = z.enum([...ChatAttachmentState.options, "subtitles", "subtitles_partial", "video_frames", "video_file", "video_speech"]);
+export type LibraryProcessing = z.infer<typeof LibraryProcessing>;
 
 export const LibraryHitDto = z.object({
   id: z.string(),
@@ -18,10 +21,15 @@ export const LibraryHitDto = z.object({
   locator: z.string().nullable(),
   chars: z.number().int().nonnegative(),
   at: z.number(),
+  processing: LibraryProcessing.nullable().optional(),
   /** Pieces of the text around the match, with the match itself marked by the panel, not by HTML. */
   snippets: z.array(z.object({ text: z.string(), from: z.number().int().nonnegative() })),
 });
 export type LibraryHitDto = z.infer<typeof LibraryHitDto>;
+
+export type LibraryCursor = { at: number; id: string };
+export type LibraryPageDto = { items: LibraryHitDto[]; next: LibraryCursor | null };
+export type LibraryMaterialDto = { item: LibraryHitDto; text: string };
 
 export const LibrarySearchDto = z.object({
   query: z.string(),

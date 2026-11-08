@@ -4,11 +4,11 @@
 // its own knowledge. Everything here is correctable: a fact without a source gets repeated forever.
 import type { MemoryNoteDto, MemoryNotesDto } from "@clawdesk/shared";
 import { Check, NotebookPen, Pencil, Trash2, X } from "@lucide/vue";
-import { NAlert, NButton, NInput, useMessage } from "naive-ui";
-import { onMounted, ref } from "vue";
+import { NAlert, NButton, NInput, NPopconfirm, NTag, useMessage } from "naive-ui";
+import { onBeforeUnmount, onMounted, ref } from "vue";
 import { useI18n } from "vue-i18n";
 import { api, ApiError } from "../api/client";
-import { formatDay } from "../format";
+import { formatDateTime, formatDay } from "../format";
 
 const props = defineProps<{ agentId: string }>();
 const { t, locale } = useI18n();
@@ -17,7 +17,9 @@ const message = useMessage();
 const notes = ref<MemoryNoteDto[]>([]);
 const loading = ref(true);
 const saving = ref(false);
-const pending = ref(false);
+const applied = ref<boolean | null>(null);
+const failed = ref(false);
+let active = true;
 const editing = ref<string | null>(null);
 const draft = ref({ text: "", source: "", happenedOn: "" });
 
@@ -29,31 +31,36 @@ const body = () => ({
 const reset = () => (draft.value = { text: "", source: "", happenedOn: "" });
 
 function apply(dto: MemoryNotesDto): void {
+  if (!active) return;
   notes.value = dto.notes;
-  pending.value = !dto.applied;
+  applied.value = dto.applied;
+  failed.value = false;
 }
 
 async function load(): Promise<void> {
+  loading.value = true;
   try {
     apply(await api.memory.notes(props.agentId));
-  } catch (e) {
-    message.error(e instanceof ApiError ? e.body.message : String(e));
+  } catch {
+    if (active) failed.value = true;
   } finally {
     loading.value = false;
   }
 }
 onMounted(load);
+onBeforeUnmount(() => { active = false; });
 
 async function save(): Promise<void> {
-  if (!draft.value.text.trim() || saving.value) return;
+  if (!draft.value.text.trim() || saving.value || loading.value || failed.value) return;
   saving.value = true;
   try {
     const result = editing.value ? await api.memory.update(props.agentId, editing.value, body()) : await api.memory.add(props.agentId, body());
     apply(result);
+    if (active) message.success(t(result.applied ? "memory.notes.savedApplied" : "memory.notes.savedLocal"));
     editing.value = null;
     reset();
   } catch (e) {
-    message.error(e instanceof ApiError ? (e.body.error === "note_rejected" ? t("memory.notes.error." + e.body.message) : e.body.message) : String(e));
+    if (active) message.error(e instanceof ApiError ? (e.body.error === "note_rejected" ? t("memory.notes.error." + e.body.message) : e.body.message) : String(e));
   } finally {
     saving.value = false;
   }
@@ -70,12 +77,16 @@ function cancel(): void {
 }
 
 async function remove(note: MemoryNoteDto): Promise<void> {
+  if (saving.value) return;
+  saving.value = true;
   try {
-    apply(await api.memory.remove(props.agentId, note.id));
+    const result = await api.memory.remove(props.agentId, note.id);
+    apply(result);
+    if (active) message.success(t(result.applied ? "memory.notes.removedApplied" : "memory.notes.savedLocal"));
     if (editing.value === note.id) cancel();
   } catch (e) {
-    message.error(e instanceof ApiError ? e.body.message : String(e));
-  }
+    if (active) message.error(e instanceof ApiError ? e.body.message : String(e));
+  } finally { saving.value = false; }
 }
 
 const when = (note: MemoryNoteDto) => (note.happenedOn ? formatDay(note.happenedOn, locale.value) : null);
@@ -84,7 +95,7 @@ async function sync(): Promise<void> {
   if (saving.value) return;
   saving.value = true;
   try { apply(await api.memory.sync(props.agentId)); }
-  catch (e) { message.error(e instanceof ApiError ? e.body.message : String(e)); }
+  catch (e) { if (active) message.error(e instanceof ApiError ? e.body.message : String(e)); }
   finally { saving.value = false; }
 }
 </script>
@@ -93,7 +104,15 @@ async function sync(): Promise<void> {
   <section class="card">
     <h2 class="card-title"><notebook-pen :size="16" /> {{ t("memory.notes.title") }}</h2>
     <p class="hint">{{ t("memory.notes.lead") }}</p>
-    <n-alert v-if="pending" type="warning" :bordered="false">
+    <p class="hint">
+      {{ t("memory.notes.distinction") }}
+      <a href="#memory-search">{{ t("today.searchSetup") }}</a>
+    </p>
+    <n-alert v-if="failed" type="error">
+      {{ t("memory.notes.loadFailed") }}
+      <n-button size="small" :loading="loading" @click="load">{{ t("today.refresh") }}</n-button>
+    </n-alert>
+    <n-alert v-else-if="applied === false" type="warning" :bordered="false">
       {{ t("memory.notes.pending") }}
       <n-button size="small" :loading="saving" @click="sync">{{ t("memory.notes.retry") }}</n-button>
     </n-alert>
@@ -105,21 +124,26 @@ async function sync(): Promise<void> {
           <span v-if="when(note)">{{ when(note) }}</span>
           <span v-if="note.source">{{ note.source }}</span>
           <span v-else class="no-source">{{ t("memory.notes.noSource") }}</span>
+          <span>{{ t("memory.notes.recorded", { at: formatDateTime(new Date(note.updatedAt ?? note.createdAt).toISOString(), locale) }) }}</span>
+          <n-tag size="small" :type="applied ? 'success' : 'warning'">{{ t(applied ? "memory.notes.applied" : "memory.notes.savedLocal") }}</n-tag>
         </div>
         <div class="row-actions">
-          <n-button quaternary circle size="tiny" :aria-label="t('memory.notes.edit')" @click="edit(note)"><pencil :size="13" /></n-button>
-          <n-button quaternary circle size="tiny" :aria-label="t('memory.notes.remove')" @click="remove(note)"><trash-2 :size="13" /></n-button>
+          <n-button quaternary circle size="tiny" :disabled="saving" :aria-label="t('memory.notes.edit')" @click="edit(note)"><pencil :size="13" /></n-button>
+          <n-popconfirm :positive-text="t('memory.notes.remove')" @positive-click="remove(note)">
+            <template #trigger><n-button quaternary circle size="tiny" :disabled="saving" :aria-label="t('memory.notes.remove')"><trash-2 :size="13" /></n-button></template>
+            {{ t("memory.notes.removeScope") }}
+          </n-popconfirm>
         </div>
       </li>
     </ul>
-    <p v-else-if="!loading" class="hint">{{ t("memory.notes.empty") }}</p>
+    <p v-else-if="!loading && !failed" class="hint">{{ t("memory.notes.empty") }}</p>
 
     <div class="form">
-      <n-input v-model:value="draft.text" type="textarea" :rows="2" :placeholder="t('memory.notes.textPlaceholder')" :maxlength="2000" />
+      <n-input v-model:value="draft.text" type="textarea" :rows="2" :placeholder="t('memory.notes.textPlaceholder')" :maxlength="2000" :disabled="saving" />
       <div class="fields">
-        <n-input v-model:value="draft.source" :placeholder="t('memory.notes.sourcePlaceholder')" :maxlength="300" />
-        <n-input v-model:value="draft.happenedOn" placeholder="2026-10-16" :maxlength="10" />
-        <n-button type="primary" :loading="saving" :disabled="!draft.text.trim()" @click="save">
+        <n-input v-model:value="draft.source" :placeholder="t('memory.notes.sourcePlaceholder')" :maxlength="300" :disabled="saving" />
+        <input v-model="draft.happenedOn" type="date" :aria-label="t('memory.notes.factDate')" :disabled="saving" />
+        <n-button type="primary" :loading="saving" :disabled="!draft.text.trim() || loading || failed" @click="save">
           <check :size="14" /> &nbsp;{{ editing ? t("memory.notes.saveEdit") : t("memory.notes.add") }}
         </n-button>
         <n-button v-if="editing" quaternary @click="cancel"><x :size="14" /> &nbsp;{{ t("memory.notes.cancel") }}</n-button>

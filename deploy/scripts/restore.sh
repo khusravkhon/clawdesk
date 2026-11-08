@@ -29,7 +29,7 @@ while [[ "${1:-}" == --* ]]; do
     *) echo "unknown option"; exit 1 ;;
   esac
 done
-[[ $# -eq 1 ]] || { echo "usage: $0 [--yes] <backup .tar or .tar.enc>"; exit 1; }
+[[ $# -eq 1 ]] || { echo "usage: $0 [--inspect | --yes] [--target project] [--target-data directory] <backup .tar or .tar.enc>"; exit 1; }
 [[ -f "$1" ]] || { echo "no such file: $1"; exit 1; }
 [[ -f .env ]] || { echo "deploy/.env is missing: install ClawDesk first (deploy/install.sh), then restore."; exit 1; }
 
@@ -71,7 +71,8 @@ cleanup() {
 trap cleanup EXIT
 
 step "Reading the backup"
-if [[ "$(head -c 21 "$1")" == "CLAWDESK-BACKUP-ENC-1" ]]; then
+encrypted_magic=$'CLAWDESK-BACKUP-ENC-1\n'
+if cmp -s -n "${#encrypted_magic}" "$1" <(printf '%s' "$encrypted_magic"); then
   password="${BACKUP_PASSWORD:-}"
   if [[ "${BACKUP_PASSWORD_STDIN:-}" == 1 ]]; then IFS= read -r password || true; fi
   [[ -n "$password" ]] || { password="$(ask -s -p "Password of this backup copy: ")"; echo; }

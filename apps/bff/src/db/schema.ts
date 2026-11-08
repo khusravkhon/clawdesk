@@ -461,6 +461,7 @@ export const libraryItems = sqliteTable(
     text: text("text").notNull(),
     contentId: integer("content_id").references(() => libraryContents.id),
     chars: integer("chars").notNull(),
+    processing: text("processing").$type<import("@clawdesk/shared").LibraryProcessing>(),
     createdAt: createdAt(),
   },
   (t) => [index("library_items_agent_idx").on(t.agentId), index("library_items_created_idx").on(t.createdAt), index("library_items_content_idx").on(t.contentId)],
@@ -531,6 +532,16 @@ export const mcpGrants = sqliteTable(
   (t) => [primaryKey({ columns: [t.server, t.agentId] })],
 );
 
+export const reminderSeries = sqliteTable("reminder_series", {
+  id: text("id").primaryKey(),
+  text: text("text").notNull(),
+  timeZone: text("time_zone").notNull(),
+  days: text("days", { mode: "json" }).$type<number[]>().notNull(),
+  clock: text("clock").notNull(),
+  nextAt: integer("next_at"),
+  stopRequestId: text("stop_request_id").unique(),
+}, (t) => [index("reminder_series_next_idx").on(t.nextAt)]);
+
 /** Fixed owner reminders. A durable sending claim is never replayed after an uncertain send. */
 export const personalReminders = sqliteTable("personal_reminders", {
   id: text("id").primaryKey(),
@@ -547,6 +558,7 @@ export const personalReminders = sqliteTable("personal_reminders", {
   reason: text("reason"),
   actionRequestId: text("action_request_id"),
   actionPayload: text("action_payload"),
+  seriesId: text("series_id").references(() => reminderSeries.id),
 }, (t) => [index("personal_reminders_due_idx").on(t.action, t.delivery, t.dueAt)]);
 
 /** Stage 6: a request up the company structure (see work-requests-service). */
@@ -771,3 +783,18 @@ export const projectExistingPlans = sqliteTable("project_existing_plans", {
   updatedAt: integer("updated_at").notNull(),
   requestId: text("request_id").notNull(),
 });
+export const chatConversations = sqliteTable("chat_conversations", {
+  id: text("id").primaryKey(),
+  agentId: text("agent_id").notNull(),
+  title: text("title").notNull(),
+  createdAt: integer("created_at").notNull(),
+}, (t) => [index("chat_conversations_agent_idx").on(t.agentId, t.createdAt)]);
+
+export const chatSends = sqliteTable("chat_sends", {
+  id: text("id").primaryKey(),
+  sessionKey: text("session_key").notNull(),
+  fingerprint: text("fingerprint").notNull(),
+  state: text("state", { enum: ["ready", "dispatched", "accepted"] }).notNull(),
+  acceptedAt: integer("accepted_at"),
+  result: text("result", { mode: "json" }).$type<import("@clawdesk/shared").SendChatResultDto>().notNull(),
+}, (t) => [index("chat_sends_state_session_idx").on(t.state, t.sessionKey, t.acceptedAt)]);

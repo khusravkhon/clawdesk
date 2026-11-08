@@ -4,7 +4,7 @@
 // and every hit names its source, so the owner can go back to the page, sheet or timecode.
 import type { LibraryHitDto } from "@clawdesk/shared";
 import { Search as SearchIcon, Trash2 } from "@lucide/vue";
-import { NButton, NInput, useMessage } from "naive-ui";
+import { NButton, NInput, NPopconfirm, useMessage } from "naive-ui";
 import { ref } from "vue";
 import { useI18n } from "vue-i18n";
 import { api, ApiError } from "../api/client";
@@ -65,7 +65,10 @@ const when = (hit: LibraryHitDto) => formatRelative(hit.at, locale.value);
           <div class="head">
             <b>{{ hit.title }}</b>
             <span class="muted">{{ t("library.kind." + hit.kind) }}<template v-if="hit.locator"> · {{ hit.locator }}</template> · {{ when(hit) }}</span>
-            <n-button quaternary circle size="tiny" :aria-label="t('library.remove')" @click="remove(hit)"><trash-2 :size="12" /></n-button>
+            <n-popconfirm :positive-text="t('library.remove')" @positive-click="remove(hit)">
+              <template #trigger><n-button quaternary circle size="tiny" :aria-label="t('library.remove')"><trash-2 :size="12" /></n-button></template>
+              {{ t("library.browser.removeNote") }}
+            </n-popconfirm>
           </div>
           <p v-for="(snippet, i) in hit.snippets" :key="i" class="snippet">{{ snippet.text }}</p>
           <a v-if="hit.kind === 'video'" class="source" :href="hit.source" target="_blank" rel="noopener noreferrer">{{ hit.source }}</a>

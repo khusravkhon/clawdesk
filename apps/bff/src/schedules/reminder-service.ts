@@ -1,8 +1,8 @@
 import { randomUUID } from "node:crypto";
 import { and, eq, inArray, lte, asc, sql } from "drizzle-orm";
-import type { CreateReminderRequest, ReminderActionRequest, ReminderListDto, ReminderPreferences } from "@clawdesk/shared";
+import { nextWeeklyMinute, zonedMinute, type CreateReminderRequest, type ReminderActionRequest, type ReminderListDto, type ReminderPreferences } from "@clawdesk/shared";
 import type { Db } from "../db/client.js";
-import { personalReminders } from "../db/schema.js";
+import { personalReminders, reminderSeries } from "../db/schema.js";
 import { getSetting, putSetting } from "../db/settings.js";
 import type { GatewayService } from "../gateway/gateway-service.js";
 import type { TelegramService } from "../telegram/telegram-service.js";
@@ -27,37 +27,72 @@ export function isQuiet(at: number, preferences: ReminderPreferences): boolean {
 export class ReminderService {
   #running: Promise<void> | undefined;
   #stopped = false;
-  constructor(private readonly deps: { db: Db; gateway: GatewayService; telegram: Pick<TelegramService, "ownerDelivery">; mode: () => string; now?: () => number; timeZone?: () => string }) {}
+  constructor(private readonly deps: { db: Db; gateway: GatewayService; telegram: Pick<TelegramService, "ownerDelivery">; mode: () => string; now?: () => number; timeZone?: () => string | undefined }) {}
   #now() { return this.deps.now?.() ?? Date.now(); }
   #personal() { if (this.deps.mode() !== "personal") throw new ReminderError("personal_only", "fixed reminders are available in personal mode"); }
   preferences(): ReminderPreferences {
-    return getSetting<ReminderPreferences>(this.deps.db, PREFERENCES) ?? { quietHours: { enabled: false, start: "22:00", end: "08:00", timeZone: this.deps.timeZone?.() ?? "UTC" } };
+    const quiet = getSetting<ReminderPreferences>(this.deps.db, PREFERENCES)?.quietHours;
+    return { quietHours: { enabled: quiet?.enabled ?? false, start: quiet?.start ?? "22:00", end: quiet?.end ?? "08:00", timeZone: this.deps.timeZone?.() ?? quiet?.timeZone ?? "UTC" } };
   }
   list(): ReminderListDto {
     this.#personal();
-    const rows = this.deps.db.select().from(personalReminders).orderBy(
-      sql`case when ${personalReminders.action} = 'open' then 0 else 1 end`,
-      sql`case when ${personalReminders.action} = 'open' then ${personalReminders.dueAt} else -${personalReminders.dueAt} end`,
+    const { db } = this.deps;
+    const rows = db.select().from(personalReminders).orderBy(
+      sql`case when ${personalReminders.action} <> 'open' then 2 when ${personalReminders.seriesId} is not null and ${personalReminders.delivery} = 'sent' then 1 else 0 end`,
+      sql`case when ${personalReminders.action} = 'open' and not (${personalReminders.seriesId} is not null and ${personalReminders.delivery} = 'sent') then ${personalReminders.dueAt} else -${personalReminders.dueAt} end`,
       asc(personalReminders.id),
     ).limit(201).all();
-    return { reminders: rows.slice(0, 200).map(({ actionRequestId: _, actionPayload: __, expiresAt: ___, ...row }) => row), preferences: this.preferences(), partial: rows.length > 200 };
+    const active = db.select().from(reminderSeries).where(sql`${reminderSeries.nextAt} IS NOT NULL`).orderBy(asc(reminderSeries.nextAt)).limit(201).all();
+    const series = active.slice(0, 200).map(({ id, text, timeZone, days, nextAt }) => ({ id, text, timeZone, days, nextAt: nextAt! }));
+    return {
+      reminders: rows.slice(0, 200).map(({ actionRequestId: _, actionPayload: __, expiresAt: ___, ...row }) => row),
+      preferences: this.preferences(), partial: rows.length > 200 || active.length > 200, telegramConfigured: !!this.deps.telegram.ownerDelivery(), series,
+    };
   }
   savePreferences(preferences: ReminderPreferences): ReminderListDto { this.#personal(); putSetting(this.deps.db, PREFERENCES, preferences); return this.list(); }
   create(request: CreateReminderRequest): ReminderListDto {
     this.#personal();
-    const existing = this.deps.db.select().from(personalReminders).where(eq(personalReminders.requestId, request.requestId)).get();
+    const { db } = this.deps;
+    const { repeatDays, ...occurrence } = request;
+    const existing = db.select().from(personalReminders).where(eq(personalReminders.requestId, request.requestId)).get();
     if (existing) {
-      if (existing.text !== request.text || existing.dueAt !== request.dueAt || existing.timeZone !== request.timeZone) throw new ReminderError("conflict", "request id belongs to a different reminder");
+      const series = existing.seriesId ? db.select().from(reminderSeries).where(eq(reminderSeries.id, existing.seriesId)).get() : undefined;
+      if (existing.text !== request.text || existing.dueAt !== request.dueAt || existing.timeZone !== request.timeZone || JSON.stringify(series?.days) !== JSON.stringify(repeatDays)) {
+        throw new ReminderError("conflict", "request id belongs to a different reminder");
+      }
       return this.list();
     }
     const now = this.#now();
     if (request.dueAt < now - 60_000 || request.dueAt > now + 366 * DAY) throw new ReminderError("invalid_due_at", "choose a time within the next year");
-    this.deps.db.insert(personalReminders).values({ id: randomUUID(), ...request, expiresAt: request.dueAt + DAY }).run();
+    const id = randomUUID();
+    db.transaction((tx) => {
+      if (repeatDays) {
+        const local = zonedMinute(request.dueAt, request.timeZone);
+        const weekday = new Date(local.slice(0, 10) + "T00:00:00Z").getUTCDay();
+        if (!repeatDays.includes(weekday)) throw new ReminderError("invalid_due_at", "the first date must match one of the selected weekdays");
+        const clock = local.slice(11);
+        const nextAt = nextWeeklyMinute(request.dueAt, request.timeZone, repeatDays, clock);
+        tx.insert(reminderSeries).values({ id, text: request.text, timeZone: request.timeZone, days: repeatDays, clock, nextAt }).run();
+      }
+      tx.insert(personalReminders).values({ id, ...occurrence, seriesId: repeatDays ? id : null, expiresAt: request.dueAt + DAY }).run();
+    });
     return this.list();
   }
   action(id: string, request: ReminderActionRequest): ReminderListDto {
     this.#personal();
     this.deps.db.transaction((db) => {
+      if (request.action === "stop_repeat") {
+        const series = db.select().from(reminderSeries).where(eq(reminderSeries.id, id)).get();
+        if (!series) throw new ReminderError("not_found", "repeating reminder does not exist");
+        if (series.nextAt === null) return;
+        if (db.select({ id: reminderSeries.id }).from(reminderSeries).where(eq(reminderSeries.stopRequestId, request.requestId)).get()) {
+          throw new ReminderError("conflict", "request id belongs to another repeat");
+        }
+        db.update(reminderSeries).set({ nextAt: null, stopRequestId: request.requestId }).where(eq(reminderSeries.id, id)).run();
+        db.update(personalReminders).set({ action: "skipped" }).where(and(eq(personalReminders.seriesId, id), eq(personalReminders.action, "open"),
+          inArray(personalReminders.delivery, ["pending", "deferred"]))).run();
+        return;
+      }
       const row = db.select().from(personalReminders).where(eq(personalReminders.id, id)).get();
       if (!row) throw new ReminderError("not_found", "reminder does not exist");
       const payload = JSON.stringify({ action: request.action, snoozeMinutes: request.snoozeMinutes ?? 15 });
@@ -85,6 +120,7 @@ export class ReminderService {
   async #tick(): Promise<void> {
     if (this.#stopped || this.deps.mode() !== "personal") return;
     const batchNow = this.#now();
+    this.#materializeSeries(batchNow);
     const rows = this.deps.db.select().from(personalReminders).where(and(eq(personalReminders.action, "open"), inArray(personalReminders.delivery, ["pending", "deferred"]), lte(personalReminders.dueAt, batchNow))).orderBy(asc(personalReminders.dueAt), asc(personalReminders.id)).limit(50).all();
     for (const row of rows) {
       if (this.#stopped || this.deps.mode() !== "personal") return;
@@ -113,6 +149,22 @@ export class ReminderService {
         update({ delivery: "unknown", reason: "send_result_unknown" }, true);
       }
     }
+  }
+
+  #materializeSeries(now: number): void {
+    this.deps.db.transaction((db) => {
+      const due = db.select().from(reminderSeries).where(lte(reminderSeries.nextAt, now)).orderBy(asc(reminderSeries.nextAt)).limit(50).all();
+      for (const series of due) {
+        const dueAt = series.nextAt!;
+        // Skip old occurrences after an extended outage. An interrupted send has its own recovery state.
+        if (now <= dueAt + DAY) {
+          db.insert(personalReminders).values({ id: randomUUID(), requestId: randomUUID(), text: series.text, dueAt, expiresAt: dueAt + DAY,
+            timeZone: series.timeZone, seriesId: series.id }).run();
+        }
+        const nextAt = nextWeeklyMinute(now, series.timeZone, series.days, series.clock);
+        db.update(reminderSeries).set({ nextAt }).where(eq(reminderSeries.id, series.id)).run();
+      }
+    });
   }
   async stop(): Promise<void> { this.#stopped = true; await this.#running; }
 }

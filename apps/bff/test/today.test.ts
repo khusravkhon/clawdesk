@@ -1,8 +1,6 @@
 import type { TodayDto } from "@clawdesk/shared";
 import Fastify from "fastify";
 import { describe, expect, it, vi } from "vitest";
-import type { AppDeps } from "../src/app.js";
-import type { MemoryNoteService } from "../src/library/memory-note-service.js";
 import { registerTodayRoutes } from "../src/routes/today.js";
 import { TodayService } from "../src/today/today-service.js";
 import { ApprovalsService } from "../src/approvals/approvals-service.js";
@@ -20,6 +18,9 @@ function sources() {
     search: vi.fn(async () => memory),
     reminders: vi.fn(() => reminders),
     schedules: vi.fn(async () => scheduleList),
+    activity: vi.fn(() => ({ conversations: [], material: null })),
+    budget: vi.fn(() => ({ dailyUsd: 0, monthlyUsd: 0, spentTodayUsd: null, incomplete: false, checkedAt: null })),
+    backups: vi.fn(() => ({ available: false, lastAt: null, failed: false })),
   };
 }
 
@@ -69,6 +70,21 @@ describe("personal daily observations", () => {
     await service.get();
     expect(readers.connection).toHaveBeenCalledTimes(2);
   });
+
+  it("bounds waiting for a stuck source, keeps local observations and does not launch overlapping reads", async () => {
+    const readers = sources();
+    const service = new TodayService(readers, () => "UTC", () => 100, 15);
+    await service.get();
+    let release!: (data: { count: number }) => void;
+    readers.approvals.mockImplementationOnce(() => new Promise((resolve) => { release = resolve; }));
+    const result = await service.get();
+    expect(result.approvals).toEqual({ state: "unknown", checkedAt: 100, data: { count: 2 } });
+    expect(result.activity.state).toBe("available");
+    expect(result.budget.checkedAt).toBeNull();
+    await service.get();
+    expect(readers.approvals).toHaveBeenCalledTimes(2);
+    release({ count: 3 });
+  });
 });
 
 describe("daily routes and approval readiness", () => {
@@ -84,7 +100,7 @@ describe("daily routes and approval readiness", () => {
     const app = Fastify();
     const mode = vi.fn(() => "company");
     const request = vi.fn();
-    registerTodayRoutes(app, { space: { mode }, gateway: { request } } as unknown as AppDeps & { notes: MemoryNoteService });
+    registerTodayRoutes(app, { space: { mode }, gateway: { request } } as unknown as Parameters<typeof registerTodayRoutes>[1]);
     const response = await app.inject({ method: "GET", url: "/api/today" });
     expect(response.statusCode).toBe(404);
     expect(request).not.toHaveBeenCalled();
@@ -99,7 +115,7 @@ describe("daily routes and approval readiness", () => {
       space: { mode: () => "personal", get: () => ({ timezone: "Asia/Dushanbe" }) },
       reminders: { list: () => reminders }, approvals: { pendingCount: vi.fn().mockRejectedValue(new Error("offline")) },
       notes: { list: vi.fn() },
-    } as unknown as AppDeps & { notes: MemoryNoteService };
+    } as unknown as Parameters<typeof registerTodayRoutes>[1];
     registerTodayRoutes(app, deps);
     const response = await app.inject({ method: "GET", url: "/api/today" });
     expect(response.statusCode).toBe(200);

@@ -14,6 +14,7 @@ export const router = createRouter({
     { path: "/agents/:agentId/edit", name: "agent-edit", component: () => import("./views/AgentEditView.vue") },
     { path: "/free-models", name: "free-models", component: () => import("./views/FreeModelsView.vue") },
     { path: "/chat/:agentId?", name: "chat", component: () => import("./views/ChatView.vue") },
+    { path: "/library", name: "library", component: () => import("./views/LibraryView.vue"), meta: { aiOptional: true } },
     { path: "/schedules", name: "schedules", component: () => import("./views/SchedulesView.vue") },
     { path: "/approvals", name: "approvals", component: () => import("./views/ApprovalsView.vue") },
     { path: "/sources", name: "sources", component: () => import("./views/SourcesView.vue") },
@@ -38,6 +39,7 @@ export const router = createRouter({
     { path: "/company/projects", name: "company-projects", component: () => import("./views/ProjectsView.vue"), meta: { aiOptional: true } },
     { path: "/company/projects/:projectId", name: "company-project", component: () => import("./views/ProjectsView.vue"), meta: { aiOptional: true } },
     { path: "/system", name: "system", component: () => import("./views/SystemView.vue"), meta: { aiOptional: true } },
+    { path: "/settings", name: "personal-settings", component: () => import("./views/PersonalSettingsView.vue"), meta: { aiOptional: true } },
   ],
 });
 
@@ -102,8 +104,8 @@ router.beforeEach(async (to) => {
     }
   }
   if (!space.space && to.name !== "setup-mode" && !to.meta.aiOptional) return { name: "setup-mode" };
-  if (to.name === "today" && space.mode === "company") return { name: "dashboard" };
-  if (["company", "department", "company-projects", "company-project"].includes(String(to.name)) && space.mode !== "company") return { name: "dashboard" };
+  if (["today", "library", "personal-settings"].includes(String(to.name)) && space.mode === "company") return { name: "dashboard" };
+  if (space.mode !== "company" && (/^\/company(?:\/|$)/.test(to.path) || to.name === "teams")) return { name: "dashboard" };
   if (to.name === "dashboard" && space.mode === "personal") return true;
   if (to.name === "setup-mode" || to.name === "setup-ai" || to.meta.aiOptional || aiConnected === true || devSkipsAiGuard()) return true;
   if (aiConnected === null) {

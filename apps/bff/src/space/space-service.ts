@@ -1,5 +1,5 @@
-import type { CreateSpaceRequest, SpaceDto, SpaceMode } from "@clawdesk/shared";
-import { eq } from "drizzle-orm";
+import type { CreateSpaceRequest, SpaceDto, SpaceMode, UpdateSpaceRequest } from "@clawdesk/shared";
+import { and, eq } from "drizzle-orm";
 import type { Logger } from "pino";
 import type { Db } from "../db/client.js";
 import { spaces } from "../db/schema.js";
@@ -29,5 +29,10 @@ export class SpaceService {
     this.deps.db.insert(spaces).values({ id: ID, ...req }).run();
     this.deps.logger.info({ mode: req.mode }, "space created");
     return this.get()!;
+  }
+
+  update(req: UpdateSpaceRequest): SpaceDto | null {
+    const row = this.deps.db.update(spaces).set(req).where(and(eq(spaces.id, ID), eq(spaces.mode, "personal"))).returning().get();
+    return row ? { mode: row.mode, name: row.name, locale: row.locale, timezone: row.timezone } : null;
   }
 }

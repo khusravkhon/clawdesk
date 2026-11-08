@@ -5,6 +5,7 @@ import path from "node:path";
 import { describe, expect, it } from "vitest";
 import { eq } from "drizzle-orm";
 import Fastify from "fastify";
+import { nextWeeklyMinute, wallMinuteToInstant } from "@clawdesk/shared";
 import { openDb } from "../src/db/client.js";
 import { personalReminders } from "../src/db/schema.js";
 import type { GatewayService } from "../src/gateway/gateway-service.js";
@@ -33,6 +34,40 @@ const create = (service: ReminderService, dueAt = NOW) => {
 };
 
 describe("fixed owner reminders", () => {
+  it("keeps the weekly local time through DST and materializes each occurrence once after restart", async () => {
+    const h = harness();
+    try {
+      h.state.now = Date.parse("2026-10-25T13:00:00Z");
+      const request = { requestId: randomUUID(), text: "Sunday", dueAt: h.state.now, timeZone: "America/New_York", repeatDays: [0] };
+      const result = h.reminders.create(request);
+      const series = result.series![0]!;
+      expect(series.nextAt).toBe(Date.parse("2026-11-01T14:00:00Z"));
+      expect(h.reminders.create(request).series).toEqual([series]);
+      await h.reminders.tick();
+      h.state.now = series.nextAt;
+      const restarted = new ReminderService(h.deps);
+      restarted.recover();
+      await Promise.all([restarted.tick(), restarted.tick()]);
+      await restarted.tick();
+      expect(h.calls).toHaveLength(2);
+      expect(h.calls[0]?.params.idempotencyKey).not.toBe(h.calls[1]?.params.idempotencyKey);
+      const stop = { action: "stop_repeat" as const, requestId: randomUUID() };
+      restarted.action(series.id, stop);
+      restarted.action(series.id, stop);
+      h.state.now += 7 * 86_400_000;
+      await restarted.tick();
+      expect(restarted.list().series).toEqual([]);
+      expect(h.calls).toHaveLength(2);
+    } finally { h.close(); }
+  });
+
+  it("rejects skipped wall minutes, chooses the first ambiguous minute and skips a missing weekly occurrence", () => {
+    const zone = "America/New_York";
+    expect(wallMinuteToInstant("2026-03-08T02:30", zone)).toBeNull();
+    expect(wallMinuteToInstant("2026-11-01T01:30", zone)).toBe(Date.parse("2026-11-01T05:30:00Z"));
+    expect(nextWeeklyMinute(Date.parse("2026-03-01T07:30:00Z"), zone, [0], "02:30")).toBe(Date.parse("2026-03-15T06:30:00Z"));
+  });
+
   it("migration creates an empty durable outbox; no implicit reminder is sent", async () => {
     const h = harness(); await h.reminders.tick(); expect(h.calls).toEqual([]); expect(h.reminders.list().reminders).toEqual([]); h.close();
   });

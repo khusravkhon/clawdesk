@@ -1,6 +1,6 @@
 import { createHash, randomUUID } from "node:crypto";
-import type { LibraryHitDto, LibraryItemKind, LibrarySearchDto } from "@clawdesk/shared";
-import { and, desc, eq, getTableColumns, sql } from "drizzle-orm";
+import type { LibraryCursor, LibraryHitDto, LibraryItemKind, LibraryMaterialDto, LibraryPageDto, LibraryProcessing, LibrarySearchDto } from "@clawdesk/shared";
+import { and, desc, eq, getTableColumns, lt, or, sql } from "drizzle-orm";
 import type { Db } from "../db/client.js";
 import { libraryContents, libraryItems } from "../db/schema.js";
 
@@ -17,7 +17,8 @@ const MAX_SNIPPETS = 3;
 const SNIPPET_BEFORE = 90;
 const SNIPPET_AFTER = 150;
 
-export type NewLibraryItem = { agentId: string; kind: LibraryItemKind; title: string; source: string; locator?: string | null; text: string };
+export type NewLibraryItem = { agentId: string; kind: LibraryItemKind; title: string; source: string; locator?: string | null; text: string; processing?: LibraryProcessing };
+const materialText = sql<string>`coalesce(${libraryContents.text}, ${libraryItems.text})`;
 
 export class LibraryService {
   constructor(private readonly db: Db) {}
@@ -25,15 +26,20 @@ export class LibraryService {
   /** Keeps one material for later. Empty text is not stored: there would be nothing to find. */
   add(item: NewLibraryItem): string | null {
     const text = item.text.trim().slice(0, MAX_ITEM_CHARS);
-    if (!text) return null;
+    if (!text && !item.processing) return null;
     const id = randomUUID();
     this.db.transaction((tx) => {
-      const hash = createHash("sha256").update(text).digest("hex");
-      // Hash narrows the lookup without a second full-text B-tree; compare text for collisions.
-      let content = tx.select({ id: libraryContents.id }).from(libraryContents).where(and(eq(libraryContents.hash, hash), eq(libraryContents.text, text))).get();
-      content ??= tx.insert(libraryContents).values({ text, hash, folded: text.toLocaleLowerCase("ru") }).returning({ id: libraryContents.id }).get();
+      let contentId: number | null = null;
+      if (text) {
+        const hash = createHash("sha256").update(text).digest("hex");
+        // Hash narrows the lookup without a second full-text B-tree; compare text for collisions.
+        let content = tx.select({ id: libraryContents.id }).from(libraryContents).where(and(eq(libraryContents.hash, hash), eq(libraryContents.text, text))).get();
+        content ??= tx.insert(libraryContents).values({ text, hash, folded: text.toLocaleLowerCase("ru") }).returning({ id: libraryContents.id }).get();
+        contentId = content.id;
+      }
       tx.insert(libraryItems)
-        .values({ id, agentId: item.agentId, kind: item.kind, title: item.title.slice(0, 300), source: item.source.slice(0, 2000), locator: item.locator ?? null, text: "", contentId: content.id, chars: text.length })
+        .values({ id, agentId: item.agentId, kind: item.kind, title: item.title.slice(0, 300), source: item.source.slice(0, 2000), locator: item.locator ?? null,
+          text: "", contentId, chars: text.length, processing: item.processing ?? null })
         .run();
     });
     return id;
@@ -41,10 +47,34 @@ export class LibraryService {
 
   /** Recent materials, newest first; of one agent, or of all of them for the owner's own view. */
   recent(agentId?: string, limit = 20): LibraryHitDto[] {
-    const rows = agentId
-      ? this.db.select().from(libraryItems).where(eq(libraryItems.agentId, agentId)).orderBy(desc(libraryItems.createdAt)).limit(limit).all()
-      : this.db.select().from(libraryItems).orderBy(desc(libraryItems.createdAt)).limit(limit).all();
-    return rows.map((row) => toHit(row, []));
+    return this.page({ agentId, limit }).items;
+  }
+
+  page(options: { agentId?: string; kind?: LibraryItemKind; query?: string; cursor?: LibraryCursor; limit?: number }): LibraryPageDto {
+    const { agentId, kind, cursor, limit = 20 } = options;
+    const needle = options.query?.trim().toLocaleLowerCase("ru") ?? "";
+    const indexed = Array.from(needle).length >= 3 && !needle.includes("\0");
+    const match = `"${needle.replaceAll('"', '""')}"`;
+    const before = cursor ? new Date(cursor.at) : undefined;
+    const rows = this.db.select({ ...getTableColumns(libraryItems), text: needle ? materialText : sql<string>`''` })
+      .from(libraryItems).leftJoin(libraryContents, eq(libraryItems.contentId, libraryContents.id))
+      .where(and(
+        agentId ? eq(libraryItems.agentId, agentId) : undefined,
+        kind ? eq(libraryItems.kind, kind) : undefined,
+        before && cursor ? or(lt(libraryItems.createdAt, before), and(eq(libraryItems.createdAt, before), lt(libraryItems.id, cursor.id))) : undefined,
+        indexed ? sql`${libraryItems.contentId} IN (SELECT rowid FROM library_search WHERE library_search MATCH ${match})` : undefined,
+        needle ? sql`instr(coalesce(${libraryContents.folded}, lower(${libraryItems.text})), ${needle}) > 0` : undefined,
+      )).orderBy(desc(libraryItems.createdAt), desc(libraryItems.id)).limit(limit + 1).all();
+    const items = rows.slice(0, limit).map((row) => toHit(row, needle ? findSnippets(row.text, needle) : []));
+    const last = items.at(-1);
+    return { items, next: rows.length > limit && last ? { at: last.at, id: last.id } : null };
+  }
+
+  material(id: string): LibraryMaterialDto | null {
+    const row = this.db.select({ ...getTableColumns(libraryItems), text: materialText })
+      .from(libraryItems).leftJoin(libraryContents, eq(libraryItems.contentId, libraryContents.id))
+      .where(eq(libraryItems.id, id)).get();
+    return row ? { item: toHit(row, []), text: row.text } : null;
   }
 
   /**
@@ -59,7 +89,7 @@ export class LibraryService {
     // retain a bounded exact scan, with partial=true when older materials remain unchecked.
     const indexed = Array.from(needle).length >= 3 && !needle.includes("\0");
     const match = `"${needle.replaceAll('"', '""')}"`;
-    const rows = this.db.select({ ...getTableColumns(libraryItems), text: sql<string>`coalesce(${libraryContents.text}, ${libraryItems.text})` })
+    const rows = this.db.select({ ...getTableColumns(libraryItems), text: materialText })
       .from(libraryItems).leftJoin(libraryContents, eq(libraryItems.contentId, libraryContents.id))
       .where(and(agentId ? eq(libraryItems.agentId, agentId) : undefined,
         indexed ? sql`${libraryItems.contentId} IN (SELECT rowid FROM library_search WHERE library_search MATCH ${match})` : undefined))
@@ -93,6 +123,7 @@ const toHit = (row: Row, snippets: { text: string; from: number }[]): LibraryHit
   locator: row.locator,
   chars: row.chars,
   at: row.createdAt.getTime(),
+  processing: row.processing,
   snippets,
 });
 

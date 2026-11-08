@@ -111,6 +111,7 @@ import type {
   TeamsDto,
   LinkTeamTelegramRequest,
   SpaceDto,
+  UpdateSpaceRequest,
   BackupDto,
   BackupsDto,
   FactoryResetResultDto,
@@ -120,6 +121,7 @@ import type {
   ExecMode,
   ChatAttachmentInput,
   ChatAttachmentLimitsDto,
+  ChatConversation,
   ChatHistoryDto,
   ApiErrorDto,
   ApproveTelegramResultDto,
@@ -135,6 +137,10 @@ import type {
   SendChatResultDto,
   BudgetDto,
   LibrarySearchDto,
+  LibraryCursor,
+  LibraryItemKind,
+  LibraryMaterialDto,
+  LibraryPageDto,
   MemoryNotesDto,
   SaveBudgetRequest,
   SaveMemoryNoteRequest,
@@ -214,6 +220,13 @@ export function browserTimeZone(): string {
 
 const q = (agentId: string) => `agentId=${encodeURIComponent(agentId)}`;
 
+function chatPath(agentId: string, action: string, conversationId?: string, sendId?: string): string {
+  const query = new URLSearchParams();
+  if (conversationId) query.set("conversationId", conversationId);
+  if (sendId) query.set("sendId", sendId);
+  return `/api/chat/${encodeURIComponent(agentId)}/${action}${query.size ? `?${query}` : ""}`;
+}
+
 export const api = {
   today: () => request<TodayDto>("/api/today"),
   reminders: {
@@ -260,6 +273,7 @@ export const api = {
   },
   space: {
     get: () => request<{ space: SpaceDto | null }>("/api/space"),
+    update: (body: UpdateSpaceRequest) => request<SpaceDto>("/api/space", { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify(body) }),
     create: (body: CreateSpaceRequest) => post<SpaceDto>("/api/space", body),
   },
   system: {
@@ -353,14 +367,28 @@ export const api = {
     eventsUrl: "/api/approvals/events",
   },
   chat: {
-    history: (agentId: string) => request<ChatHistoryDto>(`/api/chat/${encodeURIComponent(agentId)}/history`),
-    send: (agentId: string, text: string, attachments: ChatAttachmentInput[] = []) =>
-      post<SendChatResultDto>(`/api/chat/${encodeURIComponent(agentId)}/send`, { text, ...(attachments.length ? { attachments } : {}) }),
+    history: (agentId: string, conversationId?: string, sendId?: string) => request<ChatHistoryDto>(chatPath(agentId, "history", conversationId, sendId)),
+    send: (agentId: string, text: string, attachments: ChatAttachmentInput[], sendId: string, conversationId?: string) =>
+      post<SendChatResultDto>(chatPath(agentId, "send", conversationId), { text, sendId, ...(attachments.length ? { attachments } : {}) }),
     attachmentLimits: () => request<ChatAttachmentLimitsDto>("/api/chat/attachments/limits"),
-    abort: (agentId: string) => post<void>(`/api/chat/${encodeURIComponent(agentId)}/abort`),
-    eventsUrl: (agentId: string) => `/api/chat/${encodeURIComponent(agentId)}/events`,
+    abort: (agentId: string, conversationId?: string) => post<void>(chatPath(agentId, "abort", conversationId)),
+    eventsUrl: (agentId: string, conversationId?: string) => chatPath(agentId, "events", conversationId),
+    conversations: (agentId: string) => request<{ conversations: ChatConversation[] }>(chatPath(agentId, "conversations")),
+    createConversation: (agentId: string, title: string) => post<ChatConversation>(chatPath(agentId, "conversations"), { title }),
   },
   library: {
+    page: (options: { query?: string; agentId?: string; kind?: LibraryItemKind; cursor?: LibraryCursor }) => {
+      const query = new URLSearchParams();
+      if (options.query) query.set("q", options.query);
+      if (options.agentId) query.set("agentId", options.agentId);
+      if (options.kind) query.set("kind", options.kind);
+      if (options.cursor) {
+        query.set("beforeAt", String(options.cursor.at));
+        query.set("beforeId", options.cursor.id);
+      }
+      return request<LibraryPageDto>(`/api/library${query.size ? `?${query}` : ""}`);
+    },
+    material: (id: string) => request<LibraryMaterialDto>(`/api/library/${encodeURIComponent(id)}`),
     search: (query: string, agentId?: string) =>
       request<LibrarySearchDto>("/api/library/search?q=" + encodeURIComponent(query) + (agentId ? "&agentId=" + encodeURIComponent(agentId) : "")),
     remove: (id: string) => request<void>("/api/library/" + encodeURIComponent(id), { method: "DELETE" }),
@@ -379,6 +407,7 @@ export const api = {
       request<MemoryNotesDto>("/api/memory/" + encodeURIComponent(agentId) + "/notes/" + encodeURIComponent(id), { method: "DELETE" }),
   },
   budget: {
+    limits: () => request<Pick<BudgetDto, "dailyUsd" | "monthlyUsd">>("/api/budget/limits"),
     get: () => request<BudgetDto>("/api/budget?tz=" + encodeURIComponent(Intl.DateTimeFormat().resolvedOptions().timeZone)),
     save: (body: SaveBudgetRequest) =>
       request<BudgetDto>("/api/budget?tz=" + encodeURIComponent(Intl.DateTimeFormat().resolvedOptions().timeZone), {

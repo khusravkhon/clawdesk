@@ -246,6 +246,27 @@
       "when": 1792364000000,
       "tag": "0034_project_existing_plans",
       "breakpoints": true
+    },
+    {
+      "idx": 35,
+      "version": "6",
+      "when": 1792365000000,
+      "tag": "0035_chat_conversations",
+      "breakpoints": true
+    },
+    {
+      "idx": 36,
+      "version": "6",
+      "when": 1792366000000,
+      "tag": "0036_library_processing",
+      "breakpoints": true
+    },
+    {
+      "idx": 37,
+      "version": "6",
+      "when": 1792367000000,
+      "tag": "0037_reminder_series",
+      "breakpoints": true
     }
   ]
 }
