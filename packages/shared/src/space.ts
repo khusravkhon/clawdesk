@@ -30,3 +30,6 @@ export const CreateSpaceRequest = z.object({
     }, "unknown time zone"),
 });
 export type CreateSpaceRequest = z.infer<typeof CreateSpaceRequest>;
+
+export const UpdateSpaceRequest = CreateSpaceRequest.pick({ name: true, timezone: true }).strict();
+export type UpdateSpaceRequest = z.infer<typeof UpdateSpaceRequest>;

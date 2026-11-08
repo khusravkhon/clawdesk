@@ -1,19 +1,25 @@
-import { randomUUID } from "node:crypto";
-import type { ChatAttachmentInput, ChatAttachmentLimitsDto, ChatHistoryDto, ChatMessageDto, ChatRunPhase, ChatStreamEvent, SendChatResultDto } from "@clawdesk/shared";
+import { createHash, randomUUID } from "node:crypto";
+import type { ChatAttachmentInput, ChatAttachmentLimitsDto, ChatConversation, ChatHistoryDto, ChatMessageDto, ChatRunPhase, ChatStreamEvent, SendChatResultDto } from "@clawdesk/shared";
+import { panelChatSessionKey } from "@clawdesk/shared";
+import { GatewayClientRequestError } from "@openclaw/gateway-client";
+import { and, desc, eq, max, ne } from "drizzle-orm";
+import type { Db } from "../db/client.js";
+import { chatConversations, chatSends } from "../db/schema.js";
 import { documentsBlock, extractDocuments } from "../documents/extract.js";
-import type { GatewayService } from "../gateway/gateway-service.js";
+import { GatewayUnavailableError, type GatewayService } from "../gateway/gateway-service.js";
+import type { NewLibraryItem } from "../library/library-service.js";
 import { attachmentLimits, attachmentOnlyMessage, attachmentsOf, checkAttachments, toGatewayAttachments } from "./chat-attachments.js";
 
 // Chat with an agent's main session: chat.send / chat.history / chat.abort, and the Gateway's
 // `chat` + `agent` events reduced to what the chat screen draws.
 
 type RawPart = { type: string; text?: string; name?: string; fileName?: string; mimeType?: string; sizeBytes?: number };
-export type RawChatMessage = { role: string; content?: string | RawPart[]; timestamp?: number; stopReason?: string };
+export type RawChatMessage = { role: string; content?: string | RawPart[]; timestamp?: number; stopReason?: string; __openclaw?: { idempotencyKey?: string } };
 
 /** OpenClaw's placeholder when a turn ended without any reply text. */
 const FAILED_PLACEHOLDER = "The agent run failed before producing a reply.";
 
-export const mainSessionKey = (agentId: string) => `agent:${agentId}:main`;
+export const mainSessionKey = (agentId: string) => panelChatSessionKey(agentId);
 
 const partsOf = (m: RawChatMessage): RawPart[] => (typeof m.content === "string" ? [{ type: "text", text: m.content }] : (m.content ?? []));
 const textOf = (m: RawChatMessage) =>
@@ -105,20 +111,94 @@ export function toStreamEvent(event: GatewayEvent, sessionKey: string): ChatStre
   return null;
 }
 
+type RawHistory = {
+  messages?: RawChatMessage[];
+  inFlightRun?: { runId?: string };
+  inputReceipts?: { runId: string; state: string }[];
+};
+
+export class ChatSendError extends Error {
+  constructor(readonly code: "send_conflict" | "send_unknown" | "send_rejected" | "conversation_missing", message: string) {
+    super(message);
+  }
+}
+
 export class ChatService {
+  readonly #pending = new Map<string, { fingerprint: string; result: Promise<SendChatResultDto> }>();
+
   constructor(
     private readonly gateway: GatewayService,
     /** Keeps what the panel read out of a file, so the owner can find it again later. */
-    private readonly library?: { add(item: { agentId: string; kind: "document" | "video"; title: string; source: string; locator?: string | null; text: string }): string | null },
+    private readonly library?: { add(item: NewLibraryItem): string | null },
+    private readonly db?: Db,
   ) {}
 
-  async history(agentId: string, limit = 60): Promise<ChatHistoryDto> {
-    const res = await this.gateway.request<{ messages?: RawChatMessage[]; inFlightRun?: unknown }>("chat.history", {
-      sessionKey: mainSessionKey(agentId),
+  #sessionKey(agentId: string, conversationId?: string): string {
+    if (!conversationId) return mainSessionKey(agentId);
+    const row = this.db?.select({ id: chatConversations.id }).from(chatConversations)
+      .where(and(eq(chatConversations.id, conversationId), eq(chatConversations.agentId, agentId))).get();
+    if (!row) throw new ChatSendError("conversation_missing", "no such conversation for this agent");
+    return panelChatSessionKey(agentId, row.id);
+  }
+
+  conversations(agentId: string): ChatConversation[] {
+    return this.db!.select({ id: chatConversations.id, title: chatConversations.title }).from(chatConversations)
+      .where(eq(chatConversations.agentId, agentId)).orderBy(desc(chatConversations.createdAt), desc(chatConversations.id)).all();
+  }
+
+  recentConversations(): { agentId: string; id: string | null; title: string | null; at: number }[] {
+    const db = this.db!;
+    const last = max(chatSends.acceptedAt);
+    return db.select({ key: chatSends.sessionKey, at: last }).from(chatSends)
+      .where(eq(chatSends.state, "accepted")).groupBy(chatSends.sessionKey).orderBy(desc(last)).limit(5).all()
+      .flatMap(({ key, at }) => {
+        const [, agentId, id] = /^agent:([^:]+):(?:main|clawdesk-chat-(.+))$/.exec(key) ?? [];
+        if (!agentId || at === null) return [];
+        const title = id ? db.select({ title: chatConversations.title }).from(chatConversations).where(eq(chatConversations.id, id)).get()?.title : null;
+        return [{ agentId, id: id ?? null, title: title ?? null, at }];
+      });
+  }
+
+  async createConversation(agentId: string, title: string): Promise<ChatConversation> {
+    const id = randomUUID();
+    const key = panelChatSessionKey(agentId, id);
+    const created = await this.gateway.request<{ key: string }>("sessions.create", { key, agentId, label: title });
+    if (created.key !== key) throw new Error("Gateway returned an unexpected conversation key");
+    this.db!.insert(chatConversations).values({ id, agentId, title, createdAt: Date.now() }).run();
+    return { id, title };
+  }
+
+  #readHistory(agentId: string, sessionKey: string, limit: number, sendId?: string): Promise<RawHistory> {
+    return this.gateway.request<RawHistory>("chat.history", {
+      sessionKey,
       agentId,
       limit,
+      ...(sendId ? { inputRunIds: [sendId] } : {}),
     });
-    return { agentId, messages: toChatMessages(res.messages ?? []), running: !!res.inFlightRun, attachments: this.attachmentLimits() };
+  }
+
+  async history(agentId: string, limit = 60, conversationId?: string, sendId?: string): Promise<ChatHistoryDto> {
+    const sessionKey = this.#sessionKey(agentId, conversationId);
+    const res = await this.#readHistory(agentId, sessionKey, limit, sendId);
+    const row = sendId ? this.db?.select().from(chatSends).where(eq(chatSends.id, sendId)).get() : undefined;
+    const acceptedSend = row?.sessionKey === sessionKey && (row.state === "accepted" || this.#acceptFromHistory(row, res));
+    return {
+      agentId, messages: toChatMessages(res.messages ?? []), running: !!res.inFlightRun, runId: res.inFlightRun?.runId ?? null,
+      attachments: this.attachmentLimits(), ...(sendId ? { acceptedSend: !!acceptedSend } : {}),
+    };
+  }
+
+  #acceptFromHistory(row: typeof chatSends.$inferSelect, history: RawHistory): boolean {
+    const accepted = history.inFlightRun?.runId === row.id
+      || history.inputReceipts?.some((receipt) => receipt.runId === row.id && receipt.state === "consumed")
+      || history.messages?.some((msg) => msg.role === "user" && msg.__openclaw?.idempotencyKey === `${row.id}:user`);
+    if (accepted) this.#accept(row.id, row.result);
+    return !!accepted;
+  }
+
+  #accept(id: string, result: SendChatResultDto): void {
+    this.db!.update(chatSends).set({ state: "accepted", result, acceptedAt: Date.now() })
+      .where(and(eq(chatSends.id, id), ne(chatSends.state, "accepted"))).run();
   }
 
   /** What this Gateway accepts for attachments right now (empty handshake: the panel's own caps). */
@@ -126,7 +206,38 @@ export class ChatService {
     return attachmentLimits(this.gateway.hello as Parameters<typeof attachmentLimits>[0]);
   }
 
-  async send(agentId: string, text: string, attachments: ChatAttachmentInput[] = []): Promise<SendChatResultDto> {
+  async send(agentId: string, text: string, attachments: ChatAttachmentInput[] = [], sendId?: string, conversationId?: string): Promise<SendChatResultDto> {
+    const sessionKey = this.#sessionKey(agentId, conversationId);
+    if (!sendId || !this.db) return this.#send(agentId, sessionKey, text, attachments, randomUUID());
+    const fileMetadata = attachments.map(({ fileName, mimeType, sizeBytes }) => [fileName, mimeType, sizeBytes]);
+    const hash = createHash("sha256").update(JSON.stringify([sessionKey, text, fileMetadata]));
+    for (const file of attachments) hash.update("\0").update(file.content);
+    const fingerprint = hash.digest("hex");
+    const pending = this.#pending.get(sendId);
+    if (pending) {
+      if (pending.fingerprint !== fingerprint) throw new ChatSendError("send_conflict", "this send identifier is already used with different content");
+      return pending.result;
+    }
+    const result = this.#send(agentId, sessionKey, text, attachments, sendId, fingerprint);
+    this.#pending.set(sendId, { fingerprint, result });
+    try {
+      return await result;
+    } finally {
+      this.#pending.delete(sendId);
+    }
+  }
+
+  async #send(agentId: string, sessionKey: string, text: string, attachments: ChatAttachmentInput[], sendId: string, fingerprint?: string): Promise<SendChatResultDto> {
+    const db = fingerprint ? this.db! : undefined;
+    const row = db?.select().from(chatSends).where(eq(chatSends.id, sendId)).get();
+    if (row && row.fingerprint !== fingerprint) throw new ChatSendError("send_conflict", "this send identifier is already used with different content");
+    if (row?.state === "accepted") return row.result;
+    if (row?.state === "dispatched") {
+      // A lost response is not permission to launch again. Ask for positive evidence of this exact run.
+      const history = await this.#readHistory(agentId, sessionKey, 60, sendId).catch(() => null);
+      if (history && this.#acceptFromHistory(row, history)) return row.result;
+      throw new ChatSendError("send_unknown", "the Gateway has not confirmed this send");
+    }
     if (attachments.length) checkAttachments(attachments, this.attachmentLimits());
     // The panel reads what it can out of the files and adds that text to the message; the files
     // themselves still travel to the Gateway, so a tool of the agent can read them its own way.
@@ -134,21 +245,53 @@ export class ChatService {
       ? await extractDocuments(attachments.map((file) => ({ fileName: file.fileName, mimeType: file.mimeType, bytes: Buffer.from(file.content, "base64") })))
       : [];
     const block = documentsBlock(documents);
-    for (const document of documents) {
-      if (!document.text.trim()) continue;
-      const read = document.read;
-      const locator = read.pages !== null ? "страница" : read.sheets !== null ? "лист" : read.slides !== null ? "слайд" : null;
-      this.library?.add({ agentId, kind: "document", title: read.fileName, source: read.fileName, locator, text: document.text });
+    const reads = documents.map((document) => document.read);
+    const saveDocuments = () => {
+      for (const document of documents) {
+        const read = document.read;
+        if (read.state === "image") continue;
+        const locator = read.pages !== null ? "страница" : read.sheets !== null ? "лист" : read.slides !== null ? "слайд" : null;
+        this.library?.add({ agentId, kind: "document", title: read.fileName, source: read.fileName, locator, text: document.text, processing: read.state });
+      }
+    };
+    if (db && fingerprint) {
+      if (!row) {
+        const inserted = db.transaction(() => {
+          const insert = db.insert(chatSends).values({ id: sendId, sessionKey, fingerprint, state: "ready", result: { runId: sendId, reads } })
+            .onConflictDoNothing().run();
+          if (!insert.changes) return false;
+          saveDocuments();
+          return true;
+        });
+        if (!inserted) throw new ChatSendError("send_unknown", "the send is being processed; check its status");
+      }
+      const claimed = db.update(chatSends).set({ state: "dispatched" })
+        .where(and(eq(chatSends.id, sendId), eq(chatSends.state, "ready"))).run();
+      if (!claimed.changes) throw new ChatSendError("send_unknown", "the send is being processed; check its status");
+    } else {
+      saveDocuments();
     }
     const message = [text || attachmentOnlyMessage(attachments), block].filter(Boolean).join("\n\n");
-    const res = await this.gateway.request<{ runId?: string }>("chat.send", {
-      sessionKey: mainSessionKey(agentId),
-      agentId,
-      message,
-      idempotencyKey: randomUUID(),
-      ...(attachments.length ? { attachments: toGatewayAttachments(attachments) } : {}),
-    });
-    return { runId: res.runId ?? null, reads: documents.map((document) => document.read) };
+    let res: { runId?: string };
+    try {
+      res = await this.gateway.request("chat.send", {
+        sessionKey,
+        agentId,
+        message,
+        idempotencyKey: sendId,
+        ...(attachments.length ? { attachments: toGatewayAttachments(attachments) } : {}),
+      });
+    } catch (error) {
+      if (!db) throw error;
+      if (error instanceof GatewayUnavailableError || (error instanceof GatewayClientRequestError && error.gatewayCode === "INVALID_REQUEST")) {
+        db.update(chatSends).set({ state: "ready" }).where(and(eq(chatSends.id, sendId), eq(chatSends.state, "dispatched"))).run();
+        throw new ChatSendError("send_rejected", error.message);
+      }
+      throw new ChatSendError("send_unknown", "the Gateway has not confirmed this send");
+    }
+    const result = { runId: res.runId ?? (db ? sendId : null), reads };
+    if (db) this.#accept(sendId, result);
+    return result;
   }
 
   /**
@@ -190,13 +333,13 @@ export class ChatService {
     return { runId: res.runId ?? null };
   }
 
-  async abort(agentId: string): Promise<void> {
-    await this.gateway.request("chat.abort", { sessionKey: mainSessionKey(agentId), agentId });
+  async abort(agentId: string, conversationId?: string): Promise<void> {
+    await this.gateway.request("chat.abort", { sessionKey: this.#sessionKey(agentId, conversationId), agentId });
   }
 
   /** Streams this agent's turn events until the returned function is called. */
-  subscribe(agentId: string, listener: (event: ChatStreamEvent) => void): () => void {
-    const sessionKey = mainSessionKey(agentId);
+  subscribe(agentId: string, listener: (event: ChatStreamEvent) => void, conversationId?: string): () => void {
+    const sessionKey = this.#sessionKey(agentId, conversationId);
     return this.gateway.onEvent((event) => {
       const mapped = toStreamEvent(event as GatewayEvent, sessionKey);
       if (mapped) listener(mapped);

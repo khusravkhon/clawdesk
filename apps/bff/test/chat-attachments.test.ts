@@ -1,9 +1,11 @@
 import { SendChatRequest } from "@clawdesk/shared";
 import { strToU8, zipSync } from "fflate";
-import { describe, expect, it } from "vitest";
+import Fastify from "fastify";
+import { describe, expect, it, vi } from "vitest";
 import { ChatService } from "../src/chat/chat-service.js";
 import { attachmentLimits, attachmentsOf, checkAttachments, ATTACHMENT_REJECTION_CODES, ChatAttachmentError, PANEL_LIMITS, toGatewayAttachments } from "../src/chat/chat-attachments.js";
-import { REJECTION_STATUS } from "../src/routes/chat.js";
+import { DocumentWorkerError, officeWorkers } from "../src/documents/office-worker-pool.js";
+import { registerChatRoutes, REJECTION_STATUS } from "../src/routes/chat.js";
 import type { GatewayService } from "../src/gateway/gateway-service.js";
 
 const base64 = (bytes: number) => Buffer.alloc(bytes, 7).toString("base64");
@@ -119,12 +121,64 @@ describe("panel attachments (screen 9)", () => {
     expect(result.reads).toEqual([
       { fileName: "budget.docx", state: "read", chars: "Итого 1200".length, pages: null, readPages: null, sheets: null, slides: null, encoding: null },
     ]);
-  });
+  }, 20_000);
 
   it("answers every rejection with a status the owner can act on, never a server fault", () => {
     for (const code of ATTACHMENT_REJECTION_CODES) {
       expect(REJECTION_STATUS[code]).toBeGreaterThanOrEqual(400);
       expect(REJECTION_STATUS[code]).toBeLessThan(500);
+    }
+  });
+
+  it.each(["document_timeout", "document_worker_unavailable"] as const)(
+    "sends the original Office file and the rest of the message after %s",
+    async (code) => {
+      const read = vi.spyOn(officeWorkers, "run").mockRejectedValueOnce(new DocumentWorkerError(code));
+      const { chat, calls } = service(null);
+      const app = Fastify();
+      registerChatRoutes(app, { chat });
+      const office = file(12, "application/vnd.openxmlformats-officedocument.wordprocessingml.document", "report.docx");
+      const text = "Text from another attachment";
+      const other = { ...file(Buffer.byteLength(text), "text/plain", "note.txt"), content: Buffer.from(text).toString("base64") };
+      try {
+        const response = await app.inject({ method: "POST", url: "/api/chat/main/send", payload: { text: "Owner's message", attachments: [office, other] } });
+        expect(response.statusCode).toBe(202);
+        expect(response.json().reads).toMatchObject([
+          { fileName: office.fileName, state: "not_read", chars: 0 },
+          { fileName: other.fileName, state: "read", chars: text.length },
+        ]);
+        expect(calls).toEqual([{ method: "chat.send", params: expect.objectContaining({
+          message: expect.stringMatching(/Owner's message[\s\S]*Text from another attachment/),
+          attachments: [{ ...office, type: "file" }, { ...other, type: "file" }],
+        }) }]);
+      } finally {
+        read.mockRestore();
+        await app.close();
+      }
+    },
+  );
+
+  it("returns 429 for a full Office queue and accepts the same request after it clears", async () => {
+    const read = vi.spyOn(officeWorkers, "run")
+      .mockRejectedValueOnce(new DocumentWorkerError("document_queue_full"))
+      .mockResolvedValueOnce({ state: "unreadable" });
+    const { chat, calls } = service(null);
+    const app = Fastify();
+    registerChatRoutes(app, { chat });
+    const request = { method: "POST" as const, url: "/api/chat/main/send", payload: {
+      text: "Try again",
+      attachments: [file(12, "application/vnd.openxmlformats-officedocument.wordprocessingml.document", "report.docx")],
+    } };
+    try {
+      const busy = await app.inject(request);
+      expect(busy.statusCode).toBe(429);
+      expect(busy.json()).toMatchObject({ error: "document_queue_full" });
+      expect(calls).toEqual([]);
+      expect((await app.inject(request)).statusCode).toBe(202);
+      expect(calls).toHaveLength(1);
+    } finally {
+      read.mockRestore();
+      await app.close();
     }
   });
 

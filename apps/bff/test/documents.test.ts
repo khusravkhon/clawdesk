@@ -1,7 +1,9 @@
+import { Worker } from "node:worker_threads";
 import { zipSync, strToU8 } from "fflate";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { documentsBlock, extractDocument, extractDocuments, MAX_FILE_CHARS, MAX_MESSAGE_CHARS } from "../src/documents/extract.js";
 import { docxText, xlsxText, pptxText, DocumentEncryptedError, DocumentUnreadableError } from "../src/documents/ooxml.js";
+import { OfficeWorkerPool } from "../src/documents/office-worker-pool.js";
 import { attribute, decodeXmlText, scanXml, XmlRefusedError } from "../src/documents/xml-text.js";
 
 const DOCX = "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
@@ -42,6 +44,45 @@ function pdf(text: string | null): Uint8Array {
 }
 
 describe("reading attached documents (screen 9)", () => {
+  it("reuses a healthy Office worker and replaces it after a failure", async () => {
+    const pool = new OfficeWorkerPool();
+    const post = vi.spyOn(Worker.prototype, "postMessage");
+    const input = (text: string) => ({ bytes: docx(paragraph(text)), format: "docx" as const, maxChars: 100 });
+    try {
+      await expect(pool.run(input("First"))).resolves.toMatchObject({ text: "First" });
+      await expect(pool.run(input("Second"))).resolves.toMatchObject({ text: "Second" });
+      const original = post.mock.contexts[0];
+      expect(original).toBeInstanceOf(Worker);
+      expect(post.mock.contexts[1]).toBe(original);
+
+      post.mockImplementationOnce(() => { throw new Error("synthetic worker failure"); });
+      await expect(pool.run(input("Interrupted"))).rejects.toMatchObject({ code: "document_worker_unavailable" });
+      await expect(pool.run(input("Recovered"))).resolves.toMatchObject({ text: "Recovered" });
+      expect(post.mock.contexts.at(-1)).not.toBe(original);
+    } finally {
+      await pool.stop();
+      post.mockRestore();
+    }
+  }, 30_000);
+
+  it("bounds the Office queue and rejects pending work on shutdown", async () => {
+    const pool = new OfficeWorkerPool(1, 1);
+    const input = { bytes: docx(paragraph("Fixture")), format: "docx" as const, maxChars: 100 };
+    const running = expect(pool.run(input)).rejects.toMatchObject({ code: "document_worker_unavailable" });
+    const waiting = expect(pool.run(input)).rejects.toMatchObject({ code: "document_worker_unavailable" });
+    await expect(pool.run(input)).rejects.toMatchObject({ code: "document_queue_full" });
+    await pool.stop();
+    await Promise.all([running, waiting]);
+  });
+
+  it("times out a worker and releases its slot for queued work", async () => {
+    const pool = new OfficeWorkerPool(1, 1, 1);
+    const input = { bytes: docx(paragraph("Fixture")), format: "docx" as const, maxChars: 100 };
+    try {
+      await Promise.all([pool.run(input), pool.run(input)].map((run) => expect(run).rejects.toMatchObject({ code: "document_timeout" })));
+    } finally { await pool.stop(); }
+  });
+
   it("reads a .docx paragraph by paragraph, tables row by row", () => {
     const file = docx([paragraph("Отчёт за октябрь"), paragraph("Итого 1200"), "<w:tbl><w:tr><w:tc>" + paragraph("Аренда") + "</w:tc><w:tc>" + paragraph("500") + "</w:tc></w:tr></w:tbl>"].join(""));
     const { text } = docxText(file);
@@ -103,7 +144,7 @@ describe("reading attached documents (screen 9)", () => {
     expect((await extractDocument({ fileName: "secret.xlsx", mimeType: XLSX, bytes: zip({ EncryptedPackage: "binary" }) })).read.state).toBe("encrypted");
     expect((await extractDocument({ fileName: "old.doc", mimeType: "application/msword", bytes: ole })).read.state).toBe("legacy_format");
     expect((await extractDocument({ fileName: "broken.pptx", mimeType: PPTX, bytes: new Uint8Array([1, 2, 3, 4]) })).read.state).toBe("unreadable");
-  });
+  }, 30_000);
 
   it("reads plain text, falls back to Windows-1251 and names the encoding", async () => {
     const utf8 = await extractDocument({ fileName: "note.txt", mimeType: "text/plain", bytes: new Uint8Array(Buffer.from("Привет", "utf8")) });
@@ -132,7 +173,7 @@ describe("reading attached documents (screen 9)", () => {
     const documents = await extractDocuments(files);
     expect(documents.reduce((sum, document) => sum + document.text.length, 0)).toBeLessThanOrEqual(MAX_MESSAGE_CHARS);
     expect(documents.at(-1)!.read.state).toBe("not_read");
-  });
+  }, 30_000);
 
   it("hands the text over as quoted data, with the file and its numbers named", async () => {
     const documents = await extractDocuments([

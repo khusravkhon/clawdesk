@@ -182,6 +182,7 @@ onUnmounted(() => window.clearInterval(poll));
         <n-alert v-else-if="!data!.available" type="info" :bordered="false">{{ t("system.unavailable") }}</n-alert>
         <template v-else>
           <p class="muted">{{ t("system.backupsAbout") }}</p>
+          <p v-if="data!.backups[0]">{{ t("today.quick.lastBackup", { date: formatDateTime(data!.backups[0].createdAt, locale) }) }}</p>
           <n-alert v-if="data!.lastError" type="warning" :bordered="false" class="gap">{{ t("system.lastError", { error: data!.lastError }) }}</n-alert>
           <p v-if="!data!.backups.length" class="muted">{{ t("system.noBackups") }}</p>
           <ul v-else class="list">
@@ -197,6 +198,9 @@ onUnmounted(() => window.clearInterval(poll));
             </li>
           </ul>
           <p class="muted small">{{ t("system.restoreHint") }}</p>
+          <p class="muted small">{{ t("system.restoreScope") }}</p>
+          <code class="command">sudo bash deploy/scripts/restore.sh --inspect &lt;{{ t("system.file") }}&gt;</code>
+          <p class="muted small">{{ t("system.restoreConfirm") }}</p>
           <code class="command">sudo bash deploy/scripts/restore.sh &lt;{{ t("system.file") }}&gt;</code>
         </template>
       </n-card>

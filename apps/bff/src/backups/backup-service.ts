@@ -26,6 +26,7 @@ export type BackupDeps = {
   dir: string | undefined;
   logger: Logger;
   now?: () => Date;
+  timeZone?: () => string;
 };
 
 export class BackupService {
@@ -134,7 +135,9 @@ export class BackupService {
     const now = this.#now();
     const last = this.list().find((b) => b.kind !== "before-reset");
     const age = last ? now.getTime() - Date.parse(last.createdAt) : Infinity;
-    const night = now.getHours() >= NIGHT.from && now.getHours() < NIGHT.to;
+    const zone = this.deps.timeZone?.();
+    const hour = zone ? Number(new Intl.DateTimeFormat("en-GB", { timeZone: zone, hour: "numeric", hourCycle: "h23" }).format(now)) : now.getHours();
+    const night = hour >= NIGHT.from && hour < NIGHT.to;
     if (!(age > OVERDUE_MS || (night && age > DAY_MS - CHECK_EVERY_MS * 2))) return false;
     try {
       await this.create("daily");

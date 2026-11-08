@@ -1,5 +1,6 @@
 import type { ChatAttachmentReadDto, ChatAttachmentState } from "@clawdesk/shared";
-import { docxText, DocumentEncryptedError, DocumentUnreadableError, pptxText, xlsxText } from "./ooxml.js";
+import { DocumentEncryptedError, DocumentUnreadableError } from "./ooxml.js";
+import { DocumentWorkerError, officeWorkers } from "./office-worker-pool.js";
 import { MAX_PDF_PAGES, pdfText } from "./pdf-text.js";
 
 // What the panel itself can read out of an attached file, so the agent gets the content even when
@@ -15,6 +16,11 @@ export const MAX_MESSAGE_CHARS = 120_000;
 const PLAIN = new Set(["text/plain", "text/markdown", "text/csv", "text/tab-separated-values", "application/json"]);
 /** The pre-2007 Office formats are OLE containers, which this panel does not read. */
 const LEGACY = new Set(["application/msword", "application/vnd.ms-excel", "application/vnd.ms-powerpoint"]);
+const OFFICE = new Map<string, "docx" | "xlsx" | "pptx">([
+  ["application/vnd.openxmlformats-officedocument.wordprocessingml.document", "docx"],
+  ["application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", "xlsx"],
+  ["application/vnd.openxmlformats-officedocument.presentationml.presentation", "pptx"],
+]);
 
 export type ExtractedDocument = { text: string; read: ChatAttachmentReadDto };
 
@@ -36,8 +42,8 @@ const done = (fileName: string, state: ChatAttachmentState, text: string, extra:
 });
 
 /**
- * Reads one attachment. Nothing here throws: a file the panel cannot read gets a state saying why,
- * and the agent still receives the file itself.
+ * A file the panel cannot read gets its own state and still reaches the agent.
+ * A full Office queue asks the sender to retry the whole message before dispatch.
  */
 export async function extractDocument(file: { fileName: string; mimeType: string; bytes: Uint8Array }): Promise<ExtractedDocument> {
   const { fileName, mimeType, bytes } = file;
@@ -57,26 +63,17 @@ export async function extractDocument(file: { fileName: string; mimeType: string
       const partial = truncated || pdf.readPages < pdf.pages;
       return done(fileName, partial ? "partial" : "read", text, { pages: pdf.pages, readPages: pdf.readPages });
     }
-    if (mimeType === "application/vnd.openxmlformats-officedocument.wordprocessingml.document") {
-      const docx = docxText(bytes);
-      const { text, truncated } = truncate(docx.text);
-      if (!text.trim()) return done(fileName, "no_text", "");
-      return done(fileName, truncated ? "partial" : "read", text);
-    }
-    if (mimeType === "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet") {
-      const xlsx = xlsxText(bytes);
-      const { text, truncated } = truncate(xlsx.text);
-      if (!text.trim()) return done(fileName, "no_text", "", { sheets: xlsx.sheets.length });
-      return done(fileName, truncated ? "partial" : "read", text, { sheets: xlsx.sheets.length });
-    }
-    if (mimeType === "application/vnd.openxmlformats-officedocument.presentationml.presentation") {
-      const pptx = pptxText(bytes);
-      const { text, truncated } = truncate(pptx.text);
-      if (!text.trim()) return done(fileName, "no_text", "", { slides: pptx.slides });
-      return done(fileName, truncated ? "partial" : "read", text, { slides: pptx.slides });
+    const format = OFFICE.get(mimeType);
+    if (format) {
+      const result = await officeWorkers.run({ bytes, format, maxChars: MAX_FILE_CHARS });
+      if (result.state !== "read") return done(fileName, result.state, "");
+      const extra = { sheets: result.sheets ?? null, slides: result.slides ?? null };
+      if (!result.text.trim()) return done(fileName, "no_text", "", extra);
+      return done(fileName, result.truncated ? "partial" : "read", result.text, extra);
     }
     return done(fileName, "not_read", "");
   } catch (error) {
+    if (error instanceof DocumentWorkerError && error.code !== "document_queue_full") return done(fileName, "not_read", "");
     if (error instanceof DocumentEncryptedError) return done(fileName, "encrypted", "");
     if (error instanceof DocumentUnreadableError) return done(fileName, "unreadable", "");
     throw error;

@@ -7,6 +7,7 @@ import type { ChatService } from "../src/chat/chat-service.js";
 import { openDb } from "../src/db/client.js";
 import { videoJobs } from "../src/db/schema.js";
 import { BridgeError, type BridgeClient, type BridgeVideoResult } from "../src/gateway/bridge-client.js";
+import { LibraryService } from "../src/library/library-service.js";
 import { parseCues, timecode, toTranscript, transcriptMessage } from "../src/video/subtitles.js";
 import { VideoJobRejected, VideoService } from "../src/video/video-service.js";
 
@@ -70,7 +71,8 @@ function harness(options: { result?: BridgeVideoResult; fail?: BridgeError; spee
   const logger = { warn: () => {}, info: () => {}, child: () => logger } as never;
   let closed = false;
   const closeDb = () => { if (!closed) { closed = true; close(); } };
-  return { video: new VideoService({ db, bridge, chat, logger, videoDir: options.videoDir, waitUntilReady: options.waitUntilReady }), db, dir, sent, canceled, closeDb, cleanup: () => { closeDb(); fs.rmSync(dir, { recursive: true, force: true }); } };
+  const library = new LibraryService(db);
+  return { video: new VideoService({ db, bridge, chat, library, logger, videoDir: options.videoDir, waitUntilReady: options.waitUntilReady }), library, db, dir, sent, canceled, closeDb, cleanup: () => { closeDb(); fs.rmSync(dir, { recursive: true, force: true }); } };
 }
 
 let open: { cleanup: () => void }[] = [];
@@ -152,7 +154,7 @@ describe("studying a video by link (screen 9)", () => {
   });
 
   it("sends the transcript to the agent and keeps what was read on the job", async () => {
-    const { video, sent } = make();
+    const { video, sent, library } = make();
     const job = video.create({ agentId: "trainer", url: "https://youtu.be/dQw4w9WgXcQ?si=track" });
     expect(job).toMatchObject({ state: "queued", url: "https://www.youtube.com/watch?v=dQw4w9WgXcQ" });
     await video.drain();
@@ -163,6 +165,9 @@ describe("studying a video by link (screen 9)", () => {
     expect(sent).toHaveLength(1);
     expect(sent[0]!.agentId).toBe("trainer");
     expect(sent[0]!.text).toContain("Прочитано: субтитры (ru)");
+    const item = library.recent("trainer")[0]!;
+    expect(item.processing).toBe("subtitles");
+    expect(library.material(item.id)?.text).toContain("Держите спину ровно");
   });
 
   it("without subtitles sends the audio track only when recognition is set up", async () => {
@@ -173,6 +178,7 @@ describe("studying a video by link (screen 9)", () => {
     expect((await configured.video.list()).jobs[0]).toMatchObject({ state: "ready", source: "speech" });
     expect(configured.sent[0]!.audio).toMatchObject({ mimeType: "audio/mpeg", durationMs: 90_000 });
     expect(configured.sent[0]!.text).toContain("Субтитров у видео нет");
+    expect(configured.library.recent("trainer")).toMatchObject([{ processing: "video_speech", chars: 0 }]);
 
     const off = make({ result: audio, speech: false });
     off.video.create({ agentId: "trainer", url: "https://youtu.be/dQw4w9WgXcQ" });
@@ -180,6 +186,7 @@ describe("studying a video by link (screen 9)", () => {
     expect((await off.video.list()).jobs[0]).toMatchObject({ state: "failed", error: "speech_not_configured" });
     // Nothing was claimed: the agent got no message at all.
     expect(off.sent).toEqual([]);
+    expect(off.library.recent("trainer")).toEqual([]);
   });
 
   it("refuses an audio track over the recognition limit instead of sending it", async () => {

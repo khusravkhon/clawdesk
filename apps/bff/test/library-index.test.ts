@@ -5,10 +5,12 @@ import { fileURLToPath } from "node:url";
 import Database from "better-sqlite3";
 import { drizzle } from "drizzle-orm/better-sqlite3";
 import { migrate } from "drizzle-orm/better-sqlite3/migrator";
+import Fastify from "fastify";
 import { describe, expect, it } from "vitest";
 import { openDb } from "../src/db/client.js";
 import { libraryContents } from "../src/db/schema.js";
 import { findSnippets, LibraryService } from "../src/library/library-service.js";
+import { registerLibraryRoutes } from "../src/routes/library.js";
 
 function harness() {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "library-index-"));
@@ -20,6 +22,32 @@ function harness() {
 const item = (text: string, agentId = "main", source = "first.txt", locator = "страница 2") => ({ agentId, kind: "document" as const, title: source, source, locator, text });
 
 describe("indexed owner library", () => {
+  it("pages filtered owner materials, returns extracted text and deletes an entry idempotently", async () => {
+    const h = harness();
+    const app = Fastify();
+    registerLibraryRoutes(app, { library: h.library } as Parameters<typeof registerLibraryRoutes>[1]);
+    try {
+      for (let i = 0; i < 23; i++) h.library.add({ ...item("Русский маркер"), processing: "partial" });
+      h.library.add(item("Русский маркер", "other"));
+      h.library.add({ ...item("Русский маркер"), kind: "video", processing: "subtitles" });
+      const encrypted = h.library.add({ ...item(""), processing: "encrypted" });
+      const url = "/api/library?agentId=main&kind=document&q=" + encodeURIComponent("МАРКЕР");
+      const first = (await app.inject(url)).json();
+      expect(first.items).toHaveLength(20);
+      expect(first.items.every((entry: { processing: string }) => entry.processing === "partial")).toBe(true);
+      const second = (await app.inject(`${url}&beforeAt=${first.next.at}&beforeId=${first.next.id}`)).json();
+      expect(second.items).toHaveLength(3);
+      expect(second.next).toBeNull();
+      expect(new Set([...first.items, ...second.items].map((entry) => entry.id)).size).toBe(23);
+      expect((await app.inject(`/api/library/${encrypted}`)).json()).toMatchObject({ item: { processing: "encrypted" }, text: "" });
+      const detail = `/api/library/${first.items[0].id}`;
+      expect((await app.inject(detail)).json()).toMatchObject({ text: "Русский маркер" });
+      for (let i = 0; i < 2; i++) expect((await app.inject({ method: "DELETE", url: detail })).statusCode).toBe(204);
+      expect((await app.inject(detail)).statusCode).toBe(404);
+      expect(h.library.search("маркер", "other").hits).toHaveLength(1);
+    } finally { await app.close(); h.cleanup(); }
+  });
+
   it("finds older materials beyond the previous 500 row scan", () => {
     const h = harness();
     try {

@@ -23,6 +23,14 @@ const agent = (id: string, extra: Partial<AgentListItemDto> = {}): AgentListItem
 });
 
 describe("rangeDays", () => {
+  it("keeps date boundaries in different zones across daylight saving", () => {
+    for (const zone of ["UTC", "Asia/Dushanbe", "America/New_York", "Europe/Berlin"]) {
+      const reference = new Intl.DateTimeFormat("en-CA", { timeZone: zone, year: "numeric", month: "2-digit", day: "2-digit" });
+      for (const at of ["2026-03-08T04:59:00Z", "2026-03-08T07:00:00Z", "2026-11-01T06:00:00Z", "2026-11-01T23:59:00Z"]) {
+        expect(dayKey(Date.parse(at), zone)).toBe(reference.format(Date.parse(at)));
+      }
+    }
+  });
   it("lists every day ending today in the panel time zone", () => {
     expect(rangeDays("7d", NOW, TZ)).toEqual(["2026-10-05", "2026-10-06", "2026-10-07", "2026-10-08", "2026-10-09", "2026-10-10", "2026-10-11"]);
   });

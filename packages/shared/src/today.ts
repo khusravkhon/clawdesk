@@ -18,5 +18,14 @@ export const TodayDto = z.object({
   search: section(LocalMemoryStatusDto),
   reminders: section(ReminderListDto),
   schedules: section(ScheduleListDto),
+  activity: section(z.object({
+    conversations: z.array(z.object({ agentId: z.string(), id: z.string().nullable(), title: z.string().nullable(), at: z.number() })),
+    material: z.object({ id: z.string(), title: z.string(), at: z.number() }).nullable(),
+  })),
+  budget: section(z.object({
+    dailyUsd: z.number().nonnegative(), monthlyUsd: z.number().nonnegative(),
+    spentTodayUsd: z.number().nonnegative().nullable(), incomplete: z.boolean(), checkedAt: z.number().nullable(),
+  })),
+  backups: section(z.object({ available: z.boolean(), lastAt: z.number().nullable(), failed: z.boolean() })),
 });
 export type TodayDto = z.infer<typeof TodayDto>;

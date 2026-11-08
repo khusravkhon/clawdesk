@@ -110,6 +110,8 @@ export const ChatHistoryDto = z.object({
   messages: z.array(ChatMessageDto),
   /** A turn is still being worked on (e.g. the page was reloaded mid-answer). */
   running: z.boolean(),
+  runId: z.string().nullable().optional(),
+  acceptedSend: z.boolean().optional(),
   attachments: ChatAttachmentLimitsDto,
 });
 export type ChatHistoryDto = z.infer<typeof ChatHistoryDto>;
@@ -117,8 +119,16 @@ export type ChatHistoryDto = z.infer<typeof ChatHistoryDto>;
 export const SendChatRequest = z.object({
   text: z.string().trim().max(8000),
   attachments: z.array(ChatAttachmentInput).max(5).optional(),
+  sendId: z.uuid().optional(),
 }).refine(({ text, attachments }) => text.length > 0 || (attachments?.length ?? 0) > 0, { message: "a message needs text or a file" });
 export type SendChatRequest = z.infer<typeof SendChatRequest>;
+
+export const CreateChatConversation = z.object({ title: z.string().trim().min(1).max(80) });
+export type ChatConversation = { id: string; title: string };
+
+export function panelChatSessionKey(agentId: string, conversationId?: string): string {
+  return `agent:${agentId}:${conversationId ? `clawdesk-chat-${conversationId}` : "main"}`;
+}
 
 export const ChatRunPhase = z.enum(["preparing", "thinking", "tool", "writing"]);
 export type ChatRunPhase = z.infer<typeof ChatRunPhase>;

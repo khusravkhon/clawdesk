@@ -1,25 +1,29 @@
 <script setup lang="ts">
-// Chat with an agent (screen 9): its main session, replies streamed live.
-import type { AgentListItemDto, ChatAttachmentInput, ChatAttachmentLimitsDto, ChatAttachmentReadDto, ChatMessageDto, ChatRunPhase, ChatStreamEvent } from "@clawdesk/shared";
+// Chat with an agent, with separate conversations in personal mode.
+import type { AgentListItemDto, ChatAttachmentInput, ChatAttachmentLimitsDto, ChatAttachmentReadDto, ChatConversation, ChatMessageDto, ChatRunPhase, ChatStreamEvent } from "@clawdesk/shared";
 import type { VideoJobDto, VideoJobMode } from "@clawdesk/shared";
-import { CHAT_ATTACHMENT_ACCEPT, isVideoUrl } from "@clawdesk/shared";
+import { CHAT_ATTACHMENT_ACCEPT, isVideoUrl, panelChatSessionKey } from "@clawdesk/shared";
 import { AlertCircle, ArrowUp, CircleSlash, Download, Film, Images, Paperclip, Square, Wrench, X } from "@lucide/vue";
 import MarkdownIt from "markdown-it";
 import { NButton, NSelect, NSpin, useMessage } from "naive-ui";
-import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue";
+import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import { useRoute, useRouter } from "vue-router";
 import { api, ApiError } from "../api/client";
 import ApprovalCard from "../components/ApprovalCard.vue";
+import AutomaticWorkNotice from "../components/AutomaticWorkNotice.vue";
 import LibrarySearch from "../components/LibrarySearch.vue";
 import { formatBytes, intlLocale } from "../format";
 import { modelErrorHint } from "../model-errors";
 import { useApprovalsStore } from "../stores/approvals";
+import { useSpaceStore } from "../stores/space";
+import { PollBackoff } from "../chat-poll";
 
 const { t, locale } = useI18n();
 const message = useMessage();
 const route = useRoute();
 const router = useRouter();
+const space = useSpaceStore();
 
 // The model's text is untrusted: no raw HTML, links open in a new tab.
 const md = new MarkdownIt({ html: false, linkify: true, breaks: true });
@@ -32,6 +36,59 @@ md.renderer.rules.link_open = (tokens, idx, options, env, self) => {
 
 const agents = ref<AgentListItemDto[]>([]);
 const agentId = computed(() => (route.params.agentId as string | undefined) || "main");
+const conversationId = computed(() => space.mode === "personal" && typeof route.query.conversation === "string" ? route.query.conversation : undefined);
+const chatKey = computed(() => `${agentId.value}:${conversationId.value ?? "main"}`);
+const sessionKey = computed(() => panelChatSessionKey(agentId.value, conversationId.value));
+const conversations = ref<ChatConversation[]>([]);
+const conversationOptions = computed(() => [
+  { value: "main", label: t("chat.conversations.main") },
+  ...conversations.value.map(({ id, title }) => ({ value: id, label: title })),
+]);
+const conversationForm = ref(false);
+const conversationTitle = ref("");
+const creatingConversation = ref(false);
+
+function selectConversation(id: string): void {
+  const query = { ...route.query };
+  if (id === "main") delete query.conversation;
+  else query.conversation = id;
+  void router.push({ name: "chat", params: route.params, query });
+}
+
+let conversationListVersion = 0;
+async function loadConversations(id: string): Promise<void> {
+  const version = ++conversationListVersion;
+  if (space.mode !== "personal") return;
+  try {
+    const result = await api.chat.conversations(id);
+    if (alive && version === conversationListVersion) conversations.value = result.conversations;
+  } catch (error) {
+    if (alive && version === conversationListVersion) message.error(error instanceof ApiError ? error.body.message : String(error));
+  }
+}
+
+async function createConversation(): Promise<void> {
+  const title = conversationTitle.value.trim();
+  if (!title || creatingConversation.value) return;
+  const id = agentId.value;
+  const key = chatKey.value;
+  creatingConversation.value = true;
+  try {
+    const created = await api.chat.createConversation(id, title);
+    if (!alive || id !== agentId.value) return;
+    conversations.value = [created, ...conversations.value];
+    void loadConversations(id);
+    if (key === chatKey.value) {
+      conversationForm.value = false;
+      conversationTitle.value = "";
+      selectConversation(created.id);
+    }
+  } catch (error) {
+    if (alive && key === chatKey.value) message.error(error instanceof ApiError ? error.body.message : String(error));
+  } finally {
+    if (alive) creatingConversation.value = false;
+  }
+}
 const agent = computed(() => agents.value.find((a) => a.id === agentId.value) ?? null);
 const agentOptions = computed(() => agents.value.map((a) => ({ value: a.id, label: `${a.emoji ?? (a.role === "main" ? "🧭" : "🤖")}  ${displayName(a)}` })));
 const displayName = (a: AgentListItemDto) => (a.role === "main" && a.name === a.id ? t("agents.main") : a.name);
@@ -39,13 +96,44 @@ const displayName = (a: AgentListItemDto) => (a.role === "main" && a.name === a.
 const approvals = useApprovalsStore();
 // Commands this agent is waiting on, answered right here in the chat.
 const waiting = computed(() =>
-  approvals.pending.filter((p) => p.sessionKey === `agent:${agentId.value}:main` || (!p.sessionKey && p.agentId === agentId.value)),
+  approvals.pending.filter((p) => p.sessionKey === sessionKey.value || (!conversationId.value && !p.sessionKey && p.agentId === agentId.value)),
 );
 
 const messages = ref<ChatMessageDto[]>([]);
 const loading = ref(true);
-const draft = ref("");
-const sending = ref(false);
+type StagedFile = ChatAttachmentInput & { id: string };
+type PendingSend = { id: string; text: string; files: StagedFile[]; state: "sending" | "unknown" | "rejected"; statusOnly?: boolean; conflict?: boolean };
+type Composer = { text: string; files: StagedFile[]; pending: PendingSend | null; restored?: PendingSend };
+const composers = reactive(new Map<string, Composer>());
+const composer = computed(() => composers.get(chatKey.value));
+const draft = computed({
+  get: () => composer.value?.text ?? "",
+  set: (text) => { if (composer.value) composer.value.text = text; },
+});
+const staged = computed(() => composer.value?.files ?? []);
+const pendingSend = computed(() => composer.value?.pending ?? null);
+const sending = computed(() => pendingSend.value?.state === "sending");
+const sendStorageKey = (key: string) => `clawdesk.chat.pending.${key}`;
+
+function rememberSend(key: string, id: string): void {
+  try { sessionStorage.setItem(sendStorageKey(key), id); } catch { /* Storage can be disabled. */ }
+}
+
+function forgetSend(key: string, id: string): void {
+  try {
+    if (sessionStorage.getItem(sendStorageKey(key)) === id) sessionStorage.removeItem(sendStorageKey(key));
+  } catch { /* Storage can be disabled. */ }
+}
+
+function recoverSend(key: string): PendingSend | null {
+  try {
+    const id = sessionStorage.getItem(sendStorageKey(key));
+    if (id && /^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/.test(id)) {
+      return { id, text: "", files: [], state: "unknown", statusOnly: true };
+    }
+  } catch { /* Storage can be disabled. */ }
+  return null;
+}
 
 // The turn in progress.
 const running = ref(false);
@@ -53,6 +141,9 @@ const phase = ref<ChatRunPhase>("preparing");
 const liveText = ref("");
 const liveTools = ref<string[]>([]);
 const startedAt = ref<number | null>(null);
+let runId: string | null = null;
+let runVersion = 0;
+let settledRunId: string | null = null;
 /** Why the last turn failed, from its error event (the transcript keeps only a placeholder). */
 const lastFailure = ref<string | null>(null);
 const lastErrorId = computed(() => {
@@ -65,15 +156,22 @@ const slow = computed(() => running.value && !liveText.value && startedAt.value 
 const scroller = ref<HTMLElement | null>(null);
 const input = ref<HTMLTextAreaElement | null>(null);
 const picker = ref<HTMLInputElement | null>(null);
+const attachButton = ref<InstanceType<typeof NButton> | null>(null);
 
 // Files staged for the next message: read in the browser, sent with chat.send, never stored by the panel.
-type StagedFile = ChatAttachmentInput & { id: string };
-const staged = ref<StagedFile[]>([]);
 const limits = ref<ChatAttachmentLimitsDto | null>(null);
-const stagedBytes = computed(() => staged.value.reduce((sum, file) => sum + file.sizeBytes, 0));
 const supported = CHAT_ATTACHMENT_ACCEPT.split(",");
 
 const bytes = (value: number) => formatBytes(value, locale.value);
+
+function newSendId(): string {
+  if (typeof crypto.randomUUID === "function") return crypto.randomUUID();
+  const data = crypto.getRandomValues(new Uint8Array(16));
+  data[6] = (data[6]! & 0x0f) | 0x40;
+  data[8] = (data[8]! & 0x3f) | 0x80;
+  const hex = Array.from(data, (byte) => byte.toString(16).padStart(2, "0")).join("");
+  return [hex.slice(0, 8), hex.slice(8, 12), hex.slice(12, 16), hex.slice(16, 20), hex.slice(20)].join("-");
+}
 
 async function toBase64(file: File): Promise<string> {
   const buffer = new Uint8Array(await file.arrayBuffer());
@@ -88,35 +186,42 @@ async function pick(event: Event): Promise<void> {
   const files = [...(target.files ?? [])];
   target.value = ""; // picking the same file again must count as a new choice
   const max = limits.value;
+  const origin = composer.value;
+  const key = chatKey.value;
+  if (!origin) return;
   for (const file of files) {
-    if (max && staged.value.length >= max.maxFiles) {
+    if (!alive) return;
+    if (max && origin.files.length >= max.maxFiles) {
+      if (key !== chatKey.value) return;
       message.error(t("chat.attach.tooMany", { count: max.maxFiles }));
       break;
     }
     const type = file.type as ChatAttachmentInput["mimeType"];
     if (!supported.includes(type)) {
-      message.error(t("chat.attach.unsupported", { name: file.name }));
+      if (key === chatKey.value) message.error(t("chat.attach.unsupported", { name: file.name }));
       continue;
     }
     const limit = max ? (type.startsWith("image/") ? max.maxImageBytes : max.maxFileBytes) : Infinity;
     if (file.size > limit) {
-      message.error(t("chat.attach.tooLarge", { name: file.name, limit: bytes(limit) }));
+      if (key === chatKey.value) message.error(t("chat.attach.tooLarge", { name: file.name, limit: bytes(limit) }));
       continue;
     }
-    if (max && stagedBytes.value + file.size > max.maxTotalBytes) {
-      message.error(t("chat.attach.tooMuch", { limit: bytes(max.maxTotalBytes) }));
+    if (max && origin.files.reduce((sum, stagedFile) => sum + stagedFile.sizeBytes, 0) + file.size > max.maxTotalBytes) {
+      if (key === chatKey.value) message.error(t("chat.attach.tooMuch", { limit: bytes(max.maxTotalBytes) }));
       break;
     }
     try {
       const content = await toBase64(file);
-      staged.value.push({ id: [file.name, file.size, Date.now()].join("-"), fileName: file.name, mimeType: type, sizeBytes: file.size, content });
+      if (alive) origin.files.push({ id: newSendId(), fileName: file.name, mimeType: type, sizeBytes: file.size, content });
     } catch {
-      message.error(t("chat.attach.readFailed", { name: file.name }));
+      if (alive && key === chatKey.value) message.error(t("chat.attach.readFailed", { name: file.name }));
     }
   }
 }
 
-const unstage = (id: string) => (staged.value = staged.value.filter((file) => file.id !== id));
+function unstage(id: string): void {
+  if (composer.value) composer.value.files = composer.value.files.filter((file) => file.id !== id);
+}
 
 // A video link in the composer: the panel can study it instead of sending the link as text.
 // Studying happens in a worker outside the panel, so a job has its own state and can be stopped.
@@ -126,27 +231,43 @@ const downloadsAvailable = ref(false);
 const studying = ref(false);
 const videoLink = computed(() => (isVideoUrl(draft.value.trim()) ? draft.value.trim() : null));
 const agentVideoJobs = computed(() => videoJobs.value.filter((job) => job.agentId === agentId.value).slice(0, 5));
+let loadingVideos = false;
+let videoVersion = 0;
+const videoPoll = new PollBackoff();
+const historyPoll = new PollBackoff();
 
 async function loadVideoJobs(): Promise<void> {
+  if (loadingVideos) return;
+  loadingVideos = true;
+  const version = videoVersion;
   try {
     const result = await api.video.jobs();
+    if (!alive || version !== videoVersion) return;
+    videoPoll.success();
     videoJobs.value = result.jobs;
     speechConfigured.value = result.speechConfigured;
     downloadsAvailable.value = result.downloadsAvailable;
   } catch {
-    // The list is a convenience; a failure here must not break the chat.
+    if (alive) videoPoll.failure();
+  } finally {
+    loadingVideos = false;
   }
 }
 
 async function studyVideo(mode: VideoJobMode = "study"): Promise<void> {
   const url = videoLink.value;
   if (!url || studying.value) return;
+  const origin = composer.value;
+  const key = chatKey.value;
   studying.value = true;
   try {
     const job = await api.video.study(agentId.value, url, mode);
+    if (!alive) return;
+    ++videoVersion;
     videoJobs.value = [job, ...videoJobs.value];
-    draft.value = "";
+    if (origin?.text.trim() === url) origin.text = "";
   } catch (e) {
+    if (!alive || key !== chatKey.value) return;
     if (e instanceof ApiError && e.body.error === "budget_usage_unavailable") {
       message.error(t("budget.unavailable"));
     } else if (e instanceof ApiError && e.body.error === "budget_exceeded") {
@@ -155,16 +276,19 @@ async function studyVideo(mode: VideoJobMode = "study"): Promise<void> {
       message.error(e instanceof ApiError ? e.body.message : String(e));
     }
   } finally {
-    studying.value = false;
+    if (alive) studying.value = false;
   }
 }
 
 async function cancelVideo(id: string): Promise<void> {
+  const key = chatKey.value;
   try {
     const job = await api.video.cancel(id);
+    if (!alive) return;
+    ++videoVersion;
     videoJobs.value = videoJobs.value.map((item) => (item.id === job.id ? job : item));
   } catch (e) {
-    message.error(e instanceof ApiError ? e.body.message : String(e));
+    if (alive && key === chatKey.value) message.error(e instanceof ApiError ? e.body.message : String(e));
   }
 }
 
@@ -195,29 +319,66 @@ function readLine(read: ChatAttachmentReadDto): string {
 }
 
 function scrollDown(): void {
-  void nextTick(() => scroller.value?.scrollTo({ top: scroller.value.scrollHeight }));
+  const version = viewVersion;
+  void nextTick(() => {
+    if (isCurrent(version)) scroller.value?.scrollTo({ top: scroller.value.scrollHeight });
+  });
 }
 
-async function loadHistory(): Promise<void> {
+let alive = true;
+let viewVersion = 0;
+const isCurrent = (version: number) => alive && version === viewVersion;
+let historyRequest: { version: number; work: Promise<void> } | undefined;
+const historyError = ref<string | null>(null);
+
+function loadHistory(): Promise<void> {
+  const version = viewVersion;
+  if (historyRequest?.version === version) return historyRequest.work;
+  const work = readHistory(version).finally(() => {
+    if (historyRequest?.version === version) historyRequest = undefined;
+  });
+  historyRequest = { version, work };
+  return work;
+}
+
+async function readHistory(version: number): Promise<void> {
   const before = messages.value.length;
+  const lastRunVersion = runVersion;
+  const pending = pendingSend.value?.state === "unknown" ? pendingSend.value : null;
   try {
-    const h = await api.chat.history(agentId.value);
+    const h = await api.chat.history(agentId.value, conversationId.value, pending?.id);
+    if (!isCurrent(version)) return;
+    historyPoll.success();
     messages.value = h.messages;
     limits.value = h.attachments;
+    historyError.value = null;
+    if (h.acceptedSend && pending && composer.value?.pending?.id === pending.id && composer.value.pending.state === "unknown") {
+      composer.value.pending = null;
+      forgetSend(chatKey.value, pending.id);
+    }
     if (h.messages.length !== before) scrollDown();
-    if (h.running && !running.value) startRun();
+    if (runVersion !== lastRunVersion) return;
+    if (h.running && !running.value) startRun(h.runId ?? null);
+    if (h.running && running.value && !runId) runId = h.runId ?? null;
     // The Gateway does not always send a closing chat event (e.g. every model failed before replying);
     // the transcript is the source of truth once the turn has had a moment to register.
     if (!h.running && running.value && !sending.value && startedAt.value !== null && Date.now() - startedAt.value > 3_000) endRun();
   } catch (e) {
-    message.error(e instanceof ApiError ? e.body.message : String(e));
+    if (isCurrent(version)) {
+      historyPoll.failure();
+      historyError.value = e instanceof ApiError ? e.body.message : String(e);
+    }
   } finally {
-    if (loading.value) scrollDown();
-    loading.value = false;
+    if (isCurrent(version)) {
+      if (loading.value) scrollDown();
+      loading.value = false;
+    }
   }
 }
 
-function startRun(): void {
+function startRun(id: string | null = null): void {
+  ++runVersion;
+  runId = id;
   running.value = true;
   phase.value = "preparing";
   liveText.value = "";
@@ -226,6 +387,8 @@ function startRun(): void {
 }
 
 function endRun(): void {
+  ++runVersion;
+  runId = null;
   running.value = false;
   liveText.value = "";
   liveTools.value = [];
@@ -235,12 +398,18 @@ function endRun(): void {
 let events: EventSource | null = null;
 function connect(): void {
   events?.close();
-  events = new EventSource(api.chat.eventsUrl(agentId.value));
-  events.onmessage = (e) => onEvent(JSON.parse(e.data) as ChatStreamEvent);
+  const version = viewVersion;
+  events = new EventSource(api.chat.eventsUrl(agentId.value, conversationId.value));
+  events.onopen = () => { if (isCurrent(version)) void loadHistory(); };
+  events.onmessage = (e) => {
+    if (isCurrent(version)) onEvent(JSON.parse(e.data) as ChatStreamEvent, version);
+  };
 }
 
-async function onEvent(ev: ChatStreamEvent): Promise<void> {
-  if (!running.value && ev.type !== "final" && ev.type !== "error" && ev.type !== "aborted") startRun();
+function onEvent(ev: ChatStreamEvent, version: number): void {
+  if (ev.runId === settledRunId || (runId && runId !== ev.runId)) return;
+  if (!running.value) startRun(ev.runId);
+  else runId = ev.runId;
   switch (ev.type) {
     case "status":
       phase.value = ev.phase;
@@ -255,13 +424,15 @@ async function onEvent(ev: ChatStreamEvent): Promise<void> {
       break;
     case "error":
       lastFailure.value = ev.message;
-      await loadHistory();
-      endRun();
-      break;
+      // falls through
     case "final":
     case "aborted":
-      await loadHistory();
+      settledRunId = ev.runId;
       endRun();
+      // A poll started before the terminal event can still have the old transcript.
+      void (historyRequest?.version === version ? historyRequest.work : Promise.resolve()).then(() => {
+        if (isCurrent(version)) void loadHistory();
+      });
       break;
   }
   scrollDown();
@@ -269,6 +440,7 @@ async function onEvent(ev: ChatStreamEvent): Promise<void> {
 
 /** A rejected file comes back as a reason code; the panel writes that reason in the owner's language. */
 function attachmentError(error: ApiError): string {
+  if (error.body.error === "document_queue_full") return t("chat.documentErrors.document_queue_full");
   const details = error.body.details as { code?: string; fileName?: string; limit?: number } | undefined;
   if (error.body.error !== "attachment_rejected" || !details?.code) return error.body.message;
   const name = details.fileName ?? "";
@@ -289,52 +461,98 @@ function attachmentError(error: ApiError): string {
 }
 
 async function send(text = draft.value): Promise<void> {
+  const origin = composer.value;
   const body = text.trim();
-  const files = staged.value;
-  if ((!body && !files.length) || sending.value) return;
-  sending.value = true;
-  draft.value = "";
-  staged.value = [];
+  if (!origin || (!body && !origin.files.length) || origin.pending || running.value) return;
+  const previous = origin.restored;
+  const same = previous?.text === body && previous.files.length === origin.files.length && previous.files.every((file, index) => file.id === origin.files[index]?.id);
+  const attempt: PendingSend = { id: same ? previous.id : newSendId(), text: body, files: origin.files, state: "sending" };
+  origin.restored = undefined;
+  if (text === origin.text) origin.text = "";
+  origin.files = [];
   lastFailure.value = null;
-  const localId = "local-" + Date.now();
+  const localId = `local-${attempt.id}`;
   messages.value.push({
     id: localId,
     role: "user",
     text: body,
     tools: [],
-    attachments: files.map(({ fileName, mimeType, sizeBytes }) => ({ fileName, mimeType, sizeBytes })),
+    attachments: attempt.files.map(({ fileName, mimeType, sizeBytes }) => ({ fileName, mimeType, sizeBytes })),
     at: Date.now(),
     status: "ok",
   });
   reads.value = [];
-  startRun();
+  startRun(attempt.id);
   scrollDown();
+  await submit(origin, attempt);
+}
+
+async function submit(origin: Composer, attempt: PendingSend): Promise<void> {
+  const key = chatKey.value;
+  origin.pending = { ...attempt, state: "sending" };
+  rememberSend(key, attempt.id);
   try {
     const result = await api.chat.send(
       agentId.value,
-      body,
-      files.map(({ id: _id, ...file }) => file),
+      attempt.text,
+      attempt.files.map(({ id: _id, ...file }) => file),
+      attempt.id,
+      conversationId.value,
     );
+    if (!Array.isArray(result.reads)) throw new Error("invalid send response");
+    forgetSend(key, attempt.id);
+    if (!alive) return;
+    origin.pending = null;
+    if (key !== chatKey.value) return;
     reads.value = result.reads;
+    void loadHistory();
     scrollDown();
   } catch (e) {
-    endRun();
-    message.error(e instanceof ApiError ? attachmentError(e) : String(e));
-    // Nothing was sent: the draft and its files go back to the composer.
-    draft.value = body;
-    staged.value = files;
-    messages.value = messages.value.filter((m) => m.id !== localId);
+    const rejected = e instanceof ApiError && e.status >= 400 && e.status < 500 && e.status !== 408;
+    if (rejected) forgetSend(key, attempt.id);
+    if (!alive) return;
+    origin.pending = { ...attempt, state: rejected ? "rejected" : "unknown", conflict: e instanceof ApiError && e.body.error === "send_conflict" };
+    if (rejected && !origin.text && !origin.files.length) restoreRejected(origin);
+    if (key !== chatKey.value) return;
+    if (runId === attempt.id) endRun();
+    if (rejected) message.error(attachmentError(e));
+    messages.value = messages.value.filter((m) => m.id !== `local-${attempt.id}`);
+    if (!rejected) void loadHistory();
   } finally {
-    sending.value = false;
-    void nextTick(() => input.value?.focus());
+    const version = viewVersion;
+    if (alive && key === chatKey.value) void nextTick(() => { if (isCurrent(version)) input.value?.focus(); });
   }
 }
 
+function restoreRejected(origin: Composer): void {
+  const attempt = origin.pending;
+  if (attempt?.state !== "rejected" || origin.text || origin.files.length) return;
+  origin.text = attempt.text;
+  origin.files = attempt.files;
+  origin.pending = null;
+  origin.restored = attempt.conflict ? undefined : attempt;
+}
+
+function retry(): void {
+  const origin = composer.value;
+  if (origin?.pending?.state !== "unknown") return;
+  if (origin.pending.statusOnly) void loadHistory();
+  else void submit(origin, origin.pending);
+}
+
+function dismissPending(): void {
+  const origin = composer.value;
+  if (!origin?.pending || sending.value) return;
+  forgetSend(chatKey.value, origin.pending.id);
+  origin.pending = null;
+}
+
 async function stop(): Promise<void> {
+  const version = viewVersion;
   try {
-    await api.chat.abort(agentId.value);
+    await api.chat.abort(agentId.value, conversationId.value);
   } catch (e) {
-    message.error(e instanceof ApiError ? e.body.message : String(e));
+    if (isCurrent(version)) message.error(e instanceof ApiError ? e.body.message : String(e));
   }
 }
 
@@ -360,35 +578,65 @@ const time = (ms: number | null) => (ms ? new Intl.DateTimeFormat(intlLocale(loc
 
 let clock: ReturnType<typeof setInterval> | undefined;
 let poll: ReturnType<typeof setInterval> | undefined;
-async function open(): Promise<void> {
+function open(): void {
+  ++viewVersion;
+  if (!composers.has(chatKey.value)) composers.set(chatKey.value, { text: "", files: [], pending: recoverSend(chatKey.value) });
   loading.value = true;
   messages.value = [];
+  reads.value = [];
+  limits.value = null;
+  lastFailure.value = null;
+  historyError.value = null;
+  historyPoll.success();
+  settledRunId = null;
+  conversationForm.value = false;
+  conversationTitle.value = "";
   endRun();
   connect();
-  await loadHistory();
+  void loadHistory();
+  const version = viewVersion;
+  if (route.query.compose === "attachment") void nextTick(() => {
+    if (isCurrent(version)) (attachButton.value?.$el as HTMLElement | undefined)?.focus();
+  });
+}
+
+function onVisible(): void {
+  if (document.hidden) return;
+  void loadHistory();
+  void loadVideoJobs();
 }
 
 onMounted(async () => {
+  open();
+  void loadConversations(agentId.value);
+  document.addEventListener("visibilitychange", onVisible);
   clock = setInterval(() => (now.value = Date.now()), 1000);
   poll = setInterval(() => {
-    if (running.value) void loadHistory();
+    if (document.hidden) return;
+    if (historyPoll.due() && (running.value || pendingSend.value?.state === "unknown")) void loadHistory();
     // A video is studied outside the panel: its state changes without any chat event.
-    if (videoJobs.value.some((job) => job.state === "queued" || job.state === "running")) void loadVideoJobs();
+    if (videoPoll.due() && videoJobs.value.some((job) => job.state === "queued" || job.state === "running")) void loadVideoJobs();
   }, 4_000);
   void loadVideoJobs();
   try {
-    agents.value = (await api.agents()).agents;
+    const result = await api.agents();
+    if (alive) agents.value = result.agents;
   } catch {
     // the picker stays empty; the chat itself still works for main
   }
-  await open();
 });
 onBeforeUnmount(() => {
+  alive = false;
   events?.close();
   clearInterval(clock);
   clearInterval(poll);
+  document.removeEventListener("visibilitychange", onVisible);
 });
-watch(agentId, () => void open());
+watch(chatKey, open, { flush: "sync" });
+watch(agentId, (id) => {
+  conversations.value = [];
+  void loadConversations(id);
+});
 </script>
 
 <template>
@@ -404,12 +652,33 @@ watch(agentId, () => void open());
       />
       <span v-if="agent?.model" class="model">{{ agent.model }}</span>
     </header>
+    <div v-if="space.mode === 'personal'" class="conversation-bar">
+      <n-select
+        :value="conversationId ?? 'main'"
+        :options="conversationOptions"
+        :aria-label="t('chat.conversations.label')"
+        size="small"
+        @update:value="selectConversation"
+      />
+      <n-button size="small" @click="conversationForm = !conversationForm">{{ t("chat.conversations.new") }}</n-button>
+      <form v-if="conversationForm" class="conversation-form" @submit.prevent="createConversation">
+        <input v-model="conversationTitle" :aria-label="t('chat.conversations.title')" :placeholder="t('chat.conversations.title')" maxlength="80" required />
+        <n-button attr-type="submit" size="small" type="primary" :loading="creatingConversation" :disabled="!conversationTitle.trim()">
+          {{ t("chat.conversations.create") }}
+        </n-button>
+      </form>
+    </div>
 
     <div ref="scroller" class="scroll">
       <div class="thread">
         <n-spin v-if="loading" class="center" />
+        <div v-if="historyError" class="notice" role="status">
+          <alert-circle :size="14" />
+          <span>{{ t("chat.historyUnavailable") }} {{ historyError }}</span>
+          <n-button size="tiny" @click="loadHistory">{{ t("chat.sendRecovery.check") }}</n-button>
+        </div>
 
-        <div v-else-if="!messages.length && !running" class="empty">
+        <div v-if="!loading && !historyError && !messages.length && !running" class="empty">
           <div class="empty-avatar">{{ agent?.emoji ?? "🧭" }}</div>
           <h2>{{ t("chat.emptyTitle", { name: agent ? displayName(agent) : t("agents.main") }) }}</h2>
           <p>{{ t("chat.emptyLead") }}</p>
@@ -447,6 +716,15 @@ watch(agentId, () => void open());
           </div>
         </template>
 
+        <div v-if="reads.length" class="notice files-read" role="status">
+          <paperclip :size="14" />
+          <span>
+            <template v-for="(read, index) in reads" :key="index">
+              <b>{{ read.fileName }}</b> — {{ readLine(read) }}<br />
+            </template>
+          </span>
+        </div>
+
         <div v-if="running || waiting.length" class="row assistant">
           <div class="avatar">{{ agent?.emoji ?? "🧭" }}</div>
           <div class="body">
@@ -462,14 +740,6 @@ watch(agentId, () => void open());
             <div v-if="waiting.length" class="approvals">
               <approval-card v-for="a in waiting" :key="a.id" :approval="a" :agent-name="agent ? displayName(agent) : undefined" compact />
             </div>
-            <div v-if="reads.length" class="notice files-read">
-              <paperclip :size="14" />
-              <span>
-                <template v-for="read in reads" :key="read.fileName">
-                  <b>{{ read.fileName }}</b> — {{ readLine(read) }}<br />
-                </template>
-              </span>
-            </div>
             <div v-if="slow && !waiting.length" class="slow">{{ t("chat.slow") }}</div>
           </div>
         </div>
@@ -477,6 +747,12 @@ watch(agentId, () => void open());
     </div>
 
     <footer class="composer">
+      <div v-if="pendingSend && pendingSend.state !== 'sending'" class="notice recovery" role="status">
+        <span>{{ t(`chat.sendRecovery.${pendingSend.state}`) }}</span>
+        <n-button v-if="pendingSend.state === 'unknown'" size="tiny" @click="retry">{{ t("chat.sendRecovery.check") }}</n-button>
+        <n-button v-else size="tiny" :disabled="!!draft || !!staged.length" @click="composer && restoreRejected(composer)">{{ t("chat.sendRecovery.restore") }}</n-button>
+        <n-button size="tiny" @click="dismissPending">{{ t("chat.sendRecovery.dismiss") }}</n-button>
+      </div>
       <div id="library"><LibrarySearch :key="agentId" :agent-id="agentId" /></div>
       <div v-if="agentVideoJobs.length" class="videos">
         <span v-for="job in agentVideoJobs" :key="job.id" class="file staged-file">
@@ -499,6 +775,7 @@ watch(agentId, () => void open());
         </n-button>
         <span class="hint-inline">{{ speechConfigured ? t("chat.video.how") : t("chat.video.howNoSpeech") }}</span>
       </div>
+      <AutomaticWorkNotice v-if="videoLink && space.mode === 'personal'" kind="video" />
       <div v-if="staged.length" class="staged">
         <span v-for="file in staged" :key="file.id" class="file staged-file">
           <paperclip :size="12" /> {{ file.fileName }} · {{ bytes(file.sizeBytes) }}
@@ -508,6 +785,7 @@ watch(agentId, () => void open());
       <div class="box">
         <input ref="picker" type="file" multiple hidden :accept="CHAT_ATTACHMENT_ACCEPT" @change="pick" />
         <n-button
+          ref="attachButton"
           circle
           size="small"
           quaternary
@@ -528,7 +806,7 @@ watch(agentId, () => void open());
         <n-button v-if="running" circle size="small" secondary :aria-label="t('chat.stop')" @click="stop">
           <square :size="12" fill="currentColor" />
         </n-button>
-        <n-button v-else circle size="small" type="primary" :disabled="!draft.trim() && !staged.length" :loading="sending" :aria-label="t('chat.send')" @click="send()">
+        <n-button v-else circle size="small" type="primary" :disabled="!!pendingSend || (!draft.trim() && !staged.length)" :loading="sending" :aria-label="t('chat.send')" @click="send()">
           <arrow-up :size="16" />
         </n-button>
       </div>
@@ -555,6 +833,28 @@ watch(agentId, () => void open());
 .picker {
   width: 260px;
   max-width: 60vw;
+}
+.conversation-bar, .conversation-form, .recovery {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.conversation-bar {
+  padding: 8px 0;
+  border-bottom: 1px solid var(--border);
+}
+.conversation-bar > .n-select {
+  width: 220px;
+  max-width: 100%;
+}
+.conversation-form input {
+  min-width: 0;
+  padding: 4px 8px;
+  color: inherit;
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: 6px;
 }
 .model {
   font-size: 12px;

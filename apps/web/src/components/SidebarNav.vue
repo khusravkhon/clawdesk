@@ -1,7 +1,7 @@
 <script setup lang="ts">
 // Sidebar body: brand, sections, theme and language. Shared by the desktop sidebar and the phone drawer.
 import type { Locale } from "@clawdesk/shared";
-import { Activity, Blocks, Bot, ChartColumn, FolderGit2, CalendarClock, CalendarDays, Database, HardDrive, LayoutDashboard, LogOut, MessagesSquare, ShieldCheck, UserRound, Moon, PanelLeftClose, PanelLeftOpen, Send, Sparkles, Sun } from "@lucide/vue";
+import { Activity, Blocks, Bot, ChartColumn, FolderGit2, CalendarClock, CalendarDays, Database, HardDrive, LayoutDashboard, Library, LogOut, MessagesSquare, Settings, ShieldCheck, UserRound, Moon, PanelLeftClose, PanelLeftOpen, Send, Sun } from "@lucide/vue";
 import { NButton, NMenu, NSelect, NTooltip, type MenuOption } from "naive-ui";
 import { computed, h, type Component } from "vue";
 import { useI18n } from "vue-i18n";
@@ -30,27 +30,33 @@ const menu = computed<MenuOption[]>(() => [
   { key: "/", label: link("/", t("nav.overview")), icon: icon(LayoutDashboard) },
   ...(space.mode === "personal" ? [{ key: "/today", label: link("/today", t("today.title")), icon: icon(CalendarDays) }] : []),
   { key: "/chat", label: link("/chat", t("nav.chat")), icon: icon(MessagesSquare) },
+  ...(space.mode === "personal" ? [{ key: "/library", label: link("/library", t("today.materials")), icon: icon(Library) }] : []),
   { key: "/assistant", label: link("/assistant", t("nav.assistant")), icon: icon(UserRound) },
-  { key: "/agents", label: link("/agents", t("nav.agents")), icon: icon(Bot) },
-  ...(space.mode === "company" ? [{ key: "/company", label: link("/company", t("company.title")), icon: icon(Blocks) }] : []),
-  // Project teams are how the company mode makes agents.
-  ...(space.mode === "company" ? [{ key: "/teams", label: link("/teams", t("nav.teams")), icon: icon(FolderGit2) }] : []),
-  { key: "/schedules", label: link("/schedules", t("nav.schedules")), icon: icon(CalendarClock) },
-  { key: "/sources", label: link("/sources", t("nav.sources")), icon: icon(Database) },
-  { key: "/skills", label: link("/skills", t("nav.extensions")), icon: icon(Blocks) },
-  { key: "/approvals", label: link("/approvals", t("nav.approvals"), () => approvals.count), icon: icon(ShieldCheck) },
-  { key: "/telegram", label: link("/telegram", "Telegram"), icon: icon(Send) },
-  // Free models are for personal assistants only.
-  ...(space.mode === "personal" ? [{ key: "/free-models", label: link("/free-models", t("nav.freeModels")), icon: icon(Sparkles) }] : []),
-  { key: "/usage", label: link("/usage", t("nav.usage")), icon: icon(ChartColumn) },
-  { key: "/status", label: link("/status", t("nav.status")), icon: icon(Activity) },
-  { key: "/system", label: link("/system", t("nav.system")), icon: icon(HardDrive) },
+  ...(space.mode === "personal" ? [
+    { key: "/approvals", label: link("/approvals", t("nav.approvals"), () => approvals.count), icon: icon(ShieldCheck) },
+    { key: "/settings", label: link("/settings", t("personalSettings.title")), icon: icon(Settings) },
+  ] : [
+    { key: "/agents", label: link("/agents", t("nav.agents")), icon: icon(Bot) },
+    ...(space.space?.mode === "company" ? [
+      { key: "/company", label: link("/company", t("company.title")), icon: icon(Blocks) },
+      { key: "/teams", label: link("/teams", t("nav.teams")), icon: icon(FolderGit2) },
+    ] : []),
+    { key: "/schedules", label: link("/schedules", t("nav.schedules")), icon: icon(CalendarClock) },
+    { key: "/sources", label: link("/sources", t("nav.sources")), icon: icon(Database) },
+    { key: "/skills", label: link("/skills", t("nav.extensions")), icon: icon(Blocks) },
+    { key: "/approvals", label: link("/approvals", t("nav.approvals"), () => approvals.count), icon: icon(ShieldCheck) },
+    { key: "/telegram", label: link("/telegram", "Telegram"), icon: icon(Send) },
+    { key: "/usage", label: link("/usage", t("nav.usage")), icon: icon(ChartColumn) },
+    { key: "/status", label: link("/status", t("nav.status")), icon: icon(Activity) },
+    { key: "/system", label: link("/system", t("nav.system")), icon: icon(HardDrive) },
+  ]),
 ]);
 
 // Nested pages (e.g. /agents/new) light up their section.
 const activeKey = computed(() => {
   if (route.path === "/") return "/";
-  return menu.value.map((m) => m.key as string).find((k) => k !== "/" && route.path.startsWith(k)) ?? null;
+  return menu.value.map((m) => m.key as string).find((k) => k !== "/" && (route.path === k || route.path.startsWith(k + "/")))
+    ?? (space.mode === "personal" ? "/settings" : null);
 });
 
 async function logout(): Promise<void> {

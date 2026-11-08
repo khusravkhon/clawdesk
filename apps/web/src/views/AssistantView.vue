@@ -2,7 +2,7 @@
 // Main assistant (screen 4): who it is, what it should know about the owner, and its memory.
 import type { AssistantDto, AssistantProfile, MemoryProvider } from "@clawdesk/shared";
 import { Brain, Check, Sparkles, UserRound } from "@lucide/vue";
-import { NAlert, NButton, NInput, NInputNumber, NSkeleton, useMessage } from "naive-ui";
+import { NAlert, NButton, NInput, NInputNumber, NSelect, NSkeleton, useMessage } from "naive-ui";
 import { computed, onMounted, reactive, ref } from "vue";
 import { useI18n } from "vue-i18n";
 import { api, ApiError } from "../api/client";
@@ -21,6 +21,9 @@ const data = ref<AssistantDto | null>(null);
 const form = reactive<AssistantProfile>({ name: "", emoji: "🧭", character: "", aboutUser: "", summaryMaxLines: 10 });
 const saving = ref(false);
 const memorySaving = ref<MemoryProvider | null>(null);
+const memoryAgent = ref("main");
+const specialists = ref<{ label: string; value: string }[]>([]);
+const memoryAgents = computed(() => [{ label: t("agents.main"), value: "main" }, ...specialists.value]);
 
 const EMOJIS = ["🧭", "🤖", "🦉", "🐱", "🦊", "🌟", "🧠", "💼", "🌿", "🚀", "☀️", "🎯"];
 const styles = computed(() => [t("assistant.style.friendly"), t("assistant.style.business"), t("assistant.style.humor"), t("assistant.style.brief")]);
@@ -76,13 +79,24 @@ async function setMemory(provider: MemoryProvider): Promise<void> {
 
 const memoryCurrent = computed(() => data.value?.memory.provider ?? "openai");
 
-onMounted(load);
+onMounted(() => {
+  void load();
+  if (space.mode === "personal") void api.agents().then(({ agents }) => {
+    specialists.value = agents.filter((agent) => agent.id !== "main").map((agent) => ({ label: agent.name, value: agent.id }));
+  }).catch(() => {});
+});
 </script>
 
 <template>
   <div>
     <page-header :title="t('assistant.title')" :subtitle="t('assistant.subtitle')" />
 
+    <div v-if="space.mode === 'personal'" id="memory-notes" class="block">
+      <label>{{ t("memory.notes.agent") }}
+        <n-select v-model:value="memoryAgent" :options="memoryAgents" :aria-label="t('memory.notes.agent')" />
+      </label>
+      <MemoryNotes :key="memoryAgent" :agent-id="memoryAgent" />
+    </div>
     <n-skeleton v-if="!data" height="300px" :sharp="false" />
     <template v-else>
       <n-alert v-if="!data.applied" type="info" :title="t('assistant.firstTitle')" class="block">{{ t("assistant.firstText") }}</n-alert>
@@ -141,7 +155,7 @@ onMounted(load);
       <AgentCharterCard v-if="space.mode === 'company'" agent-id="main" />
       <AgentExtensions agent-id="main" />
 
-      <div id="memory-notes"><MemoryNotes agent-id="main" /></div>
+      <div v-if="space.mode === 'company'" id="memory-notes"><MemoryNotes agent-id="main" /></div>
 
       <section id="memory-search" class="card memory">
         <h2 class="card-title"><brain :size="16" /> {{ t("assistant.memory.title") }}</h2>

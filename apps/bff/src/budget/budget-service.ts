@@ -21,7 +21,9 @@ const USAGE_SETTING = "budget.lastUsage";
 
 type Deps = { gateway: GatewayService; db: Db; logger: Logger };
 type Limits = { dailyUsd: number; monthlyUsd: number };
-type UsageSnapshot = { today: number; month: number; incomplete: boolean; day: string; timeZone: string; updatedAt: number };
+type UsageSnapshot = { today: number; month: number; incomplete: boolean; day: string; timeZone: string; updatedAt: number; lastCompleteAt?: number | null };
+const lastComplete = (cached: UsageSnapshot | null | undefined, timeZone: string) =>
+  cached?.timeZone === timeZone ? cached.lastCompleteAt ?? (cached.incomplete ? null : cached.updatedAt) : null;
 
 export class BudgetUsageUnavailableError extends Error {
   constructor() {
@@ -45,6 +47,18 @@ export class BudgetService {
     return { dailyUsd: Math.max(0, Number(stored?.dailyUsd) || 0), monthlyUsd: Math.max(0, Number(stored?.monthlyUsd) || 0) };
   }
 
+  /** Small local summary for Today. A cache observation keeps its own date and never starts a usage RPC. */
+  observation(timeZone: string, now = Date.now()) {
+    const cached = getSetting<UsageSnapshot>(this.deps.db, USAGE_SETTING);
+    const today = dayKey(now, timeZone);
+    return {
+      ...this.limits(),
+      spentTodayUsd: cached?.timeZone === timeZone && cached.day === today ? cached.today : null,
+      incomplete: cached?.incomplete ?? false,
+      checkedAt: lastComplete(cached, timeZone),
+    };
+  }
+
   /** What has been spent today and this month, and whether a limit has been reached. */
   async status(timeZone: string, now = Date.now()): Promise<BudgetDto> {
     const limits = this.limits();
@@ -59,7 +73,7 @@ export class BudgetService {
       pausedSchedules: this.#paused().length,
       costIncomplete: spent.incomplete,
       usageAvailable: spent.available,
-      lastUsageAt: spent.updatedAt,
+      lastUsageAt: spent.lastCompleteAt,
     };
   }
 
@@ -138,36 +152,40 @@ export class BudgetService {
   }
 
   /** Today's and this month's cost, in the owner's own time zone. */
-  async #spent(timeZone: string, now: number): Promise<{ today: number; month: number; incomplete: boolean; available: boolean; updatedAt: number | null }> {
+  async #spent(timeZone: string, now: number): Promise<{ today: number; month: number; incomplete: boolean; available: boolean; lastCompleteAt: number | null }> {
     timeZone = this.deps.db.select({ timezone: spaces.timezone }).from(spaces).where(eq(spaces.id, "default")).get()?.timezone ?? timeZone;
     const today = dayKey(now, timeZone);
     const month = today.slice(0, 7);
     const days = Array.from({ length: Number(today.slice(8)) }, (_, index) => `${month}-${String(index + 1).padStart(2, "0")}`);
+    const cached = getSetting<UsageSnapshot>(this.deps.db, USAGE_SETTING);
     try {
       const raw = await this.deps.gateway.request<RawSessionsUsage>("sessions.usage", { agentScope: "all", startDate: days[0], endDate: today, mode: "specific", timeZone, limit: 500 });
       if (!Array.isArray(raw.aggregates?.daily)) throw new Error("usage report has no daily totals");
       const usage = buildUsage(raw, days);
+      const incomplete = usage.costIncomplete
+        || (usage.totals.tokens > 0 && (!raw.aggregates.daily.length || !Number.isFinite(raw.totals?.totalCost)))
+        || raw.aggregates.daily.some((day) => (day.tokens ?? 0) > 0 && !Number.isFinite(day.cost));
       const snapshot: UsageSnapshot = {
         today: usage.daily.find((day) => day.date === today)?.cost ?? 0,
         month: usage.daily.reduce((sum, day) => sum + day.cost, 0),
-        incomplete: usage.costIncomplete,
+        incomplete,
         day: today,
         timeZone,
         updatedAt: now,
+        lastCompleteAt: incomplete ? lastComplete(cached, timeZone) : now,
       };
       putSetting(this.deps.db, USAGE_SETTING, snapshot);
-      return { ...snapshot, available: true };
+      return { ...snapshot, available: true, lastCompleteAt: snapshot.lastCompleteAt ?? null };
     } catch (error) {
       // Without a usage report there is no basis to resume budget-paused work; the panel says so.
       this.deps.logger.warn({ err: error }, "could not read usage for the spending limit");
-      const cached = getSetting<UsageSnapshot>(this.deps.db, USAGE_SETTING);
       const sameMonth = cached?.timeZone === timeZone && cached.day.slice(0, 7) === month;
       return {
         today: sameMonth && cached.day === today ? cached.today : 0,
         month: sameMonth ? cached.month : 0,
         incomplete: true,
         available: false,
-        updatedAt: cached?.updatedAt ?? null,
+        lastCompleteAt: lastComplete(cached, timeZone),
       };
     }
   }

@@ -7,13 +7,17 @@ import { computed, onMounted, onUnmounted, ref } from "vue";
 import { useI18n } from "vue-i18n";
 import { api, ApiError, browserTimeZone } from "../api/client";
 import ScheduleForm from "../components/ScheduleForm.vue";
+import AutomaticWorkNotice from "../components/AutomaticWorkNotice.vue";
 import PageHeader from "../components/ui/PageHeader.vue";
 import { describeSchedule } from "../cron";
 import { formatRelative, intlLocale } from "../format";
 import { modelErrorHint } from "../model-errors";
+import { useSpaceStore } from "../stores/space";
 
 const { t, locale } = useI18n();
 const message = useMessage();
+const space = useSpaceStore();
+const timeZone = computed(() => space.mode === "personal" ? space.space?.timezone ?? browserTimeZone() : browserTimeZone());
 const data = ref<ScheduleListDto | null>(null);
 const agents = ref<AgentListItemDto[]>([]);
 const creating = ref(false);
@@ -23,7 +27,12 @@ const busy = ref<string | null>(null);
 const runsFor = ref<string | null>(null);
 const runs = ref<ScheduleRunDto[]>([]);
 
-const errText = (e: unknown) => (e instanceof ApiError ? e.body.message : String(e));
+function errText(e: unknown): string {
+  if (!(e instanceof ApiError)) return String(e);
+  if (e.body.error === "budget_usage_unavailable") return t("budget.unavailable");
+  if (e.body.error === "budget_exceeded") return t("budget.exceeded." + e.body.message);
+  return e.body.message;
+}
 const agentName = (id: string) => {
   const a = agents.value.find((x) => x.id === id);
   if (!a) return id;
@@ -56,7 +65,7 @@ async function load(silent = false): Promise<void> {
 async function create(v: { agentId: string; label: string; prompt: string; cron: string }): Promise<void> {
   saving.value = true;
   try {
-    data.value = await api.schedules.create({ ...v, tz: browserTimeZone() });
+    data.value = await api.schedules.create({ ...v, tz: timeZone.value });
     creating.value = false;
     message.success(t("schedules.created"));
   } catch (e) {
@@ -152,7 +161,7 @@ onUnmounted(() => {
 
 <template>
   <div>
-    <page-header :title="t('schedules.title')" :subtitle="t('schedules.subtitle', { tz: browserTimeZone() })">
+    <page-header :title="t('schedules.title')" :subtitle="t('schedules.subtitle', { tz: timeZone })">
       <n-button v-if="!creating" type="primary" :disabled="!agents.length" @click="creating = true">
         <template #icon><plus :size="16" /></template>
         {{ t("schedules.new") }}
@@ -161,6 +170,7 @@ onUnmounted(() => {
 
     <section v-if="creating" class="card form-card">
       <h2 class="card-title">{{ t("schedules.new") }}</h2>
+      <AutomaticWorkNotice v-if="space.mode === 'personal'" kind="schedule" />
       <schedule-form :agents="agents" :saving="saving" @save="create" @cancel="creating = false" />
     </section>
 

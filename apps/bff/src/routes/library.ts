@@ -1,4 +1,4 @@
-import { SaveBudgetRequest, SaveMemoryNoteRequest, type BudgetDto, type LibraryHitDto, type LibrarySearchDto, type MemoryNotesDto } from "@clawdesk/shared";
+import { LibraryItemKind, SaveBudgetRequest, SaveMemoryNoteRequest, type BudgetDto, type LibrarySearchDto, type MemoryNotesDto } from "@clawdesk/shared";
 import type { FastifyInstance, FastifyReply } from "fastify";
 import { z } from "zod";
 import type { BudgetService } from "../budget/budget-service.js";
@@ -24,13 +24,19 @@ const TimeZone = z
   .optional();
 const BudgetQuery = z.object({ tz: TimeZone });
 const SearchQuery = z.object({ q: z.string().trim().max(200).default(""), agentId: AgentId.optional() });
+const MaterialId = z.string().min(1).max(128).regex(/^[a-zA-Z0-9_-]+$/);
+const PageQuery = SearchQuery.extend({
+  kind: LibraryItemKind.optional(),
+  beforeAt: z.coerce.number().int().min(0).max(8_640_000_000_000_000).optional(),
+  beforeId: MaterialId.optional(),
+}).refine(({ beforeAt, beforeId }) => (beforeAt === undefined) === (beforeId === undefined), "a cursor requires both fields");
 const NoteParams = z.object({ agentId: AgentId, id: z.string().uuid() });
 
 export function registerLibraryRoutes(app: FastifyInstance, deps: { library: LibraryService; notes: MemoryNoteService; budget: BudgetService }): void {
   const zone = (tz: string | undefined) => tz ?? Intl.DateTimeFormat().resolvedOptions().timeZone;
-  app.get("/api/library", async (request): Promise<{ items: LibraryHitDto[] }> => {
-    const { agentId } = SearchQuery.parse(request.query);
-    return { items: deps.library.recent(agentId) };
+  app.get("/api/library", async (request) => {
+    const { agentId, kind, q, beforeAt, beforeId } = PageQuery.parse(request.query);
+    return deps.library.page({ agentId, kind, query: q, cursor: beforeAt !== undefined && beforeId ? { at: beforeAt, id: beforeId } : undefined });
   });
 
   // A search only reads the materials of the agent asked about; without one it is the owner's own view.
@@ -39,9 +45,15 @@ export function registerLibraryRoutes(app: FastifyInstance, deps: { library: Lib
     return deps.library.search(q, agentId);
   });
 
+  app.get("/api/library/:id", async (request, reply) => {
+    const { id } = z.object({ id: MaterialId }).parse(request.params);
+    const material = deps.library.material(id);
+    return material ?? reply.status(404).send({ error: "not_found", message: "no such material" });
+  });
+
   app.delete<{ Params: { id: string } }>("/api/library/:id", async (request, reply) => {
-    const { id } = z.object({ id: z.string().uuid() }).parse(request.params);
-    if (!deps.library.remove(id)) return reply.status(404).send({ error: "not_found", message: "no such material" });
+    const { id } = z.object({ id: MaterialId }).parse(request.params);
+    deps.library.remove(id);
     return reply.status(204).send();
   });
 
@@ -90,6 +102,7 @@ export function registerLibraryRoutes(app: FastifyInstance, deps: { library: Lib
     const { tz } = BudgetQuery.parse(request.query);
     return deps.budget.status(zone(tz));
   });
+  app.get("/api/budget/limits", async () => deps.budget.limits());
 
   app.put("/api/budget", async (request): Promise<BudgetDto> => {
     const { tz } = BudgetQuery.parse(request.query);

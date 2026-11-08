@@ -11,19 +11,23 @@ import BarList, { type BarItem } from "../components/ui/BarList.vue";
 import BudgetCard from "../components/BudgetCard.vue";
 import PageHeader from "../components/ui/PageHeader.vue";
 import UsageMetrics from "../components/UsageMetrics.vue";
-import { formatCompact, formatCost, formatDay, formatInt } from "../format";
+import { formatCompact, formatCost, formatDateTime, formatDay, formatInt } from "../format";
 
 const { t, locale } = useI18n();
 const range = ref<DashboardRange>("30d");
 const data = ref<UsageDto | null>(null);
 const error = ref<string | null>(null);
+let version = 0;
 
 async function load(): Promise<void> {
+  const request = ++version;
   try {
-    data.value = await api.usage(range.value);
+    const result = await api.usage(range.value);
+    if (request !== version) return;
+    data.value = result;
     error.value = null;
   } catch (e) {
-    error.value = e instanceof ApiError ? e.body.message : String(e);
+    if (request === version) error.value = e instanceof ApiError ? e.body.message : String(e);
   }
 }
 onMounted(load);
@@ -35,16 +39,18 @@ const labels = computed(() => (data.value?.days ?? []).map((d) => formatDay(d, l
 const tokens = (v: number) => formatCompact(v, loc.value);
 const total = computed(() => usage.value?.totals.tokens ?? 0);
 const share = (v: number) => (total.value ? Math.round((v / total.value) * 100) : 0);
+const cost = (value: number | null) => value === null ? t("today.unknown") : formatCost(value, loc.value);
+const lastCheck = (at: number | null) => t("budget.lastUsage", { at: at === null ? t("today.neverChecked") : formatDateTime(new Date(at).toISOString(), loc.value) });
 
 const agentBars = computed<BarItem[]>(() =>
-  (data.value?.agents ?? []).map((a) => ({
+  (data.value?.agents ?? []).flatMap((a) => a.tokens === null ? [] : [{
     key: a.agentId,
     label: `${a.emoji ?? ""} ${a.name}`.trim(),
-    sublabel: `${formatCost(a.cost, loc.value)} · ${share(a.tokens)}%`,
+    sublabel: `${cost(a.cost)} · ${share(a.tokens)}%`,
     value: a.tokens,
     display: tokens(a.tokens),
-    title: `${a.name}: ${formatInt(a.tokens, loc.value)} ${t("dash.tokensUnit")} · ${formatCost(a.cost, loc.value)}`,
-  })),
+    title: `${a.name} · ${formatInt(a.tokens, loc.value)} ${t("dash.tokensUnit")} · ${cost(a.cost)}`,
+  }]),
 );
 const modelBars = computed<BarItem[]>(() =>
   (usage.value?.byModel ?? []).slice(0, 8).map((m) => ({
@@ -57,7 +63,7 @@ const modelBars = computed<BarItem[]>(() =>
   })),
 );
 /** Same scale for every agent's small trend would hide small agents; each row uses its own (the bars compare). */
-const activeAgents = computed(() => (data.value?.agents ?? []).filter((a) => a.tokens > 0));
+const activeAgents = computed(() => (data.value?.agents ?? []).filter((a) => (a.tokens ?? 0) > 0 || a.cost === null));
 </script>
 
 <template>
@@ -72,6 +78,9 @@ const activeAgents = computed(() => (data.value?.agents ?? []).filter((a) => a.t
 
     <n-alert v-if="error" type="error" class="gap">{{ error }}</n-alert>
     <n-skeleton v-if="!data && !error" text :repeat="6" />
+    <n-alert v-if="data && (!usage || usage.costIncomplete)" type="warning" class="gap">
+      {{ t(usage ? 'budget.incomplete' : 'budget.unavailable') }} {{ lastCheck(data.checkedAt) }}
+    </n-alert>
 
     <template v-if="data && usage">
       <div class="tiles">
@@ -94,6 +103,7 @@ const activeAgents = computed(() => (data.value?.agents ?? []).filter((a) => a.t
         </n-card>
       </div>
 
+    </template>
       <n-card v-if="activeAgents.length" :title="t('usage.agentDays')" class="gap">
         <table class="table">
           <thead>
@@ -107,16 +117,15 @@ const activeAgents = computed(() => (data.value?.agents ?? []).filter((a) => a.t
           <tbody>
             <tr v-for="a in activeAgents" :key="a.agentId">
               <td>{{ a.emoji }} {{ a.name }}</td>
-              <td class="num">{{ formatInt(a.tokens, loc) }}</td>
-              <td class="num">{{ formatCost(a.cost, loc) }}</td>
-              <td class="trend"><trend-chart :labels="labels" :values="a.daily" :name="a.name" :format="tokens" :height="40" compact /></td>
+              <td class="num">{{ a.tokens === null ? '—' : formatInt(a.tokens, loc) }}</td>
+              <td class="num">{{ cost(a.cost) }}<small v-if="a.available && a.cost === null">{{ lastCheck(a.checkedAt) }}</small></td>
+              <td class="trend"><trend-chart v-if="a.available" :labels="labels" :values="a.daily" :name="a.name" :format="tokens" :height="40" compact /><span v-else>{{ lastCheck(a.checkedAt) }}</span></td>
             </tr>
           </tbody>
         </table>
       </n-card>
 
-      <BudgetCard />
-    </template>
+    <BudgetCard />
   </div>
 </template>
 
@@ -157,6 +166,7 @@ const activeAgents = computed(() => (data.value?.agents ?? []).filter((a) => a.t
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
 }
+.num small { display: block; }
 .trend {
   width: 40%;
   min-width: 140px;

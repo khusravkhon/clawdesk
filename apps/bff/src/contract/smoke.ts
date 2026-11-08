@@ -18,11 +18,18 @@ import type { AddressInfo } from "node:net";
 import os from "node:os";
 import path from "node:path";
 import type { EventFrame } from "@openclaw/gateway-protocol/frame-guards";
+import { strToU8, zipSync } from "fflate";
+import { ChatService } from "../chat/chat-service.js";
+import { openDb } from "../db/client.js";
 import { patchConfig } from "../gateway/config-patch.js";
 import { loadOrCreateDeviceIdentity } from "../gateway/device-identity.js";
 import { GatewayService, PANEL_OPERATOR_SCOPES } from "../gateway/gateway-service.js";
 import { DeviceTokenStore } from "../gateway/token-store.js";
 import { createLogger } from "../lib/logger.js";
+import { LibraryService } from "../library/library-service.js";
+import { MemoryNoteService } from "../library/memory-note-service.js";
+import { ReminderService } from "../schedules/reminder-service.js";
+import { SpaceService } from "../space/space-service.js";
 import { PANEL_VERSION } from "../version.js";
 import { telegramSendRequest } from "../telegram/telegram-service.js";
 
@@ -219,6 +226,63 @@ async function main(): Promise<void> {
       const history = await gateway.request<{ messages?: { role: string; content: unknown }[] }>("chat.history", { sessionKey, agentId, limit: 10 });
       assert.ok(Array.isArray(history.messages), "no messages array");
       assert.ok(history.messages.some((m) => m.role === "assistant" && text(m.content).includes(REPLY)), `stub reply not in history: ${text(history.messages).slice(0, 400)}`);
+    });
+
+    await step("personal space, named chat with Office attachment, materials, memory and restart", async () => {
+      assert.ok(agentId);
+      const id = agentId;
+      const file = path.join(dataDir, "personal.sqlite");
+      const logger = createLogger("warn");
+      let opened = openDb(file);
+      try {
+        const space = new SpaceService({ db: opened.db, logger });
+        space.create({ mode: "personal", name: "Contract personal", locale: "en", timezone: "Asia/Dushanbe" });
+        const library = new LibraryService(opened.db);
+        const chat = new ChatService(gateway, library, opened.db);
+        const conversation = await chat.createConversation(id, "Contract document");
+        const bytes = zipSync({ "word/document.xml": strToU8('<w:document xmlns:w="x"><w:body><w:p><w:r><w:t>Fixture document</w:t></w:r></w:p></w:body></w:document>') });
+        const files = [{ fileName: "fixture.docx", mimeType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document" as const,
+          sizeBytes: bytes.length, content: Buffer.from(bytes).toString("base64") }];
+        const sendId = randomUUID();
+        let off = () => {};
+        let timer: ReturnType<typeof setTimeout> | undefined;
+        const final = new Promise<void>((resolve, reject) => {
+          timer = setTimeout(() => reject(new Error("topic reply timed out")), 120_000);
+          off = chat.subscribe(id, (event) => {
+            if (event.runId !== sendId) return;
+            if (event.type === "final") resolve();
+            if (event.type === "error" || event.type === "aborted") reject(new Error("topic did not finish: " + text(event)));
+          }, conversation.id);
+        });
+        // A rejected send has no terminal event. Ensure its timer and listener always go away.
+        void final.catch(() => {});
+        try {
+          const sent = await chat.send(id, "Read the document.", files, sendId, conversation.id);
+          assert.equal(sent.reads[0]?.state, "read");
+          await final;
+          assert.deepEqual(await chat.send(id, "Read the document.", files, sendId, conversation.id), sent);
+          const topic = await chat.history(id, 60, conversation.id, sendId);
+          assert.equal(topic.acceptedSend, true);
+          assert.ok(topic.messages.some((message) => message.role === "assistant" && message.text.includes(REPLY)));
+        } finally { clearTimeout(timer); off(); }
+        assert.ok(!(await chat.history(id)).messages.some((message) => message.text.includes("Fixture document")));
+        const material = library.recent(id)[0]!;
+        assert.equal(library.recent(id).length, 1);
+        assert.equal(library.material(material.id)?.text.trim(), "Fixture document");
+        const notes = new MemoryNoteService({ db: opened.db, gateway, logger });
+        assert.equal((await notes.add(id, { text: "Fixture owner fact" })).applied, true);
+        const dueAt = Date.now() + 60_000;
+        const reminderDeps = { gateway, telegram: { ownerDelivery: () => null }, mode: () => "personal", now: () => dueAt };
+        new ReminderService({ ...reminderDeps, db: opened.db }).create({ requestId: randomUUID(), text: "Fixture reminder", dueAt, timeZone: "Asia/Dushanbe" });
+        opened.close();
+        opened = openDb(file);
+        const restarted = new ReminderService({ ...reminderDeps, db: opened.db });
+        restarted.recover();
+        await restarted.tick();
+        assert.equal(restarted.list().reminders[0]?.reason, "owner_not_connected");
+        assert.equal(new MemoryNoteService({ db: opened.db, gateway, logger }).list(id).applied, true);
+        assert.equal(new ChatService(gateway, undefined, opened.db).conversations(id)[0]?.id, conversation.id);
+      } finally { opened.close(); }
     });
 
     // The panel's own Telegram calls, in a Gateway with several agents. Telegram is not connected here, so a

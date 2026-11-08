@@ -36,6 +36,7 @@ import { ActivityService, RunTracker } from "./company/activity-service.js";
 import { getConfig } from "./gateway/config-patch.js";
 import { syncRequestTools } from "./company/work-requests-config.js";
 import { mainSessionKey } from "./chat/chat-service.js";
+import { officeWorkers } from "./documents/office-worker-pool.js";
 
 // Host development reads apps/bff/.env (written by init.sh --dev); containers get real env vars.
 if (process.env.NODE_ENV !== "production" && fs.existsSync(".env")) process.loadEnvFile(".env");
@@ -65,7 +66,8 @@ const space = new SpaceService({ db, logger: logger.child({ component: "space" }
 const approvals = new ApprovalsService(gateway, logger.child({ component: "approvals" }));
 const assistant = new AssistantService({ gateway, db, logger: logger.child({ component: "assistant" }), mode: () => space.mode() });
 const auth = new AuthService({ db, dataDir: config.dataDir, logger: logger.child({ component: "auth" }), telegram });
-const backups = new BackupService({ bridge, dir: config.backupDir, logger: logger.child({ component: "backups" }) });
+const backups = new BackupService({ bridge, dir: config.backupDir, logger: logger.child({ component: "backups" }),
+  timeZone: () => space.mode() === "personal" ? space.get()?.timezone ?? Intl.DateTimeFormat().resolvedOptions().timeZone : Intl.DateTimeFormat().resolvedOptions().timeZone });
 const teams = new TeamService({ gateway, db, logger: logger.child({ component: "teams" }), bridge, space, telegram, sandboxEnabled: config.sandboxEnabled });
 const audit = new AuditService({ db, gateway, logger: logger.child({ component: "audit" }) });
 // Studying videos by link: one queue for the whole panel, so a restart can mark what it left running.
@@ -74,7 +76,7 @@ const budget = new BudgetService({ gateway, db, logger: logger.child({ component
 const notes = new MemoryNoteService({ gateway, db, logger: logger.child({ component: "memory-notes" }) });
 const video = new VideoService({ db, bridge, chat: new ChatService(gateway, library), logger: logger.child({ component: "video" }), videoDir: config.videoDir, library, waitUntilReady: () => gateway.waitUntilConnected(120_000) });
 video.recover();
-const reminders = new ReminderService({ db, gateway, telegram, mode: () => space.mode(), timeZone: () => space.get()?.timezone ?? "UTC" });
+const reminders = new ReminderService({ db, gateway, telegram, mode: () => space.mode(), timeZone: () => space.get()?.timezone });
 reminders.recover();
 // Stage 5: what company agents can reach; grants are applied and checked where they are enforced.
 const access = new AccessService({
@@ -229,6 +231,7 @@ async function shutdown(signal: string): Promise<void> {
   clearInterval(requestToolsTimer);
   clearInterval(charterTimer);
   await reminders.stop();
+  await officeWorkers.stop();
   await app.close();
   await notes.drain();
   await gateway.stop();

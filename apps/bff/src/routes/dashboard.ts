@@ -17,9 +17,9 @@ const TimeZone = z
   }, "unknown time zone");
 const DashboardQuery = z.object({ range: DashboardRange.default("7d"), tz: TimeZone.optional() });
 
-export function registerDashboardRoutes(app: FastifyInstance, deps: { dashboard: DashboardService }): void {
+export function registerDashboardRoutes(app: FastifyInstance, deps: { dashboard: DashboardService; timeZone?: () => string | undefined }): void {
   app.get("/api/dashboard", async (request): Promise<DashboardDto> => {
     const { range, tz } = DashboardQuery.parse(request.query);
-    return deps.dashboard.get(range, tz);
+    return deps.dashboard.get(range, deps.timeZone?.() ?? tz);
   });
 }

@@ -19,9 +19,9 @@ const Query = z.object({
     .optional(),
 });
 
-export function registerUsageRoutes(app: FastifyInstance, deps: { usage: UsageService }): void {
+export function registerUsageRoutes(app: FastifyInstance, deps: { usage: UsageService; timeZone?: () => string | undefined }): void {
   app.get("/api/usage", async (request): Promise<UsageDto> => {
     const { range, tz } = Query.parse(request.query);
-    return deps.usage.get(range, tz ?? Intl.DateTimeFormat().resolvedOptions().timeZone);
+    return deps.usage.get(range, deps.timeZone?.() ?? tz ?? Intl.DateTimeFormat().resolvedOptions().timeZone);
   });
 }

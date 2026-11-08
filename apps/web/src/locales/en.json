@@ -704,6 +704,12 @@
     }
   },
   "chat": {
+    "documentErrors": {
+      "document_queue_full": "The document queue is full. Try sending again later."
+    },
+    "historyUnavailable": "Could not load chat history.",
+    "conversations": {"main":"Main conversation","label":"Conversation","new":"New topic","title":"Conversation title","create":"Create"},
+    "sendRecovery": {"unknown":"The send outcome is unknown. You can check the status of the original message.","rejected":"The message was rejected. Clear the composer and attachments to restore it.","check":"Check status","restore":"Restore draft","dismiss":"Dismiss"},
     "placeholder": "Write a message…",
     "send": "Send",
     "stop": "Stop",
@@ -747,7 +753,7 @@
         "unreadable": "could not be read: the file is broken or carries markup the panel refuses",
         "legacy_format": "pre-2007 Office format (.doc, .xls, .ppt): the panel does not read those — save as .docx, .xlsx or .pptx",
         "image": "passed on as an image; no text was extracted",
-        "not_read": "the panel does not read this type; the agent got the file itself"
+        "not_read": "the panel did not read the file; the original was sent to the agent"
       }
     },
     "video": {
@@ -969,6 +975,8 @@
     }
   },
   "system": {
+    "restoreScope": "Restoring replaces the selected installation's data, including agents, chats, connections, the panel password, and shared files. Backup archives remain.",
+    "restoreConfirm": "Check the archive first with the command above. Then select the intended installation and confirm the replacement by typing RESTORE.",
     "title": "System",
     "subtitle": "Backups and resetting the panel",
     "backups": "Backups",
@@ -1299,6 +1307,27 @@
     }
   },
   "library": {
+    "browser": {
+      "video_frames": "Frames sent to the agent",
+      "video_file": "Video saved in chat downloads",
+      "video_speech": "Audio sent to the agent for speech recognition",
+      "subtitle": "Recent documents and videos processed for your agents.",
+      "agent": "Agent",
+      "type": "Type",
+      "all": "All",
+      "searchText": "Search extracted text",
+      "savedText": "Open saved text",
+      "close": "Close",
+      "noText": "There is no saved text.",
+      "error": "Could not load materials.",
+      "noResults": "No materials match the search.",
+      "originalUnavailable": "The original is unavailable in the library",
+      "processingUnknown": "Processing details were not recorded",
+      "subtitles": "Subtitles only",
+      "subtitles_partial": "Partial subtitles only",
+      "more": "Show more",
+      "removeNote": "This removes the library entry and its saved text. The original file or video stays in place."
+    },
     "placeholder": "Search this agent's materials…",
     "search": "Search",
     "remove": "Remove the material",
@@ -1312,6 +1341,16 @@
   },
   "memory": {
     "notes": {
+      "factDate": "Date of the fact",
+      "agent": "Who these facts are for",
+      "distinction": "These are facts you record about yourself. Materials store extracted text, while memory search looks through the agent's files.",
+      "loadFailed": "Could not load facts.",
+      "recorded": "Record updated {at}",
+      "applied": "Applied to the assistant",
+      "savedLocal": "Saved locally, awaiting sync",
+      "savedApplied": "Saved and applied to the assistant",
+      "removedApplied": "Removed from the assistant's current facts",
+      "removeScope": "This removes the current fact. Old conversations and backups may still contain it.",
       "title": "What the agent knows about you",
       "pending": "Notes are saved in the panel but have not reached the agent yet. The panel will retry when the connection is restored.",
       "retry": "Retry synchronization",
@@ -1332,6 +1371,11 @@
     }
   },
   "budget": {
+    "automatic": {
+      "schedule": "The agent runs this task automatically under the active limits. Manual runs and chat remain available separately.",
+      "video": "This processes video in the background. Sending text, audio, or frames to the agent may invoke a model. Automatic work limits apply.",
+      "limitsUnknown": "The limits could not be loaded."
+    },
     "title": "Spending limits",
     "unavailable": "Spending data is unavailable or incomplete. With limits enabled, automatic tasks are paused until spending can be checked. Your messages remain available.",
     "lastUsage": "Last report: {at}.",
@@ -1470,7 +1514,39 @@
       "consent_required": "Confirm the model download before installing."
     }
   },
+  "personalSettings": {
+    "title": "Settings",
+    "space": "Personal space",
+    "name": "Space name",
+    "zone": "Time zone",
+    "zoneEffect": "Device time zone is {device}. New reminders and schedules, quiet hours, statistics, and the backup window use the space time zone. Existing reminders and schedules keep their time.",
+    "invalidZone": "Enter a valid time zone, such as Asia/Dushanbe.",
+    "failed": "Could not save settings.",
+    "saved": "Settings saved.",
+    "setup": "Set up a personal space",
+    "assistant": "Assistants and schedules",
+    "connections": "Connections",
+    "system": "Spending and system",
+    "telegram": "Telegram"
+  },
   "today": {
+    "repeat": {
+      "hour": "In one hour",
+      "tomorrow": "Tomorrow at 09:00",
+      "days": "Repeat on selected days",
+      "missingTime": "This time does not exist in the selected time zone. Choose another minute.",
+      "firstDay": "Choose the first date from the selected weekdays.",
+      "series": "Repeating reminders",
+      "next": "Next occurrence {at}",
+      "stop": "Stop repeating",
+      "stopConfirm": "Future occurrences will be cancelled.",
+      "snooze": "Snooze",
+      "minutes": "{minutes} min",
+      "deviceZone": "Device time zone is {zone}",
+      "telegramOn": "Telegram delivery works with the window closed while ClawDesk is running.",
+      "telegramOff": "Without Telegram, the reminder stays on Today. Connecting Telegram allows delivery within the reminder window."
+    },
+    "quick": {"title":"Quick actions","chat":"Message the assistant","document":"Add a document","overdue":"Overdue: {count}","undelivered":"Delivery needs attention: {count}","recent":"Recent activity","firstSteps":"Message your assistant, attach a document or create your first reminder.","last":{"chat":"Last conversation","material":"Last material","reminder":"Last delivered reminder"},"budget":"Budget","spend":"Spent today: {value} USD","limits":"Limits in USD · day {daily} · month {monthly}","backups":"Backups","lastBackup":"Last successful backup: {date}","noBackup":"No backups yet.","backupUnavailable":"Backups are unavailable on this installation."},
     "title": "Today",
     "subtitle": "Your reminders, decisions and next step.",
     "refresh": "Refresh",
@@ -1529,6 +1605,8 @@
     "noSnapshot": "No snapshot yet. Status and task counts are unknown.",
     "partial": "Only part of the reminder list is shown. Open reminders are shown first.",
     "next": {
+      "deliveryIssue": "Check reminder delivery.",
+      "backupIssue": "The last backup attempt failed.",
       "connection": "Check the system connection. Some information is currently unavailable.",
       "checkApprovals": "Check approvals: the current queue status is unknown.",
       "approval": "An agent needs your permission. Review the request first.",
