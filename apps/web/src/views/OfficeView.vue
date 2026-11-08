@@ -97,10 +97,18 @@ onBeforeUnmount(() => { leave?.(); clearInterval(demoTimer); });
 
 <template>
   <div>
-    <page-header :title="t('office.title')">
+    <page-header
+      :title="t('office.title')"
+      :breadcrumbs="[
+        { label: t('company.title'), to: '/company' },
+        { label: t('activity.title'), to: '/company/activity' },
+        { label: t('office.title') },
+      ]"
+      :back-to="'/company/activity'"
+      :back-label="t('activity.title')"
+    >
       <n-space>
         <n-button key="list" @click="router.push('/company/activity')">{{ t('office.toList') }}</n-button>
-        <n-button key="company" @click="router.push('/company')">{{ t('projects.toCompany') }}</n-button>
       </n-space>
     </page-header>
     <n-alert v-if="demo" type="warning" class="block" :title="t('office.demoTitle')">{{ t('office.demo') }}</n-alert>

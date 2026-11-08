@@ -2,7 +2,7 @@ import { z } from "zod";
 
 // Project teams (screen 11, company mode): one team per repository — PM, developer, reviewer.
 
-export const TeamRole = z.enum(["pm", "developer", "reviewer"]);
+export const TeamRole = z.string();
 export type TeamRole = z.infer<typeof TeamRole>;
 
 export const GITHUB_REPO_URL = /^https:\/\/github\.com\/([A-Za-z0-9_.-]+)\/([A-Za-z0-9_.-]+?)(?:\.git)?\/?$/;

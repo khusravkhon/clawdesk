@@ -27,10 +27,17 @@ onBeforeUnmount(() => leave?.());
 
 <template>
   <div>
-    <page-header :title="t('activity.title')">
+    <page-header
+      :title="t('activity.title')"
+      :breadcrumbs="[
+        { label: t('company.title'), to: '/company' },
+        { label: t('activity.title') },
+      ]"
+      :back-to="'/company'"
+      :back-label="t('company.title')"
+    >
       <n-space>
         <n-button key="office" type="primary" @click="router.push('/company/office')">{{ t('activity.office') }}</n-button>
-        <n-button key="company" @click="router.push('/company')">{{ t('projects.toCompany') }}</n-button>
         <n-button key="refresh" @click="store.refresh()">{{ t('company.refresh') }}</n-button>
       </n-space>
     </page-header>

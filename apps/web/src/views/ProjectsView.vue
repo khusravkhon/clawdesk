@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import type { CompanyDto, ProjectDto, ProjectImportDto } from "@clawdesk/shared";
+import { ChevronRight, FolderKanban, Plus, RotateCw, Upload } from "@lucide/vue";
 import { NAlert, NButton, NCard, NEmpty, NFormItem, NInput, NModal, NPopconfirm, NSelect, NSkeleton, NSpace, NTag, useMessage } from "naive-ui";
 import { computed, onMounted, reactive, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
@@ -122,39 +123,141 @@ onMounted(async () => {
 </script>
 
 <template>
-  <div :key="projectId ?? 'catalog'">
-    <page-header :title="project?.name ?? t('projects.title')" :subtitle="data?.name">
+  <div :key="projectId ?? 'catalog'" class="projects-view">
+    <!-- Header for Single Project -->
+    <page-header
+      v-if="project"
+      :title="project.name"
+      :subtitle="data?.name"
+      :breadcrumbs="[
+        { label: t('company.title'), to: '/company' },
+        { label: t('projects.title'), to: '/company/projects' },
+        { label: project.name },
+      ]"
+      :back-to="'/company/projects'"
+      :back-label="t('projects.catalog')"
+    >
       <n-space>
-        <n-button key="company" @click="router.push(project?.departmentId ? `/company/departments/${project.departmentId}` : '/company')">{{ t('projects.toCompany') }}</n-button>
-        <n-button v-if="projectId" key="catalog" @click="router.push('/company/projects')">{{ t('projects.catalog') }}</n-button>
-        <n-button key="refresh" :loading="loading" :disabled="saving" @click="load">{{ t('company.refresh') }}</n-button>
-        <n-button v-if="!projectId" key="import" :loading="importing" :disabled="!data || saving" @click="pickPackage">{{ t('projectTransfer.import') }}</n-button>
-        <n-button v-if="!projectId" key="create" type="primary" :disabled="!data || saving" @click="edit()">{{ t('projects.create') }}</n-button>
+        <n-button key="refresh" :loading="loading" :disabled="saving" @click="load">
+          <template #icon><rotate-cw :size="15" /></template>
+          {{ t('company.refresh') }}
+        </n-button>
+        <n-button key="edit" secondary :disabled="saving" @click="edit(project)">
+          {{ t('projects.edit') }}
+        </n-button>
       </n-space>
     </page-header>
+
+    <!-- Header for Projects Catalog -->
+    <page-header
+      v-else
+      :title="t('projects.title')"
+      :subtitle="data?.name"
+      :breadcrumbs="[
+        { label: t('company.title'), to: '/company' },
+        { label: t('projects.title') },
+      ]"
+      :back-to="'/company'"
+      :back-label="t('company.title')"
+    >
+      <n-space>
+        <n-button key="refresh" :loading="loading" :disabled="saving" @click="load">
+          <template #icon><rotate-cw :size="15" /></template>
+          {{ t('company.refresh') }}
+        </n-button>
+        <n-button key="import" :loading="importing" :disabled="!data || saving" @click="pickPackage">
+          <template #icon><upload :size="15" /></template>
+          {{ t('projectTransfer.import') }}
+        </n-button>
+        <n-button key="create" type="primary" :disabled="!data || saving" @click="edit()">
+          <template #icon><plus :size="15" /></template>
+          {{ t('projects.create') }}
+        </n-button>
+      </n-space>
+    </page-header>
+
     <input ref="packageInput" type="file" accept=".clawdesk-project,application/gzip" class="hidden-input" @change="importPackage" />
     <n-alert type="info" :bordered="false" class="block">{{ t('projects.scope') }}</n-alert>
     <n-alert v-if="imported" :type="imported.state === 'imported' ? 'success' : 'warning'" class="block">{{ t(imported.state === 'imported' ? (imported.repeated ? 'projectTransfer.importedAgain' : 'projectTransfer.imported') : 'projectTransfer.importFolderFailed', { name: imported.name, folder: imported.folder ?? '—', files: imported.files, rules: imported.rules }) }}</n-alert>
     <n-alert v-if="error" type="error" class="block">{{ error }}</n-alert>
     <n-skeleton v-if="loading && !data" height="180px" />
+
     <template v-if="data">
+      <!-- Catalog list -->
       <template v-if="!projectId">
-        <n-form-item :label="t('projects.filter')"><n-select v-model:value="filter" :aria-label="t('projects.filter')" :options="departmentOptions.map(item => ({ ...item, disabled: false }))" clearable :placeholder="t('projects.allDepartments')" /></n-form-item>
+        <div class="filter-bar">
+          <n-form-item :label="t('projects.filter')" class="filter-item">
+            <n-select
+              v-model:value="filter"
+              :aria-label="t('projects.filter')"
+              :options="departmentOptions.map(item => ({ ...item, disabled: false }))"
+              clearable
+              :placeholder="t('projects.allDepartments')"
+            />
+          </n-form-item>
+        </div>
+
         <n-empty v-if="!groups.length" :description="t('projects.empty')" />
-        <n-card v-for="group in groups" :key="group.id" :title="group.name" class="block">
-          <div v-for="item in group.projects" :key="item.id" class="project-row">
-            <div><n-button text @click="router.push(`/company/projects/${item.id}`)">{{ item.name }}</n-button><p v-if="item.description" class="description">{{ item.description }}</p></div>
-            <n-tag size="small">{{ t(`projects.status.${item.status}`) }}</n-tag>
+
+        <div v-for="group in groups" :key="group.id" class="group-section">
+          <div class="group-title-row">
+            <span class="group-name">{{ group.name }}</span>
+            <span class="group-count">{{ group.projects.length }}</span>
+          </div>
+
+          <div class="projects-grid">
+            <div
+              v-for="item in group.projects"
+              :key="item.id"
+              class="project-tile"
+              @click="router.push(`/company/projects/${item.id}`)"
+            >
+              <div class="tile-top">
+                <div class="tile-title-row">
+                  <folder-kanban :size="18" class="tile-icon" />
+                  <span class="tile-title">{{ item.name }}</span>
+                </div>
+                <span class="status-pill" :class="item.status">
+                  <span class="status-dot"></span>
+                  {{ t(`projects.status.${item.status}`) }}
+                </span>
+              </div>
+              <p v-if="item.description" class="tile-desc">{{ item.description }}</p>
+              <div class="tile-footer">
+                <span class="open-action">
+                  <span>Открыть проект</span>
+                  <chevron-right :size="14" />
+                </span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </template>
+
+      <!-- Single Project View -->
+      <template v-else-if="project">
+        <n-card class="block project-card-overview">
+          <div class="project-hero">
+            <div class="project-hero-main">
+              <div class="project-hero-title">
+                <h2>{{ project.name }}</h2>
+                <span class="status-pill" :class="project.status">
+                  <span class="status-dot"></span>
+                  {{ t(`projects.status.${project.status}`) }}
+                </span>
+              </div>
+              <p class="owner-line">
+                <span class="owner-label">{{ t('projects.owner') }}:</span>
+                <span class="owner-val">{{ data.departments.find(item => item.id === project?.departmentId)?.name ?? t('projects.companyLevel') }}</span>
+              </p>
+              <p v-if="project.description" class="description">{{ project.description }}</p>
+            </div>
+            <div class="project-hero-actions">
+              <n-button secondary :disabled="saving" @click="edit(project)">{{ t('projects.edit') }}</n-button>
+            </div>
           </div>
         </n-card>
-      </template>
-      <template v-else-if="project">
-        <n-card :title="project.name" class="block">
-          <template #header-extra><n-tag size="small">{{ t(`projects.status.${project.status}`) }}</n-tag></template>
-          <p>{{ t('projects.owner') }}: {{ data.departments.find(item => item.id === project?.departmentId)?.name ?? t('projects.companyLevel') }}</p>
-          <p v-if="project.description" class="description">{{ project.description }}</p>
-          <n-button :disabled="saving" @click="edit(project)">{{ t('projects.edit') }}</n-button>
-        </n-card>
+
         <project-builder-card :key="`builder-${project.id}`" :project-id="project.id" :disabled="!canAdd || saving" :refresh-token="builderRefreshToken" @changed="briefRefreshToken++" />
         <project-checks-card :key="`checks-${project.id}`" :project-id="project.id" :disabled="!canAdd || saving" :refresh-token="builderRefreshToken" />
         <project-tasks-card :key="`tasks-${project.id}`" :project-id="project.id" :disabled="!canAdd || saving" :refresh-token="builderRefreshToken" @changed="builderRefreshToken++" />
@@ -163,6 +266,7 @@ onMounted(async () => {
         <project-rules-card :key="`rules-${project.id}`" :project-id="project.id" :disabled="!canAdd || saving" @changed="builderRefreshToken++" />
         <project-workspace-card :key="project.id" :project-id="project.id" :disabled="!canAdd || saving" @changed="builderRefreshToken++" />
         <project-transfer-card :key="`transfer-${project.id}`" :project-id="project.id" />
+
         <n-card :title="t('projects.teams')" class="block">
           <template #header-extra><n-button v-if="canAdd" text :disabled="saving || loading" @click="openTeamPicker">{{ t('projects.addTeam') }}</n-button></template>
           <n-empty v-if="!projectTeams.length" :description="t('projects.noTeams')" />
@@ -176,22 +280,25 @@ onMounted(async () => {
           <n-button text @click="router.push('/teams')">{{ t('company.allTeams') }}</n-button>
         </n-card>
       </template>
+
       <n-empty v-else :description="t('projects.notFound')" />
     </template>
+
     <n-modal v-model:show="editing" preset="card" :title="t(draft.id ? 'projects.edit' : 'projects.create')" class="project-editor" :mask-closable="!saving" :closable="!saving" :close-on-esc="!saving">
       <form @submit.prevent="save">
         <n-form-item :label="t('projects.name')"><n-input v-model:value="draft.name" :aria-label="t('projects.name')" :maxlength="100" :disabled="saving" /></n-form-item>
         <n-form-item :label="t('projects.description')"><n-input v-model:value="draft.description" :aria-label="t('projects.description')" type="textarea" :maxlength="4000" :disabled="saving" /></n-form-item>
         <n-form-item :label="t('projects.owner')"><n-select v-model:value="draft.departmentId" :aria-label="t('projects.owner')" :options="departmentOptions" clearable :placeholder="t('projects.companyLevel')" :disabled="saving" /></n-form-item>
         <n-form-item :label="t('projects.state')"><n-select v-model:value="draft.status" :aria-label="t('projects.state')" :options="statusOptions" :disabled="saving" /></n-form-item>
-        <p>{{ t('projects.archiveHint') }}</p>
+        <p class="muted">{{ t('projects.archiveHint') }}</p>
         <n-button type="primary" attr-type="submit" :loading="saving" :disabled="!draft.name.trim()">{{ t('company.save') }}</n-button>
       </form>
     </n-modal>
+
     <n-modal v-model:show="addingTeam" preset="card" :title="t('projects.addTeam')" class="project-editor" :mask-closable="!saving" :closable="!saving" :close-on-esc="!saving">
       <form @submit.prevent="addTeam">
         <n-form-item :label="t('projects.selectTeam')"><n-select v-model:value="pickedTeam" :aria-label="t('projects.selectTeam')" :options="availableTeams" filterable :disabled="saving" /></n-form-item>
-        <p>{{ t('projects.teamHint') }}</p>
+        <p class="muted">{{ t('projects.teamHint') }}</p>
         <n-alert v-if="!availableTeams.length" type="info" :show-icon="false">{{ t('projects.noAvailableTeams') }}</n-alert>
         <n-button type="primary" attr-type="submit" :loading="saving" :disabled="!pickedTeam">{{ t('projects.addTeam') }}</n-button>
       </form>
@@ -201,10 +308,193 @@ onMounted(async () => {
 
 <style scoped>
 .hidden-input { display: none; }
-.block { margin-bottom: 18px; }
-.project-row { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 12px 0; border-bottom: 1px solid var(--border); }
-.project-row:last-child { border-bottom: 0; }
-.description { white-space: pre-wrap; overflow-wrap: anywhere; color: var(--text-2); line-height: 1.6; }
+.block { margin-bottom: 20px; }
+
+.filter-bar {
+  margin-bottom: 16px;
+  max-width: 320px;
+}
+.filter-item {
+  margin-bottom: 0;
+}
+
+.group-section {
+  margin-bottom: 28px;
+}
+
+.group-title-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+.group-name {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text);
+}
+.group-count {
+  font-size: 11px;
+  font-weight: 600;
+  padding: 1px 7px;
+  border-radius: 9999px;
+  background: var(--surface-2);
+  color: var(--text-2);
+}
+
+.projects-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+  gap: 14px;
+}
+
+.project-tile {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 16px 18px;
+  cursor: pointer;
+  transition: all 0.18s cubic-bezier(0.16, 1, 0.3, 1);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.project-tile:hover {
+  background: var(--surface-hover);
+  border-color: var(--border-hover);
+  transform: translateY(-2px);
+  box-shadow: var(--card-shadow);
+}
+
+.tile-top {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.tile-title-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.tile-icon {
+  color: var(--accent);
+  flex-shrink: 0;
+}
+
+.tile-title {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tile-desc {
+  margin: 0;
+  font-size: 13px;
+  color: var(--text-2);
+  line-height: 1.5;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.tile-footer {
+  margin-top: auto;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+}
+
+.open-action {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12.5px;
+  color: var(--text-2);
+  font-weight: 500;
+  transition: color 0.15s ease;
+}
+.project-tile:hover .open-action {
+  color: var(--accent-hover, var(--accent));
+}
+
+.project-card-overview {
+  background: var(--surface);
+  border-radius: 14px;
+}
+
+.project-hero {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 20px;
+  flex-wrap: wrap;
+}
+
+.project-hero-main {
+  flex: 1;
+  min-width: 260px;
+}
+
+.project-hero-title {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-bottom: 8px;
+}
+
+.project-hero-title h2 {
+  margin: 0;
+  font-size: 20px;
+  font-weight: 600;
+  letter-spacing: -0.015em;
+}
+
+.owner-line {
+  margin: 0 0 10px;
+  font-size: 13.5px;
+  color: var(--text-2);
+}
+.owner-label {
+  margin-right: 6px;
+  color: var(--muted);
+}
+.owner-val {
+  font-weight: 500;
+  color: var(--text);
+}
+
+.project-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--border);
+}
+.project-row:last-child {
+  border-bottom: 0;
+}
+
+.description {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  color: var(--text-2);
+  line-height: 1.6;
+}
+.muted {
+  color: var(--text-2);
+  font-size: 13px;
+  line-height: 1.5;
+}
 </style>
 <style>
 .project-editor.n-card { width: min(600px, calc(100vw - 32px)); }
