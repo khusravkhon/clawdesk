@@ -39,6 +39,8 @@ export type InstallInput = {
   /** "domain": panelDomain; "sslip": <ip>.sslip.io; "tunnel": no HTTPS, the app's SSH tunnel only. */
   https: "domain" | "sslip" | "tunnel";
   domain: string | null;
+  /** Set aside data a newer ClawDesk wrote and install clean (the installer stopped and the person chose so). */
+  setAsideNewerData?: boolean;
 };
 
 export type InstallResult = { server: Server; setupUrl: string | null };
@@ -58,7 +60,7 @@ export const api = {
   openPanel: (id: string, path?: string) => invoke<void>("open_panel", { id, path: path ?? null }),
   installServer: (input: InstallInput) => invoke<InstallResult>("install_server", { input }),
   /** "This computer": sets up (or updates) ClawDesk in Docker Desktop on this machine. */
-  installLocal: (name: string) => invoke<InstallResult>("install_local", { name }),
+  installLocal: (name: string, setAside = false) => invoke<InstallResult>("install_local", { name, setAside }),
   onInstallLog: (cb: (e: InstallLog) => void): Promise<UnlistenFn> => listen<InstallLog>("install://log", (e) => cb(e.payload)),
   onInstallStep: (cb: (e: InstallStep) => void): Promise<UnlistenFn> => listen<InstallStep>("install://step", (e) => cb(e.payload)),
 };

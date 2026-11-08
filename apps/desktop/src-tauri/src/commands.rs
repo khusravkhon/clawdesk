@@ -56,11 +56,11 @@ pub async fn add_server(state: State<'_, AppState>, input: AddServerInput) -> Re
         (None, None) => return Err("a password or a private key is needed".into()),
     };
     let session = ssh::connect(&input.host, input.port, &input.user, &auth, None).await.map_err(err)?;
-    // ClawDesk must be there: the panel answers on the server's loopback.
-    session
-        .run(&format!("curl -fsS -o /dev/null --max-time 5 http://127.0.0.1:{}/api/health", tunnel::PANEL_PORT))
+    // ClawDesk must be there: the panel answers on the server's loopback, on 8080 or the port the install chose.
+    let panel_port = tunnel::detect_panel_port(&session)
         .await
-        .map_err(|_| "ClawDesk does not answer on this server (port 8080). Install it with “Install on a server”.".to_string())?;
+        .map_err(err)?
+        .ok_or_else(|| "ClawDesk does not answer on this server (neither on the Gateway's published port nor on 8080). Install it with “Install on a server”.".to_string())?;
     let key = match key {
         Some(k) => k,
         None => {
@@ -84,6 +84,7 @@ pub async fn add_server(state: State<'_, AppState>, input: AddServerInput) -> Re
         created_at: SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0),
         tunnel_port: None,
         local: false,
+        panel_port: Some(panel_port),
     };
     state.store.save(&server).map_err(err)?;
     Ok(server)
@@ -105,9 +106,9 @@ pub async fn install_server(app: AppHandle, state: State<'_, AppState>, input: I
 
 /// "This computer": sets up (or updates) ClawDesk in Docker Desktop here.
 #[tauri::command]
-pub async fn install_local(app: AppHandle, state: State<'_, AppState>, name: String) -> Res<InstallResult> {
+pub async fn install_local(app: AppHandle, state: State<'_, AppState>, name: String, set_aside: Option<bool>) -> Res<InstallResult> {
     let _guard = state.recovery.lock().await;
-    local::install(&app, &state.store, name).await.map_err(err)
+    local::install(&app, &state.store, name, set_aside.unwrap_or(false)).await.map_err(err)
 }
 
 #[tauri::command]
@@ -162,9 +163,10 @@ pub async fn open_panel(app: AppHandle, state: State<'_, AppState>, id: String, 
     let base = match &server.panel_url {
         Some(url) => url.clone(),
         None => {
-            let port = ensure_tunnel(&state, &server).await.map_err(err)?;
-            if server.tunnel_port != Some(port) {
-                server.tunnel_port = Some(port);
+            let before = (server.tunnel_port, server.panel_port);
+            let port = ensure_tunnel(&state, &mut server).await.map_err(err)?;
+            server.tunnel_port = Some(port);
+            if (server.tunnel_port, server.panel_port) != before {
                 state.store.save(&server).map_err(err)?;
             }
             format!("http://127.0.0.1:{port}")
@@ -204,7 +206,7 @@ pub async fn open_panel(app: AppHandle, state: State<'_, AppState>, id: String, 
     Ok(())
 }
 
-async fn ensure_tunnel(state: &AppState, server: &Server) -> anyhow::Result<u16> {
+async fn ensure_tunnel(state: &AppState, server: &mut Server) -> anyhow::Result<u16> {
     let mut tunnels = state.tunnels.lock().await;
     let key = || servers::load_key(&server.id);
     if let Some(t) = tunnels.get(&server.id) {
@@ -217,7 +219,16 @@ async fn ensure_tunnel(state: &AppState, server: &Server) -> anyhow::Result<u16>
         }
     }
     let session = ssh::connect(&server.host, server.port, &server.user, &Auth::Key(key()?), Some(&server.host_key)).await?;
-    let t = tunnel::start(session, server.tunnel_port).await?;
+    // A server added before the port was remembered: find it once; if nothing answers, keep the default.
+    let remote_port = match server.panel_port {
+        Some(port) => port,
+        None => {
+            let found = tunnel::detect_panel_port(&session).await.ok().flatten();
+            server.panel_port = found;
+            found.unwrap_or(tunnel::PANEL_PORT)
+        }
+    };
+    let t = tunnel::start(session, server.tunnel_port, remote_port).await?;
     let port = t.local_port;
     tunnels.insert(server.id.clone(), t);
     Ok(port)

@@ -147,7 +147,7 @@ pub fn new_key(comment: &str) -> Result<(String, String)> {
 }
 
 /// Against a real sshd: `CLAWDESK_TEST_SSH=127.0.0.1:2222 CLAWDESK_TEST_SSH_PASSWORD=… cargo test -- --ignored`.
-/// The server must serve GET /api/health on its 127.0.0.1:8080 (the panel's port), like an installed ClawDesk.
+/// The server must serve GET /api/health on its 127.0.0.1:8080 (the default panel port), like an installed ClawDesk.
 #[cfg(test)]
 mod e2e {
     use super::*;
@@ -182,8 +182,9 @@ mod e2e {
         let code = session.exec("cat /tmp/clawdesk-test.txt; echo second; exit 3", None, |l| lines.push(l.to_owned())).await.unwrap();
         assert_eq!((code, lines), (3, vec!["uploaded over sftp".to_owned(), "second".to_owned()]));
 
-        // The tunnel reaches the server's 127.0.0.1:8080.
-        let t = crate::tunnel::start(session, None).await.unwrap();
+        // The panel is found, and the tunnel reaches it.
+        assert_eq!(crate::tunnel::detect_panel_port(&session).await.unwrap(), Some(crate::tunnel::PANEL_PORT));
+        let t = crate::tunnel::start(session, None, crate::tunnel::PANEL_PORT).await.unwrap();
         let mut stream = tokio::net::TcpStream::connect(("127.0.0.1", t.local_port)).await.unwrap();
         stream.write_all(b"GET /api/health HTTP/1.0\r\nHost: x\r\n\r\n").await.unwrap();
         let mut answer = String::new();

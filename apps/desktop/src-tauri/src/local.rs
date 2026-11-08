@@ -4,7 +4,7 @@
 //! checkout on the same machine is not touched). Containers restart with Docker Desktop; opening the panel
 //! starts Docker Desktop when it is not running.
 
-use crate::install::{strip_ansi, InstallResult, LogLine, Step};
+use crate::install::{data_newer, data_newer_error, strip_ansi, InstallResult, LogLine, Step};
 use crate::servers::{Server, Store};
 use anyhow::{bail, Context, Result};
 use std::path::{Path, PathBuf};
@@ -163,7 +163,8 @@ fn unpack(archive: &Path, dir: &Path) -> Result<()> {
     result
 }
 
-pub async fn install(app: &AppHandle, store: &Store, name: String) -> Result<InstallResult> {
+/// `set_aside`: the person chose to set aside data a newer ClawDesk wrote and install clean (deploy/scripts/init.sh).
+pub async fn install(app: &AppHandle, store: &Store, name: String, set_aside: bool) -> Result<InstallResult> {
     let log = |line: &str| {
         let _ = app.emit("install://log", LogLine { line });
     };
@@ -185,7 +186,7 @@ pub async fn install(app: &AppHandle, store: &Store, name: String) -> Result<Ins
     step("Running the installer");
     let mut child = command(&bash)
         .arg("-c")
-        .arg("bash deploy/scripts/local.sh < /dev/null 2>&1")
+        .arg(if set_aside { "CLAWDESK_SET_ASIDE_NEWER_DATA=1 bash deploy/scripts/local.sh < /dev/null 2>&1" } else { "bash deploy/scripts/local.sh < /dev/null 2>&1" })
         .current_dir(&dir)
         .stdout(Stdio::piped())
         .stderr(Stdio::null())
@@ -193,6 +194,7 @@ pub async fn install(app: &AppHandle, store: &Store, name: String) -> Result<Ins
         .context("could not start the installer")?;
     let mut lines = BufReader::new(child.stdout.take().context("no installer output")?).lines();
     let mut setup_url = None;
+    let mut newer = None;
     while let Some(line) = lines.next_line().await? {
         let clean = strip_ansi(line.trim_end_matches('\r'));
         if let Some(s) = clean.strip_prefix("==> ") {
@@ -203,10 +205,16 @@ pub async fn install(app: &AppHandle, store: &Store, name: String) -> Result<Ins
                 setup_url = Some(url.to_owned());
             }
         }
+        if let Some(found) = data_newer(&clean) {
+            newer = Some(found);
+        }
         log(&clean);
     }
     let status = child.wait().await?;
     if !status.success() {
+        if let Some(error) = data_newer_error(newer) {
+            return Err(error);
+        }
         bail!("the installer stopped with code {}; see the log", status.code().unwrap_or(-1));
     }
 
@@ -221,6 +229,7 @@ pub async fn install(app: &AppHandle, store: &Store, name: String) -> Result<Ins
         host_key: String::new(),
         created_at,
         tunnel_port: None,
+        panel_port: None,
         local: true,
     };
     store.save(&server)?;

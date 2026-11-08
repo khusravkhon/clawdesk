@@ -19,6 +19,31 @@ pub struct InstallInput {
     /// "domain" | "sslip" | "tunnel"
     pub https: String,
     pub domain: Option<String>,
+    /// The person chose to set aside data a newer ClawDesk wrote (deploy/scripts/init.sh).
+    #[serde(default)]
+    pub set_aside_newer_data: bool,
+}
+
+/// init.sh stops on data a newer ClawDesk wrote and says so on its last line:
+/// "CLAWDESK-DATA-NEWER data=<version> app=<version>". Returns (data, app).
+pub(crate) fn data_newer(line: &str) -> Option<(String, String)> {
+    let rest = line.trim().strip_prefix("CLAWDESK-DATA-NEWER ")?;
+    let mut data = None;
+    let mut app = None;
+    for part in rest.split_whitespace() {
+        if let Some(v) = part.strip_prefix("data=") {
+            data = Some(v.to_owned());
+        } else if let Some(v) = part.strip_prefix("app=") {
+            app = Some(v.to_owned());
+        }
+    }
+    let valid = |v: &String| !v.is_empty() && v.chars().all(|c| c.is_ascii_digit() || c == '.');
+    Some((data.filter(valid)?, app.filter(valid)?))
+}
+
+/// The error the app shows as a choice (update the app / set the data aside / cancel), not as a failure.
+pub(crate) fn data_newer_error(found: Option<(String, String)>) -> Option<anyhow::Error> {
+    found.map(|(data, app)| anyhow::anyhow!("data_newer:{data}:{app}"))
 }
 
 #[derive(Serialize)]
@@ -102,14 +127,16 @@ pub async fn run(app: &AppHandle, store: &servers::Store, input: InstallInput) -
         _ => String::new(),
     };
     // install.sh keeps data and .env when re-run, so installing over an existing copy updates it.
+    let set_aside = if input.set_aside_newer_data { "CLAWDESK_SET_ASIDE_NEWER_DATA=1 " } else { "" };
     let command = format!(
         "{sudo}sh -c {}",
         sh_quote(&format!(
-            "mkdir -p {REMOTE_DIR} && tar -xzf {REMOTE_ARCHIVE} -C {REMOTE_DIR} && rm -f {REMOTE_ARCHIVE} && bash {REMOTE_DIR}/deploy/install.sh {args} < /dev/null 2>&1"
+            "mkdir -p {REMOTE_DIR} && tar -xzf {REMOTE_ARCHIVE} -C {REMOTE_DIR} && rm -f {REMOTE_ARCHIVE} && {set_aside}bash {REMOTE_DIR}/deploy/install.sh {args} < /dev/null 2>&1"
         ))
     );
     let mut setup_url = None;
     let mut panel_url = None;
+    let mut newer = None;
     let code = session
         .exec(&command, sudo_input.as_deref(), |line| {
             // Colours and the installer's own step markers.
@@ -125,13 +152,21 @@ pub async fn run(app: &AppHandle, store: &servers::Store, input: InstallInput) -
             if let Some(url) = clean.strip_prefix("ClawDesk is starting: ") {
                 panel_url = url.trim().starts_with("https://").then(|| url.trim().to_owned());
             }
+            if let Some(found) = data_newer(&clean) {
+                newer = Some(found);
+            }
             let _ = app.emit("install://log", LogLine { line: &clean });
         })
         .await?;
     if code != 0 {
+        if let Some(error) = data_newer_error(newer) {
+            return Err(error);
+        }
         bail!("the installer stopped with code {code}; see the log");
     }
 
+    // Re-installing over an install with its own PANEL_PORT keeps that port; the tunnel must lead there.
+    let panel_port = crate::tunnel::detect_panel_port(&session).await.ok().flatten();
     let now = SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0);
     let server = Server {
         id,
@@ -144,6 +179,7 @@ pub async fn run(app: &AppHandle, store: &servers::Store, input: InstallInput) -
         created_at: now,
         tunnel_port: None,
         local: false,
+        panel_port,
     };
     // Only a server that installed is kept, with its key in the system keychain.
     servers::store_key(&server.id, &private_key)?;
@@ -185,6 +221,16 @@ mod tests {
         assert!(!valid_domain("bad domain"));
         assert!(!valid_domain("example"));
         assert!(!valid_domain("-x.com"));
+    }
+
+    #[test]
+    fn reads_the_installers_newer_data_line() {
+        assert_eq!(data_newer("CLAWDESK-DATA-NEWER data=2026.8.35 app=2026.8.1"), Some(("2026.8.35".into(), "2026.8.1".into())));
+        assert_eq!(data_newer("  CLAWDESK-DATA-NEWER app=2026.8.1 data=2026.11.2  "), Some(("2026.11.2".into(), "2026.8.1".into())));
+        for line in ["", "CLAWDESK-DATA-NEWER", "CLAWDESK-DATA-NEWER data=2026.8.35", "CLAWDESK-DATA-NEWER data=x;rm app=1", "echo CLAWDESK-DATA-NEWER data=1 app=1"] {
+            assert_eq!(data_newer(line), None, "{line:?}");
+        }
+        assert_eq!(data_newer_error(data_newer("CLAWDESK-DATA-NEWER data=2026.8.35 app=2026.8.1")).unwrap().to_string(), "data_newer:2026.8.35:2026.8.1");
     }
 
     #[test]

@@ -26,6 +26,10 @@ pub struct Server {
     /// "This computer": ClawDesk in Docker Desktop here, no SSH (see local.rs).
     #[serde(default)]
     pub local: bool,
+    /// The panel's port on the server (its PANEL_PORT), found when the server was added. None: an entry from
+    /// before this was known; the tunnel finds it on first use (another service may hold 8080, e.g. CrowdSec).
+    #[serde(default)]
+    pub panel_port: Option<u16>,
 }
 
 pub struct Store {
