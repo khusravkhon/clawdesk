@@ -240,3 +240,40 @@ test("init.sh keeps an install on its OpenClaw line and never moves it to anothe
   assert.deepEqual(await choose(t, "2026.11.9", "2026.8.35", ["2026.8.35", "2026.12.1", "2026.12.4", "2027.1.1"]), { code: 0, out: "2026.12.4" }, "never down: the oldest newer line");
   assert.equal((await choose(t, "2027.2.1", "2026.8.35", ["2026.8.35", "2026.11.2"])).code, 2, "an install newer than the code stops");
 });
+
+// The data's own OpenClaw version (init.sh refuses data a newer ClawDesk wrote, or sets it aside on request).
+const shell = (body, ...args) => {
+  const script = path.join(import.meta.dirname, "scripts", "openclaw-choice.sh");
+  const r = spawnSync("bash", ["-c", `. "$1"; shift; ${body}`, "_", script, ...args], { encoding: "utf8" });
+  return { code: r.status, out: r.stdout.trim() };
+};
+
+test("the version that wrote the data last is read from openclaw.json and compared", { skip: process.platform === "win32" && "bash here is not the install's bash" }, () => {
+  const config = JSON.stringify({ meta: { migrations: {}, lastTouchedVersion: "2026.8.35" }, gateway: {} }, null, 2);
+  assert.equal(spawnSync("bash", ["-c", `. "$1"; openclaw_config_version`, "_", path.join(import.meta.dirname, "scripts", "openclaw-choice.sh")], { input: config, encoding: "utf8" }).stdout.trim(), "2026.8.35");
+  assert.equal(spawnSync("bash", ["-c", `. "$1"; openclaw_config_version`, "_", path.join(import.meta.dirname, "scripts", "openclaw-choice.sh")], { input: '{"meta":{}}', encoding: "utf8" }).stdout.trim(), "", "no version: a new or very old install");
+  for (const [a, b, newer] of [["2026.8.35", "2026.8.1", true], ["2026.8.1", "2026.8.35", false], ["2026.8.35", "2026.8.35", false], ["2026.11.2", "2026.8.35", true], ["2027.1.1", "2026.12.9", true]]) {
+    assert.equal(shell(`openclaw_newer "$1" "$2"`, a, b).code === 0, newer, `${a} newer than ${b}`);
+  }
+});
+
+test("setting aside moves the state and copies the volumes, deleting nothing else", { skip: process.platform === "win32" && "bash here is not the install's bash" }, () => {
+  // Calls are recorded in a file: the code sends some of docker's output to /dev/null.
+  const { out } = shell(`
+    log="$(mktemp)"
+    docker() { echo "docker $*" >> "$log"; case "$1 $2" in "volume inspect") [[ "$3" != *freellmapi-data ]] ;; *) return 0 ;; esac; }
+    said="$(openclaw_set_aside /var/lib/clawdesk-local clawdesk-local)"
+    cat "$log"; echo "$said"; rm -f "$log"`);
+  const calls = out.split("\n");
+  assert.ok(calls.some((l) => l.startsWith("docker compose -p clawdesk-local -f docker-compose.yml down")), out);
+  const run = calls.find((l) => l.startsWith("docker run"));
+  assert.match(run, /-v clawdesk-local_panel-data:\/v\/panel-data/);
+  assert.match(run, /-v clawdesk-local_openclaw-auth-secrets:\/v\/openclaw-auth-secrets/);
+  assert.doesNotMatch(run, /freellmapi-data/, "a volume that does not exist is not created by mounting it");
+  // The script and its arguments span several lines of the recorded call.
+  assert.match(out, /mv "\$dir\/openclaw" "\$saved\/openclaw"/);
+  assert.match(out, /_ \/var\/lib\/clawdesk-local\/saved-\d{8}T\d{6}Z \/var\/lib\/clawdesk-local panel-data openclaw-auth-secrets/);
+  assert.deepEqual(calls.filter((l) => l.startsWith("docker volume rm")), ["docker volume rm clawdesk-local_panel-data", "docker volume rm clawdesk-local_openclaw-auth-secrets"]);
+  assert.ok(!calls.some((l) => /rm -rf|backups/.test(l) && l.startsWith("docker run")), "backups and the data folder are never removed");
+  assert.match(out, /set aside in \/var\/lib\/clawdesk-local\/saved-/);
+});

@@ -43,3 +43,38 @@ openclaw_installed() {
   [[ "$v" =~ ^[0-9]{4}\.[0-9]{1,2}\.[0-9]{1,4}$ ]] || v="$(env_get OPENCLAW_VERSION)"
   printf '%s' "$v"
 }
+
+# The data decides too. OpenClaw refuses to start on state that a newer OpenClaw wrote last (so as not to damage
+# it); without this check the person only sees a Gateway that never becomes healthy. openclaw.json keeps the
+# version that last wrote it in meta.lastTouchedVersion.
+openclaw_config_version() { # openclaw.json text on stdin → the version that wrote it last, or nothing
+  grep -oE '"lastTouchedVersion"[[:space:]]*:[[:space:]]*"[0-9]{4}\.[0-9]{1,2}\.[0-9]{1,4}"' | grep -oE '[0-9]{4}\.[0-9]{1,2}\.[0-9]{1,4}' | head -1 || true
+}
+
+openclaw_newer() { # $1 newer than $2?
+  [[ "$1" != "$2" && "$(printf '%s\n%s\n' "$1" "$2" | sort -V | tail -1)" == "$1" ]]
+}
+
+openclaw_data_version() { # $1 data folder; read through Docker (on Docker Desktop it lives in Docker's VM)
+  # --mount fails on a missing folder instead of creating it: a new install has no data, so no version.
+  docker run --rm --mount "type=bind,src=$1,dst=/d,readonly" debian:bookworm-slim cat /d/openclaw/openclaw.json 2>/dev/null | openclaw_config_version
+}
+
+# Moves a newer install's data aside, nothing deleted: $1/openclaw and the copies of the compose volumes go to
+# $1/saved-<time>; the volumes are then removed so the install starts empty. Backups stay where they are.
+openclaw_set_aside() { # $1 data folder, $2 compose project
+  local dir="$1" project="$2" saved v
+  local mounts=() names=()
+  saved="$dir/saved-$(date -u +%Y%m%dT%H%M%SZ)"
+  docker compose -p "$project" -f docker-compose.yml down >/dev/null 2>&1 || true # containers hold the volumes
+  for v in panel-data freellmapi-data openclaw-auth-secrets; do
+    if docker volume inspect "${project}_$v" >/dev/null 2>&1; then mounts+=(-v "${project}_$v:/v/$v"); names+=("$v"); fi
+  done
+  docker run --rm --user 0 -v "$dir:$dir" ${mounts[@]+"${mounts[@]}"} debian:bookworm-slim sh -c '
+    set -e; saved="$1"; dir="$2"; shift 2
+    mkdir -p "$saved"
+    if [ -e "$dir/openclaw" ]; then mv "$dir/openclaw" "$saved/openclaw"; fi
+    for v in "$@"; do cp -a "/v/$v" "$saved/$v"; done' _ "$saved" "$dir" ${names[@]+"${names[@]}"}
+  for v in ${names[@]+"${names[@]}"}; do docker volume rm "${project}_$v" >/dev/null; done
+  echo "set aside in $saved (backups stay in $dir/backups)"
+}

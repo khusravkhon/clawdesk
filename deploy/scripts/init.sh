@@ -76,6 +76,29 @@ else
 fi
 echo "OpenClaw: $OPENCLAW_CHOSEN"
 
+# Data that a newer ClawDesk wrote: this OpenClaw would refuse to start on it. Stop before anything changes and
+# say what to do, unless the person chose to set it aside (CLAWDESK_SET_ASIDE_NEWER_DATA=1, the desktop app's
+# "set the data aside and install clean"). The last line is for the desktop app.
+DATA_DIR_NOW="${CLAWDESK_DATA_DIR:-$(env_get CLAWDESK_DATA_DIR)}"
+DATA_DIR_NOW="${DATA_DIR_NOW:-/var/lib/clawdesk}"
+DATA_VERSION="$(openclaw_data_version "$DATA_DIR_NOW")"
+if [[ -n "$DATA_VERSION" ]] && openclaw_newer "$DATA_VERSION" "$OPENCLAW_CHOSEN"; then
+  if [[ "${CLAWDESK_SET_ASIDE_NEWER_DATA:-}" == 1 ]]; then
+    step "Setting aside the data of a newer ClawDesk (OpenClaw $DATA_VERSION)"
+    project="${COMPOSE_PROJECT_NAME:-$(env_get COMPOSE_PROJECT_NAME)}"
+    openclaw_set_aside "$DATA_DIR_NOW" "${project:-clawdesk}"
+  else
+    echo
+    echo "$DATA_DIR_NOW holds the data of a newer ClawDesk: OpenClaw $DATA_VERSION wrote it last, and this ClawDesk"
+    echo "runs OpenClaw $OPENCLAW_CHOSEN, which cannot open it. Nothing was changed. Either:"
+    echo "  - update ClawDesk (the desktop app, or the code on the server) and run this again, or"
+    echo "  - install clean with that data set aside, not deleted (backups stay):"
+    echo "      CLAWDESK_SET_ASIDE_NEWER_DATA=1 <the same command>"
+    echo "CLAWDESK-DATA-NEWER data=$DATA_VERSION app=$OPENCLAW_CHOSEN"
+    exit 3
+  fi
+fi
+
 [[ $DEV == 0 ]] && guard_detect
 if [[ $GUARD == 1 ]]; then
   step "Backing up before the update"

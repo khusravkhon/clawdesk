@@ -89,36 +89,52 @@ const result = ref<{ id: string; setupUrl: string | null } | null>(null);
 const logBox = ref<HTMLElement | null>(null);
 const unlisten: (() => void)[] = [];
 
-async function startInstall(): Promise<void> {
+/**
+ * The installer found data a newer ClawDesk wrote (deploy/scripts/init.sh): nothing was changed, and the person
+ * chooses — update this app, set the data aside and install clean, or cancel.
+ */
+const dataNewer = ref<{ data: string; app: string; retry: () => Promise<void> } | null>(null);
+function newerData(e: unknown): { data: string; app: string } | null {
+  const m = /data_newer:([\d.]+):([\d.]+)/.exec(errorText(e));
+  return m ? { data: m[1]!, app: m[2]! } : null;
+}
+
+async function startInstall(setAside = false): Promise<void> {
   installing.value = true;
   error.value = null;
+  dataNewer.value = null;
   log.value = [];
   result.value = null;
   try {
-    const res = await api.installServer({ ...inst, name: inst.name.trim() || inst.host.trim(), domain: inst.https === "domain" ? (inst.domain ?? "").trim() : null });
+    const res = await api.installServer({ ...inst, name: inst.name.trim() || inst.host.trim(), domain: inst.https === "domain" ? (inst.domain ?? "").trim() : null, setAsideNewerData: setAside });
     result.value = { id: res.server.id, setupUrl: res.setupUrl };
     inst.password = "";
     await load();
   } catch (e) {
-    error.value = `${t("installFailed")}: ${errorText(e)}`;
+    const newer = newerData(e);
+    if (newer) dataNewer.value = { ...newer, retry: () => startInstall(true) };
+    else error.value = `${t("installFailed")}: ${errorText(e)}`;
   } finally {
     installing.value = false;
   }
 }
 
 // --- This computer: ClawDesk in Docker Desktop here (also how it updates: the app's own version of the code).
-async function startLocal(): Promise<void> {
+async function startLocal(setAside = false): Promise<void> {
   view.value = "local";
   installing.value = true;
   error.value = null;
+  dataNewer.value = null;
   log.value = [];
   result.value = null;
   try {
-    const res = await api.installLocal(t("thisComputer"));
+    const res = await api.installLocal(t("thisComputer"), setAside);
     result.value = { id: res.server.id, setupUrl: res.setupUrl };
     await load();
   } catch (e) {
-    error.value = `${t("installFailed")}: ${errorText(e)}`;
+    const newer = newerData(e);
+    if (newer) dataNewer.value = { ...newer, retry: () => startLocal(true) };
+    else error.value = `${t("installFailed")}: ${errorText(e)}`;
   } finally {
     installing.value = false;
   }
@@ -186,6 +202,16 @@ watch(view, () => {
         </header>
 
         <n-alert v-if="error" type="error" closable class="gap" @close="error = null">{{ error }}</n-alert>
+        <n-alert v-if="dataNewer" type="warning" class="gap" :title="t('dataNewerTitle')">
+          <p>{{ t("dataNewerText", { data: dataNewer.data, app: dataNewer.app }) }}</p>
+          <n-space class="gap">
+            <n-button type="primary" :disabled="!update || installing" :loading="updating" @click="installUpdate">{{ t("dataNewerUpdate") }}</n-button>
+            <n-button :disabled="installing" @click="dataNewer.retry()">{{ t("dataNewerSetAside") }}</n-button>
+            <n-button quaternary :disabled="installing" @click="dataNewer = null">{{ t("dataNewerCancel") }}</n-button>
+          </n-space>
+          <p v-if="!update" class="muted small">{{ t("dataNewerNoUpdate") }}</p>
+          <p class="muted small">{{ t("dataNewerSetAsideHint") }}</p>
+        </n-alert>
 
         <!-- Servers -->
         <template v-if="view === 'list'">
@@ -200,7 +226,7 @@ watch(view, () => {
               </div>
               <template v-if="localServer">
                 <n-button type="primary" :loading="opening === localServer.id" @click="open(localServer.id)"><template #icon><external-link :size="15" /></template>{{ t("open") }}</n-button>
-                <n-button quaternary circle :title="t('localUpdate')" :aria-label="t('localUpdate')" @click="startLocal"><refresh-cw :size="16" /></n-button>
+                <n-button quaternary circle :title="t('localUpdate')" :aria-label="t('localUpdate')" @click="startLocal()"><refresh-cw :size="16" /></n-button>
                 <n-popconfirm @positive-click="remove(localServer.id)">
                   <template #trigger><n-button quaternary circle :aria-label="t('remove')"><trash-2 :size="16" /></n-button></template>
                   {{ t("localRemoveConfirm") }}
@@ -268,7 +294,7 @@ watch(view, () => {
             </ul>
             <n-space>
               <n-button :disabled="installing" @click="view = 'list'">{{ t("back") }}</n-button>
-              <n-button type="primary" :loading="installing" @click="startLocal">{{ installing ? t("installing") : localServer ? t("localUpdate") : t("localStart") }}</n-button>
+              <n-button type="primary" :loading="installing" @click="startLocal()">{{ installing ? t("installing") : localServer ? t("localUpdate") : t("localStart") }}</n-button>
             </n-space>
           </template>
           <template v-else>
@@ -286,7 +312,7 @@ watch(view, () => {
 
         <!-- Install on a new server -->
         <n-card v-else :title="t('install')">
-          <form v-if="!result" class="form" @submit.prevent="startInstall">
+          <form v-if="!result" class="form" @submit.prevent="startInstall()">
             <p class="muted">{{ t("installLead") }}</p>
             <label>{{ t("name") }}<n-input v-model:value="inst.name" :disabled="installing" /></label>
             <div class="two">
