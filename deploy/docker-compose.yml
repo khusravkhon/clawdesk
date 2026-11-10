@@ -25,6 +25,10 @@ x-hardening: &hardening
   security_opt: ["no-new-privileges:true"]
   init: true
   restart: unless-stopped
+  # Docker keeps container logs without a limit by default; 3 × 10 MB per container is plenty.
+  logging:
+    driver: json-file
+    options: { max-size: "10m", max-file: "3" }
 
 services:
   gateway:
