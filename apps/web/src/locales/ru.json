@@ -193,6 +193,7 @@
     "title": "ClawDesk"
   },
   "nav": {
+    "materials": "Материалы",
     "status": "Состояние",
     "agents": "Агенты",
     "overview": "Обзор",

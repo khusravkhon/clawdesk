@@ -1,7 +1,11 @@
 <script setup lang="ts">
 import { ArrowLeft, ChevronRight } from "@lucide/vue";
 import { NButton } from "naive-ui";
-import { RouterLink, useRouter } from "vue-router";
+import { computed } from "vue";
+import { useI18n } from "vue-i18n";
+import { RouterLink, useRoute, useRouter } from "vue-router";
+import { PERSONAL_SETTINGS_PATHS } from "../../personal-settings";
+import { useSpaceStore } from "../../stores/space";
 
 const props = defineProps<{
   title: string;
@@ -13,6 +17,16 @@ const props = defineProps<{
 }>();
 
 const router = useRouter();
+const route = useRoute();
+const space = useSpaceStore();
+const { t } = useI18n();
+
+// In personal mode these pages are opened from Settings (not from the menu): lead back there.
+const crumbs = computed(() => props.breadcrumbs?.length
+  ? props.breadcrumbs
+  : space.mode === "personal" && PERSONAL_SETTINGS_PATHS.has(route.path)
+    ? [{ label: t("personalSettings.title"), to: "/settings" }, { label: props.title }]
+    : []);
 
 function goBack() {
   if (props.backTo) {
@@ -26,13 +40,13 @@ function goBack() {
 <template>
   <header class="page-header">
     <!-- Breadcrumbs Navigation -->
-    <nav v-if="breadcrumbs?.length" class="breadcrumbs" aria-label="Breadcrumbs">
-      <template v-for="(crumb, idx) in breadcrumbs" :key="idx">
+    <nav v-if="crumbs.length" class="breadcrumbs" aria-label="Breadcrumbs">
+      <template v-for="(crumb, idx) in crumbs" :key="idx">
         <router-link v-if="crumb.to" :to="crumb.to" class="crumb-link">
           {{ crumb.label }}
         </router-link>
         <span v-else class="crumb-current">{{ crumb.label }}</span>
-        <chevron-right v-if="idx < breadcrumbs.length - 1" :size="13" class="crumb-sep" />
+        <chevron-right v-if="idx < crumbs.length - 1" :size="13" class="crumb-sep" />
       </template>
     </nav>
 

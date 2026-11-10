@@ -6,7 +6,7 @@ import { check, type Update } from "@tauri-apps/plugin-updater";
 import { relaunch } from "@tauri-apps/plugin-process";
 import { ExternalLink, Monitor, Plus, RefreshCw, Server as ServerIcon, Trash2, Wand2 } from "@lucide/vue";
 import { darkTheme, NAlert, NButton, NCard, NConfigProvider, NEmpty, NGlobalStyle, NInput, NInputNumber, NMessageProvider, NPopconfirm, NRadio, NRadioGroup, NSpace } from "naive-ui";
-import { computed, onMounted, onUnmounted, reactive, ref, watch } from "vue";
+import { computed, onMounted, onUnmounted, reactive, ref, shallowRef, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import { api, errorText, type InstallInput, type Server } from "./api";
 import LocalRecovery from './LocalRecovery.vue';
@@ -148,7 +148,9 @@ async function openSetup(): Promise<void> {
 }
 
 // --- Updates (GitHub releases).
-const update = ref<Update | null>(null);
+// shallowRef, not ref: a deep ref wraps the updater's object in a Proxy, and its private class fields cannot
+// be read through one ("Cannot read private member from an object whose class did not declare it").
+const update = shallowRef<Update | null>(null);
 const updating = ref(false);
 async function installUpdate(): Promise<void> {
   if (!update.value) return;

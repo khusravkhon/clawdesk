@@ -5,6 +5,7 @@ import { useI18n } from "vue-i18n";
 import { api, browserTimeZone } from "../api/client";
 import PageHeader from "../components/ui/PageHeader.vue";
 import { useSpaceStore } from "../stores/space";
+import { PERSONAL_SETTINGS_GROUPS } from "../personal-settings";
 
 const { t } = useI18n();
 const space = useSpaceStore();
@@ -18,11 +19,7 @@ const valid = computed(() => {
   catch { return false; }
 });
 const changed = computed(() => name.value.trim() !== space.space?.name || timezone.value.trim() !== space.space?.timezone);
-const groups: { key: string; links: [string, string][] }[] = [
-  { key: "assistant", links: [["/agents", "nav.agents"], ["/schedules", "nav.schedules"], ["/free-models", "nav.freeModels"]] },
-  { key: "connections", links: [["/sources", "nav.sources"], ["/skills", "nav.extensions"], ["/telegram", "personalSettings.telegram"]] },
-  { key: "system", links: [["/usage", "nav.usage"], ["/status", "nav.status"], ["/system", "system.backups"]] },
-];
+const groups = PERSONAL_SETTINGS_GROUPS;
 
 async function save(): Promise<void> {
   if (saving.value || !valid.value || !name.value.trim()) return;
