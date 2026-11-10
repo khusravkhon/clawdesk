@@ -50,9 +50,9 @@ STATE_DIR="$DATA_DIR/openclaw"
 FILES_DIR="$(env_get CLAWDESK_FILES_DIR)"
 COMPOSE=(docker compose -f docker-compose.yml)
 [[ -n "$(env_get CLAWDESK_DOMAIN)" ]] && COMPOSE+=(--profile https)
-GATEWAY_IMAGE="$("${COMPOSE[@]}" config --images | grep -m1 clawdesk-gateway)"
-PANEL_IMAGE="$("${COMPOSE[@]}" config --images | grep -m1 clawdesk-panel)"
-PROJECT="$("${COMPOSE[@]}" config --format json | sed -n 's/^ *"name": *"\([^"]*\)".*/\1/p' | head -1)"
+GATEWAY_IMAGE="$("${COMPOSE[@]}" config --images | grep clawdesk-gateway | tail -1)"
+PANEL_IMAGE="$("${COMPOSE[@]}" config --images | grep clawdesk-panel | tail -1)"
+PROJECT="$("${COMPOSE[@]}" config --format json | sed -n 's/^ *"name": *"\([^"]*\)".*/\1/p' | awk 'NR==1')"
 PROJECT="${PROJECT:-clawdesk}"
 [[ -z "$EXPECTED_PROJECT" || "$EXPECTED_PROJECT" == "$PROJECT" ]] || { echo "Selected installation changed; inspect it again."; exit 1; }
 [[ "$DATA_DIR" == /* && "$DATA_DIR" != / && "$DATA_DIR" != /var && "$DATA_DIR" != /var/lib ]] || { echo "Unsafe installation data directory"; exit 1; }
@@ -79,7 +79,7 @@ if cmp -s -n "${#encrypted_magic}" "$1" <(printf '%s' "$encrypted_magic"); then
   [[ -n "$password" ]] || { echo "no password given"; exit 1; }
   # Decrypted next to the other backups (owner-only folder), removed at the end.
   printf '%s' "$password" | docker run --rm --network none -i --user 1000 "${SRC[@]}" -v "$DATA_DIR/backups:/out" --entrypoint node "$PANEL_IMAGE" \
-    --input-type=module -e 'import {decryptFile} from "/app/dist/backups/backup-crypto.js"; let password=""; for await (const chunk of process.stdin) password+=chunk; try { await decryptFile(process.argv[1],process.argv[2],password); } catch { console.error("Wrong password or damaged backup"); process.exitCode=1; }' "/in/$ARCHIVE_NAME" "/out/$RESTORE_COPY"
+    --input-type=module -e 'import {decryptFile} from "/app/dist/backups/backup-crypto.js"; let password=""; for await (const chunk of process.stdin) password+=chunk; try { await decryptFile(process.argv[1],process.argv[2],password); } catch (e) { console.error(e?.code === "EACCES" ? "Cannot read the backup file: move it to a folder everyone can read (e.g. /opt) and chmod 644 it" : "Wrong password or damaged backup"); process.exitCode=1; }' "/in/$ARCHIVE_NAME" "/out/$RESTORE_COPY"
   unset password
   SRC=(-v "$DATA_DIR/backups:/in:ro")
   TAR="/in/$RESTORE_COPY"

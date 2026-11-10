@@ -57,7 +57,8 @@ openclaw_newer() { # $1 newer than $2?
 
 openclaw_data_version() { # $1 data folder; read through Docker (on Docker Desktop it lives in Docker's VM)
   # --mount fails on a missing folder instead of creating it: a new install has no data, so no version.
-  docker run --rm --mount "type=bind,src=$1,dst=/d,readonly" debian:bookworm-slim cat /d/openclaw/openclaw.json 2>/dev/null | openclaw_config_version
+  # || true: with pipefail that failed docker run would end the caller's set -e script without a word.
+  docker run --rm --mount "type=bind,src=$1,dst=/d,readonly" debian:bookworm-slim cat /d/openclaw/openclaw.json 2>/dev/null | openclaw_config_version || true
 }
 
 # Moves a newer install's data aside, nothing deleted: $1/openclaw and the copies of the compose volumes go to

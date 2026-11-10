@@ -8,6 +8,16 @@
 {$CLAWDESK_DOMAIN} {
 	encode zstd gzip
 
+	# JSON access log to stdout (docker logs): a server ban tool such as CrowdSec reads it to block scanners.
+	log {
+		output stdout
+		format json
+	}
+
+	# Paths only vulnerability scanners ask for: answered here, the panel never sees them.
+	@scanners path /.env* /.git* /.aws* /.ssh* *.php /wp-* /wordpress* /xmlrpc* /phpmyadmin* /pma* /cgi-bin/* /vendor/* /actuator* /server-status* /boaform* /HNAP1*
+	respond @scanners 404
+
 	reverse_proxy {$CLAWDESK_UPSTREAM:gateway:8080}
 
 	header {

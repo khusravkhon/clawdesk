@@ -30,7 +30,7 @@ const menu = computed<MenuOption[]>(() => [
   { key: "/", label: link("/", t("nav.overview")), icon: icon(LayoutDashboard) },
   ...(space.mode === "personal" ? [{ key: "/today", label: link("/today", t("today.title")), icon: icon(CalendarDays) }] : []),
   { key: "/chat", label: link("/chat", t("nav.chat")), icon: icon(MessagesSquare) },
-  ...(space.mode === "personal" ? [{ key: "/library", label: link("/library", t("today.materials")), icon: icon(Library) }] : []),
+  ...(space.mode === "personal" ? [{ key: "/library", label: link("/library", t("nav.materials")), icon: icon(Library) }] : []),
   { key: "/assistant", label: link("/assistant", t("nav.assistant")), icon: icon(UserRound) },
   ...(space.mode === "personal" ? [
     { key: "/approvals", label: link("/approvals", t("nav.approvals"), () => approvals.count), icon: icon(ShieldCheck) },

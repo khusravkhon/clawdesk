@@ -110,6 +110,19 @@ else
     || fail "Could not download the code. While the repository is private, copy it to the server and run: sudo bash <copy>/deploy/install.sh"
 fi
 
+# An install keeps its folders: without CLAWDESK_DATA_DIR / CLAWDESK_FILES_DIR given now, take the ones its
+# deploy/.env has. Otherwise a plain re-run (the usual update) moved the shared files folder to the default
+# data folder, and agents saw an empty files/.
+saved_env() { grep -E "^$1=" "$CODE_DIR/deploy/.env" 2>/dev/null | tail -1 | cut -d= -f2- || true; }
+if [[ -z "${CLAWDESK_DATA_DIR:-}" ]]; then
+  saved="$(saved_env CLAWDESK_DATA_DIR)"
+  [[ -n "$saved" ]] && DATA_DIR="$saved"
+fi
+# A data folder given now takes its files/ with it, as before; only a plain re-run keeps the saved one.
+FILES_DIR="${CLAWDESK_FILES_DIR:-}"
+[[ -z "$FILES_DIR" && -z "${CLAWDESK_DATA_DIR:-}" ]] && FILES_DIR="$(saved_env CLAWDESK_FILES_DIR)"
+FILES_DIR="${FILES_DIR:-$DATA_DIR/files}"
+
 step "Panel address (HTTPS)"
 public_ip() { curl -4 -fsS --max-time 10 https://api.ipify.org 2>/dev/null || hostname -I | awk '{print $1}'; }
 existing_domain="$(grep -E '^CLAWDESK_DOMAIN=' "$CODE_DIR/deploy/.env" 2>/dev/null | cut -d= -f2- || true)"
@@ -145,9 +158,17 @@ fi
 step "Starting ClawDesk"
 TZ_NAME="$(timedatectl show -p Timezone --value 2>/dev/null || true)"
 CLAWDESK_DOMAIN="$DOMAIN" \
-CLAWDESK_FILES_DIR="$DATA_DIR/files" \
+CLAWDESK_DATA_DIR="$DATA_DIR" \
+CLAWDESK_FILES_DIR="$FILES_DIR" \
 CLAWDESK_TZ="${TZ_NAME:-UTC}" \
   bash "$CODE_DIR/deploy/scripts/init.sh"
+
+# Every update builds new images here: drop the untagged leftovers and week-old build cache. Tagged images stay
+# (the update guard's rollback copies, the agent sandbox image), so nothing in use is touched.
+step "Cleaning up old images"
+docker image prune -f >/dev/null 2>&1 || true
+docker builder prune -f --filter until=168h >/dev/null 2>&1 || true
+df -h / | awk 'NR==2 {print "disk: " $3 " used, " $4 " free"}'
 
 cat <<EOF
 
@@ -155,5 +176,5 @@ ClawDesk is installed in $CODE_DIR, data in $DATA_DIR.
   Update:            sudo bash $CODE_DIR/deploy/install.sh
   Logs:              docker compose -f $CODE_DIR/deploy/docker-compose.yml logs -f panel
   New owner code:    docker compose -f $CODE_DIR/deploy/docker-compose.yml exec panel node dist/cli/owner-code.js https://${DOMAIN:-<panel address>}
-  Files for agents:  $DATA_DIR/files
+  Files for agents:  $FILES_DIR
 EOF
