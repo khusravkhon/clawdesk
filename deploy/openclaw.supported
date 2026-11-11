@@ -2,3 +2,4 @@
 # deploy/openclaw.version is the one a new install gets; an install keeps its own line and is offered
 # a newer one here in the panel (System → OpenClaw). Kept by scripts/openclaw-version.mjs.
 2026.8.35
+2026.11.3
