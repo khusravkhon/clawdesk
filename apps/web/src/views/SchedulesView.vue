@@ -1,7 +1,7 @@
 <script setup lang="ts">
 // Schedules (screen 10): tasks agents do at set times — turn on/off, change time, run now.
 import type { AgentListItemDto, ScheduleDto, ScheduleListDto, ScheduleRunDto } from "@clawdesk/shared";
-import { AlertCircle, CalendarClock, CheckCircle2, CircleSlash, History, Pencil, Play, Plus, Send, Trash2 } from "@lucide/vue";
+import { AlertCircle, CalendarClock, CheckCircle2, CircleSlash, Copy, History, Pencil, Play, Plus, Send, Trash2 } from "@lucide/vue";
 import { NButton, NEmpty, NPopconfirm, NSkeleton, NSwitch, NTooltip, useMessage } from "naive-ui";
 import { computed, onMounted, onUnmounted, ref } from "vue";
 import { useI18n } from "vue-i18n";
@@ -207,6 +207,7 @@ onUnmounted(() => {
                 {{ s.enabled ? t("schedules.turnOff") : t("schedules.turnOn") }}
               </n-tooltip>
             </div>
+            <p v-if="s.duplicateOf" class="dup"><copy :size="13" /> {{ t("schedules.duplicate") }}</p>
             <p class="prompt">{{ s.prompt }}</p>
             <div class="job-foot">
               <span v-if="s.lastStatus" class="last" :data-status="s.lastStatus" :title="s.lastError ? modelErrorHint(t, s.lastError) : undefined">
@@ -306,6 +307,14 @@ onUnmounted(() => {
   font-size: 12.5px;
   color: var(--text-2);
   margin-top: 2px;
+}
+.dup {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 10px 0 0;
+  font-size: 12.5px;
+  color: var(--critical);
 }
 .prompt {
   margin: 10px 0 12px;

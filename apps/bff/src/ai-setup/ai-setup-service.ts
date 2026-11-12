@@ -7,7 +7,7 @@ import { findFlashModels, storeKeyWithModelViaWizard } from "./gemini-free-tier.
 import type { Db } from "../db/client.js";
 import { and, eq, inArray } from "drizzle-orm";
 import { agents } from "../db/schema.js";
-import { assertRoomForBackup, choicesFor, keepAsBackup, ModelChainError, readCatalog, readChain, syncFollowers, toOptions, validateChain, writeChain } from "./model-chain.js";
+import { assertRoomForBackup, choicesFor, followerIds, keepAsBackup, ModelChainError, readCatalog, readChain, syncFollowers, toOptions, validateChain, writeChain } from "./model-chain.js";
 
 type ActivateResult = { ok: boolean; status?: string; modelRef?: string; latencyMs?: number; error?: string };
 type InstallResult = { ok: true; plugin: { id: string; version?: string }; restartRequired?: boolean };
@@ -91,11 +91,13 @@ export class AiSetupService {
   }
 
   async saveModelChain(req: SaveModelChainRequest): Promise<ModelChainDto> {
-    const [current, catalog] = await Promise.all([readChain(this.gateway, req.agentId), readCatalog(this.gateway)]);
+    const [current, catalog, main] = await Promise.all([readChain(this.gateway, req.agentId), readCatalog(this.gateway), readChain(this.gateway, "main")]);
     const problem = validateChain(req.agentId, req.chain, catalog, current);
     if (problem) throw new ModelChainError("invalid_chain", problem);
     await writeChain(this.gateway, req.agentId, req.chain, "clawdesk: model chain");
     this.logger.info({ agentId: req.agentId, chain: req.chain }, "model chain saved");
+    // A junior given its own list stops following the main agent's; otherwise the next sync puts the main list back.
+    if (req.agentId !== "main" && JSON.stringify(req.chain) !== JSON.stringify(main) && followerIds(this.db).includes(req.agentId)) this.markOwnAi(req.agentId);
     if (req.agentId === "main") await this.syncFollowers();
     return this.modelChain(req.agentId);
   }

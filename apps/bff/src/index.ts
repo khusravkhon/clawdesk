@@ -22,12 +22,13 @@ import { TelegramService } from "./telegram/telegram-service.js";
 import { FreeModelsService } from "./free-models/free-models-service.js";
 import { ChatService } from "./chat/chat-service.js";
 import { VideoService } from "./video/video-service.js";
+import { TelegramLibraryImport } from "./library/telegram-import.js";
 import { BudgetService } from "./budget/budget-service.js";
 import { LibraryService } from "./library/library-service.js";
 import { MemoryNoteService } from "./library/memory-note-service.js";
 import { ReminderService } from "./schedules/reminder-service.js";
 import { repairAgentFolders } from "./provision/agent-folders.js";
-import { liveAgentIds, repairAgentCommunication } from "./provision/agent-communication.js";
+import { liveAgentIds, repairAgentCommunication, repairScheduleGuard } from "./provision/agent-communication.js";
 import { WorkRequestsService } from "./company/work-requests-service.js";
 import { AccessService } from "./company/access-service.js";
 import { WorkItemsService } from "./company/work-items-service.js";
@@ -149,13 +150,17 @@ let shuttingDown = false;
 async function repairStartup(): Promise<void> {
   const repairs: [string, () => Promise<unknown>][] = [
     ["personal agent session policy and restricted ask-main configuration (tool availability unverified)", () => repairAgentCommunication({ gateway, db })],
-    ["managed agent folders", () => repairAgentFolders({ gateway, db, bridge, logger })],
+    // A scheduled run must not send its text itself as well: OpenClaw would deliver it a second time.
+    ["scheduled runs answer once", () => repairScheduleGuard({ gateway })],
+    ["managed agent folders",() => repairAgentFolders({ gateway, db, bridge, logger })],
     // GitHub teams made before OpenClaw refused binds into /workspace: members get copies in their workspaces.
     ["team repository copies", () => teams.repairWorkspaces()],
     ["company request tools", () => syncRequestTools({ gateway, db, companyMode: space.mode() === "company" })],
     ["default exec approval mode", repairDefaultApprovals],
     ["junior models", repairFollowerModels],
     ["memory provider", repairMemory],
+    // Free models: OpenClaw learns the real window of FreeLLMAPI's "auto" (a fixed 32k left agents no room).
+    ["free models context window", () => freeModels.status()],
     ["pending memory notes", () => notes.retryPending()],
     // MCP servers added elsewhere (Notion on the data sources screen) stay with the main agent.
     ["MCP access per agent", () => mcp.syncAccess()],
@@ -197,6 +202,13 @@ const notesTimer = setInterval(() => {
   }
 }, 60_000);
 notesTimer.unref();
+
+// Documents sent to the bot in Telegram join the library (the panel's chat files it on send).
+const telegramLibrary = new TelegramLibraryImport({ db, bridge, library, logger: logger.child({ component: "library" }) });
+const telegramLibraryTimer = setInterval(() => {
+  if (!shuttingDown) void bridge.available().then((up) => (up ? telegramLibrary.tick() : 0)).catch((error: Error) => logger.warn({ err: error }, "could not add Telegram documents to the library"));
+}, 60_000);
+telegramLibraryTimer.unref();
 
 const reminderTimer = setInterval(() => {
   if (!shuttingDown) void reminders.tick().catch((error: Error) => logger.warn({ err: error }, "could not process fixed reminders"));

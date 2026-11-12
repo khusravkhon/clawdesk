@@ -79,7 +79,24 @@ export function mainPluginPatch(config: CommunicationConfig, personal: { id: str
   };
 }
 
-export const communicationReplacePaths = (_config: unknown, patch: Record<string, unknown>): string[] => {
+export const SCHEDULE_GUARD_PLUGIN = "clawdesk-schedule-guard";
+export const SCHEDULE_GUARD_PATH = "/usr/local/share/clawdesk/plugins/clawdesk-schedule-guard";
+
+/**
+ * Scheduled runs answer once (see the plugin): it is loaded for every agent, in both modes. An owner who
+ * turned it off or denied it keeps that choice.
+ */
+export function scheduleGuardPatch(config: CommunicationConfig) {
+  const current = config.plugins?.entries?.[SCHEDULE_GUARD_PLUGIN];
+  if (current?.enabled === false || (config.plugins as { deny?: string[] } | undefined)?.deny?.includes(SCHEDULE_GUARD_PLUGIN)) return null;
+  const paths = [...new Set([...(config.plugins?.load?.paths ?? []), SCHEDULE_GUARD_PATH])];
+  const allow = config.plugins?.allow ? [...new Set([...config.plugins.allow, SCHEDULE_GUARD_PLUGIN])] : undefined;
+  const same = current?.enabled === true && JSON.stringify(config.plugins?.load?.paths) === JSON.stringify(paths)
+    && (!allow || JSON.stringify(config.plugins?.allow) === JSON.stringify(allow));
+  return same ? null : { plugins: { load: { paths }, ...(allow ? { allow } : {}), entries: { [SCHEDULE_GUARD_PLUGIN]: { enabled: true } } } };
+}
+
+export const communicationReplacePaths =(_config: unknown, patch: Record<string, unknown>): string[] => {
   const collect = (value: unknown, prefix: string): string[] => {
     if (Array.isArray(value)) return [prefix];
     if (!value || typeof value !== "object") return [];
@@ -104,4 +121,8 @@ export async function repairAgentCommunication(deps: { gateway: GatewayService; 
   const existing = await liveAgentIds(deps.gateway);
   await patchConfig(deps.gateway, (config) => agentCommunicationPatch(config as CommunicationConfig, personal, existing), { replacePaths: communicationReplacePaths, note: "clawdesk: isolate personal agent sessions" });
   await patchConfig(deps.gateway, (config) => mainPluginPatch(config as CommunicationConfig, personal, existing), { replacePaths: communicationReplacePaths, note: "clawdesk: configure restricted ask-main tool (availability unverified)" });
+}
+
+export async function repairScheduleGuard(deps: { gateway: GatewayService }): Promise<void> {
+  await patchConfig(deps.gateway, (config) => scheduleGuardPatch(config as CommunicationConfig), { replacePaths: communicationReplacePaths, note: "clawdesk: scheduled runs answer once" });
 }

@@ -4,6 +4,7 @@ import { NButton } from "naive-ui";
 import { computed } from "vue";
 import { useI18n } from "vue-i18n";
 import { RouterLink, useRoute, useRouter } from "vue-router";
+import { pageLabelKey, previousPagePath } from "../../page-labels";
 import { PERSONAL_SETTINGS_PATHS } from "../../personal-settings";
 import { useSpaceStore } from "../../stores/space";
 
@@ -21,19 +22,34 @@ const route = useRoute();
 const space = useSpaceStore();
 const { t } = useI18n();
 
-// In personal mode these pages are opened from Settings (not from the menu): lead back there.
-const crumbs = computed(() => props.breadcrumbs?.length
-  ? props.breadcrumbs
-  : space.mode === "personal" && PERSONAL_SETTINGS_PATHS.has(route.path)
-    ? [{ label: t("personalSettings.title"), to: "/settings" }, { label: props.title }]
-    : []);
+// Where the person came from inside the panel: "back" returns there, not to a fixed parent page.
+const previous = computed(() => {
+  void route.fullPath; // re-read on every navigation
+  const path = previousPagePath();
+  return path && path !== route.path ? path : null;
+});
+const previousLabel = computed(() => {
+  const key = previous.value ? pageLabelKey(previous.value) : null;
+  return key ? t(key) : t("nav.back");
+});
+
+type Crumb = { label: string; to?: string; back?: boolean };
+// In personal mode these pages live under Settings; opened from another page, the first crumb leads back to it.
+const crumbs = computed<Crumb[]>(() => {
+  if (props.breadcrumbs?.length) return props.breadcrumbs;
+  if (space.mode !== "personal" || !PERSONAL_SETTINGS_PATHS.has(route.path)) return [];
+  if (previous.value && previous.value !== "/settings") return [{ label: previousLabel.value, back: true }, { label: props.title }];
+  return [{ label: t("personalSettings.title"), to: "/settings" }, { label: props.title }];
+});
+
+const backText = computed(() => previous.value && previous.value !== props.backTo
+  ? previousLabel.value
+  : props.backLabel || t("nav.back"));
 
 function goBack() {
-  if (props.backTo) {
-    void router.push(props.backTo);
-  } else {
-    router.back();
-  }
+  if (previous.value) router.back();
+  else if (props.backTo) void router.push(props.backTo);
+  else router.back();
 }
 </script>
 
@@ -42,7 +58,8 @@ function goBack() {
     <!-- Breadcrumbs Navigation -->
     <nav v-if="crumbs.length" class="breadcrumbs" aria-label="Breadcrumbs">
       <template v-for="(crumb, idx) in crumbs" :key="idx">
-        <router-link v-if="crumb.to" :to="crumb.to" class="crumb-link">
+        <a v-if="crumb.back" href="#" class="crumb-link" @click.prevent="router.back()">{{ crumb.label }}</a>
+        <router-link v-else-if="crumb.to" :to="crumb.to" class="crumb-link">
           {{ crumb.label }}
         </router-link>
         <span v-else class="crumb-current">{{ crumb.label }}</span>
@@ -62,7 +79,7 @@ function goBack() {
           @click="goBack"
         >
           <template #icon><arrow-left :size="15" /></template>
-          <span class="back-text">{{ backLabel || 'Назад' }}</span>
+          <span class="back-text">{{ backText }}</span>
         </n-button>
 
         <div class="title-row">

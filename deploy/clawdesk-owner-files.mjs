@@ -167,6 +167,13 @@ export class OwnerFiles {
   }
 }
 
+/** The bytes of a file sent to the bot or the chat (media://inbound/<id>), read the same safe way as above. */
+export async function readInbound(stateDir, inboundId) {
+  if (typeof inboundId !== "string" || !INBOUND_ID.test(inboundId)) fail("invalid_file_request", 400);
+  try { return await withDirectoryWithin(stateDir, INBOUND, (dir) => readFile(dir, inboundId)); }
+  catch (error) { if (error instanceof ProjectFolderError) throw error; fail("file_missing", 404); }
+}
+
 /** Reads a regular file in an open directory without following links, at most FILE_LIMIT bytes. */
 async function readFile(dir, name) {
   if (!name || name === "." || name === ".." || /[\/\\\x00]/.test(name)) fail("invalid_file_request", 400);

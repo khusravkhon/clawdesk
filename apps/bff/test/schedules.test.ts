@@ -1,6 +1,6 @@
 import { CreateScheduleRequest } from "@clawdesk/shared";
 import { describe, expect, it } from "vitest";
-import { toSchedule } from "../src/schedules/schedule-service.js";
+import { markDuplicates, toSchedule } from "../src/schedules/schedule-service.js";
 
 describe("toSchedule", () => {
   it("shows panel jobs with their time, task and last result", () => {
@@ -60,6 +60,29 @@ describe("toSchedule", () => {
     expect(toSchedule({ id: "memory", declarationKey: "memory-core:memory-dreaming-promotion", payload: { kind: "agentTurn" } })).toBeNull();
     expect(toSchedule({ id: "review", agentId: "trainer", declarationKey: "skill-collection-review:trainer" })).toBeNull();
     expect(toSchedule({ id: "heartbeat", payload: { kind: "heartbeat" } })).toBeNull();
+  });
+});
+
+describe("markDuplicates", () => {
+  const job = (id: string, extra: Record<string, unknown> = {}) => toSchedule({
+    id, agentId: "agent", enabled: true, schedule: { kind: "cron", expr: "30 5 * * *", tz: "Asia/Dushanbe" },
+    payload: { kind: "agentTurn", message: "Пора заниматься арабским языком" }, ...extra,
+  })!;
+
+  it("marks a second enabled job with the same agent, time and task as a repeat of the first", () => {
+    const list = markDuplicates([job("a"), job("b", { payload: { kind: "agentTurn", message: " пора  заниматься арабским языком " } }), job("c")]);
+    expect(list.map((s) => s.duplicateOf)).toEqual([undefined, "a", "a"]);
+  });
+
+  it("leaves the same task at another time, another agent and paused copies alone", () => {
+    const list = markDuplicates([
+      job("a"),
+      job("other-time", { schedule: { kind: "cron", expr: "0 16 * * *", tz: "Asia/Dushanbe" } }),
+      job("other-agent", { agentId: "trainer" }),
+      job("other-task", { payload: { kind: "agentTurn", message: "Пора спать" } }),
+      job("paused", { enabled: false }),
+    ]);
+    expect(list.every((s) => s.duplicateOf === undefined)).toBe(true);
   });
 });
 
