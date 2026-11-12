@@ -13,6 +13,8 @@ export const MEMORY_VERSION = readFileSync(new URL("./openclaw.version", import.
 const EMBEDDING_CONFIRM = "OpenClaw can install a verified llama.cpp server and download only the local embedding model (about 0.3 GB). This will not install or change your chat model. Continue?";
 const AGENT = /^[a-z0-9][a-z0-9_-]{0,63}$/;
 const ACTIVE = new Set(["installing", "downloading", "configuring", "indexing", "checking"]);
+const INDEX_RACE = /changed while full reindex was building|retry the full reindex/i;
+const INDEX_ATTEMPTS = 4;
 
 export class MemoryError extends Error {
   constructor(code, status = 409) { super(code); Object.assign(this, { code, status }); }
@@ -115,8 +117,8 @@ export class LocalMemory {
   #saving = Promise.resolve();
   #snapshot = { checkedAt: null, agents: [], error: null };
 
-  constructor({ runCli, stateDir = process.env.OPENCLAW_STATE_DIR, configPath = process.env.OPENCLAW_CONFIG_PATH, providerLoader = loadProvider, log = () => {} }) {
-    Object.assign(this, { runCli, stateDir, configPath, providerLoader, log });
+  constructor({ runCli, stateDir = process.env.OPENCLAW_STATE_DIR, configPath = process.env.OPENCLAW_CONFIG_PATH, providerLoader = loadProvider, log = () => {}, retryDelayMs = 3_000 }) {
+    Object.assign(this, { runCli, stateDir, configPath, providerLoader, log, retryDelayMs });
     this.file = path.join(stateDir, "clawdesk-memory-job.json");
   }
 
@@ -262,7 +264,15 @@ export class LocalMemory {
         // This action never spends cloud embedding credits or replaces per-agent choices.
         if (provider !== "local" || !enabled) continue;
         await this.#stage("indexing");
-        await this.#localCli(["memory", "index", "--agent", agentId, "--force"], cfg, agentId, 20 * 60_000);
+        // A live chat writes new turns while a full reindex builds; OpenClaw then drops the build and asks to
+        // retry (seen live on main, 12.11.2026: "Memory index changed while full reindex was building").
+        for (let attempt = 1; ; attempt++) {
+          try { await this.#localCli(["memory", "index", "--agent", agentId, "--force"], cfg, agentId, 20 * 60_000); break; }
+          catch (error) {
+            if (attempt >= INDEX_ATTEMPTS || !INDEX_RACE.test(String(error?.message ?? error))) throw error;
+            await new Promise((resolve) => setTimeout(resolve, this.retryDelayMs));
+          }
+        }
       }
     }
     await this.#stage("checking");

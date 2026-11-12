@@ -1,6 +1,6 @@
 import { AssistantProfile } from "@clawdesk/shared";
 import { describe, expect, it } from "vitest";
-import { memoryBroken, memoryChoices, upsertBlock } from "../src/assistant/assistant-service.js";
+import { localMemoryReady, memoryBroken, memoryChoices, upsertBlock } from "../src/assistant/assistant-service.js";
 
 describe("upsertBlock", () => {
   it("adds the panel's block once and replaces it on the next save", () => {
@@ -27,6 +27,10 @@ describe("memory", () => {
   it("offers what works with the connected AI, keyword search always", () => {
     expect(memoryChoices(["google"])).toEqual({ options: ["gemini", "none"], recommended: "gemini" });
     expect(memoryChoices(["anthropic"])).toEqual({ options: ["none"], recommended: "none" });
+    // Once set up, the local model is a choice of its own (and first), so it never looks unselected.
+    expect(memoryChoices(["openai"], true)).toEqual({ options: ["local", "openai", "none"], recommended: "local" });
+    expect(localMemoryReady({ models: { providers: { "llama-cpp": { localService: { command: "/x" } } } } })).toBe(true);
+    expect(localMemoryReady({ models: { providers: { "llama-cpp": {} } } })).toBe(false);
   });
 
   it("OpenClaw's default (OpenAI) is broken without an OpenAI key", () => {

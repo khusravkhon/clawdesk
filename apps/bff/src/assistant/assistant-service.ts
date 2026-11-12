@@ -31,11 +31,18 @@ export function upsertBlock(current: string, block: string, where: "top" | "bott
 const isStarterUserFile = (text: string) => text.includes("# USER.md - User Model") && text.includes("- Prefer ...");
 
 type AgentsList = { agents: { id: string; name?: string; identity?: { name?: string; emoji?: string }; model?: { primary?: string } }[] };
-type MemoryConfig = { memory?: { search?: { provider?: string } } };
+type MemoryConfig = { memory?: { search?: { provider?: string } }; models?: { providers?: Record<string, { localService?: unknown }> } };
 
-/** Which embedding providers work with the AI the assistant is connected to. */
-export function memoryChoices(providers: string[]): { options: MemoryProvider[]; recommended: MemoryProvider } {
-  const options: MemoryProvider[] = [];
+/** The local model is set up ("Install and enable" wrote its managed llama.cpp service). */
+export const localMemoryReady = (config: MemoryConfig) => !!config.models?.providers?.["llama-cpp"]?.localService;
+
+/**
+ * Which embedding providers work with the AI the assistant is connected to. The local model is a choice once
+ * it is set up: without its card a working local search looked unselected, and one click on "keywords only"
+ * switched it off and dropped its index (seen live, 12.11.2026).
+ */
+export function memoryChoices(providers: string[], localReady = false): { options: MemoryProvider[]; recommended: MemoryProvider } {
+  const options: MemoryProvider[] = localReady ? ["local"] : [];
   if (providers.includes("google")) options.push("gemini");
   if (providers.includes("openai")) options.push("openai");
   options.push("none");
@@ -48,6 +55,11 @@ export function memoryBroken(current: string | null, providers: string[]): boole
   if (effective === "none" || effective === "auto" || effective === "local") return false;
   if (effective === "gemini") return !providers.includes("google");
   return !providers.includes(effective);
+}
+
+export class AssistantError extends Error {
+  readonly statusCode = 409;
+  constructor(readonly code: "local_not_installed", message: string) { super(message); }
 }
 
 export class AssistantService {
@@ -71,7 +83,7 @@ export class AssistantService {
       profile: saved ?? this.#defaults(main?.identity?.name ?? main?.name, main?.identity?.emoji),
       applied: !!saved,
       model: main?.model?.primary ?? null,
-      memory: { provider: current, ...memoryChoices(auth), broken: memoryBroken(current, auth) },
+      memory: { provider: current, ...memoryChoices(auth, localMemoryReady(config)), broken: memoryBroken(current, auth) },
     };
   }
 
@@ -101,8 +113,29 @@ export class AssistantService {
     return this.get();
   }
 
+  /**
+   * The panel's block of the assistant's AGENTS.md follows the template of this version (new rules reach an
+   * assistant set up before them). Only once the owner has saved a profile; the rest of the file is untouched.
+   */
+  async refreshInstructions(): Promise<boolean> {
+    const profile = getSetting<AssistantProfile>(this.deps.db, PROFILE_SETTING);
+    if (!profile) return false;
+    const block = renderTemplateFiles(this.#template(), {
+      agentName: profile.name, character: profile.character, aboutUser: profile.aboutUser || "—", summaryMaxLines: String(profile.summaryMaxLines),
+    })["AGENTS.md"];
+    const current = (await this.deps.gateway.request<{ file?: { content?: string } }>("agents.files.get", { agentId: MAIN, name: "AGENTS.md" })).file?.content ?? "";
+    const next = upsertBlock(current, block, "bottom");
+    if (next === current) return false;
+    await this.deps.gateway.request("agents.files.set", { agentId: MAIN, name: "AGENTS.md", content: next });
+    this.deps.logger.info("main assistant instructions refreshed");
+    return true;
+  }
+
   /** Memory search needs embeddings; changing the provider restarts the Gateway. */
   async setMemory(provider: MemoryProvider): Promise<AssistantDto> {
+    if (provider === "local" && !localMemoryReady((await getConfig<MemoryConfig>(this.deps.gateway)).config)) {
+      throw new AssistantError("local_not_installed", "set up the local model first (Install and enable)");
+    }
     const generation = this.deps.gateway.generation;
     try {
       await patchConfig(this.deps.gateway, { memory: { search: { provider } } }, { note: "clawdesk: memory provider" });

@@ -159,6 +159,8 @@ async function repairStartup(): Promise<void> {
     ["default exec approval mode", repairDefaultApprovals],
     ["junior models", repairFollowerModels],
     ["memory provider", repairMemory],
+    // New rules of the panel's block (skills in one place, no config changes on its own) reach the assistant.
+    ["main assistant instructions", () => assistant.refreshInstructions()],
     // Free models: OpenClaw learns the real window of FreeLLMAPI's "auto" (a fixed 32k left agents no room).
     ["free models context window", () => freeModels.status()],
     ["pending memory notes", () => notes.retryPending()],

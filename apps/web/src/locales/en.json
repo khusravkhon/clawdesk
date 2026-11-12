@@ -934,15 +934,18 @@
       "lead": "Memory readiness is separate from chat sign-in. The local model searches notes by meaning. Checks and reindexing below only use local embeddings. Cloud search needs separate API credits.",
       "broken": "The selected search provider has no connection. Chat sign-in does not confirm memory readiness.",
       "opt": {
+        "local": "Local model",
         "gemini": "Google Gemini",
         "openai": "OpenAI",
         "none": "Keywords only"
       },
       "desc": {
+        "local": "Searches by meaning with a model on your server. Free; notes never leave it.",
         "gemini": "Searches by meaning with your Google key. Free within the quota.",
         "openai": "Searches by meaning with your OpenAI key.",
         "none": "No AI: finds notes by matching words. Always works."
       },
+      "leaveLocal": "Turn off local search by meaning? The agent server restarts, and bringing the local model back takes a memory reindex.",
       "saved": "Memory set up",
       "restarting": "The agent server is restarting…"
     }

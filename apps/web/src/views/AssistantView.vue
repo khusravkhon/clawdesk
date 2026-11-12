@@ -65,6 +65,8 @@ async function save(): Promise<void> {
 
 async function setMemory(provider: MemoryProvider): Promise<void> {
   if (data.value?.memory.provider === provider) return;
+  // Leaving the local model drops what its index knows by meaning; it is rebuilt only by a reindex.
+  if (data.value?.memory.provider === "local" && !window.confirm(t("assistant.memory.leaveLocal"))) return;
   memorySaving.value = provider;
   try {
     const dto = await api.assistant.setMemory(provider);
