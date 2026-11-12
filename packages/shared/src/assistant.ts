@@ -14,9 +14,10 @@ export type AssistantProfile = z.infer<typeof AssistantProfile>;
 
 /**
  * Embeddings for the assistant's memory search: gemini / openai use the AI already connected,
- * none = keyword search only (always works, no key).
+ * none = keyword search only (always works, no key); local = the llama.cpp model on the server, offered once
+ * "Install and enable" has set it up.
  */
-export const MemoryProvider = z.enum(["gemini", "openai", "none"]);
+export const MemoryProvider = z.enum(["local", "gemini", "openai", "none"]);
 export type MemoryProvider = z.infer<typeof MemoryProvider>;
 
 export const AssistantDto = z.object({
