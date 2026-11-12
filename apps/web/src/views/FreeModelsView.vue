@@ -23,7 +23,7 @@ async function load(): Promise<void> {
   loading.value = true;
   try {
     status.value = await api.freeModels.status();
-    error.value = status.value.available ? null : status.value.error;
+    error.value = status.value.available ? null : codeText(status.value.errorCode, status.value.error);
   } catch (e) {
     error.value = errorText(e);
   } finally {
@@ -55,8 +55,15 @@ async function remove(p: FreeProviderDto): Promise<void> {
   }
 }
 
+// The server's own words stay only where they carry a provider's reason (a rejected key).
+function codeText(code: string | null | undefined, detail: string | null): string {
+  if (code === "not_installed" || code === "unavailable") return t(`free.errors.${code}`);
+  if (code === "rejected") return detail ? `${t("free.errors.rejected")} ${detail}` : t("free.errors.rejected");
+  return detail ?? t("free.errors.unavailable");
+}
+
 function errorText(e: unknown): string {
-  return e instanceof ApiError ? e.body.message : String(e);
+  return e instanceof ApiError ? codeText(e.body.error.replace(/^free_models_/, ""), e.body.message) : String(e);
 }
 
 onMounted(load);

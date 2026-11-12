@@ -25,4 +25,20 @@ describe("own AI after creation", () => {
     expect(service.markOwnAi("main")).toBe(false);
     expect(service.markOwnAi("ghost")).toBe(false);
   });
+
+  it("a junior saved with its own model list stops following; one saved with the main list keeps following", async () => {
+    db.insert(agents).values([{ id: "coach", role: "specialist", displayName: "C", model: "openai/gpt-5" }, { id: "cook", role: "specialist", displayName: "K", model: "openai/gpt-5" }]).run();
+    const config = { agents: { entries: { main: { model: { primary: "openai/gpt-5", fallbacks: [] } }, coach: { model: { primary: "openai/gpt-5", fallbacks: [] } }, cook: { model: { primary: "openai/gpt-5", fallbacks: [] } } } } };
+    const gateway = {
+      request: async (method: string) => {
+        if (method === "config.get") return { hash: "h", config };
+        if (method === "models.list") return { models: [{ id: "gpt-5", provider: "openai" }, { id: "auto", provider: "freellmapi" }] };
+        return {};
+      },
+    } as unknown as GatewayService;
+    const service = new AiSetupService(gateway, pino({ level: "silent" }), db);
+    await service.saveModelChain({ agentId: "coach", chain: ["freellmapi/auto", "openai/gpt-5"] });
+    await service.saveModelChain({ agentId: "cook", chain: ["openai/gpt-5"] });
+    expect(followerIds(db)).toEqual(["cook"]);
+  });
 });

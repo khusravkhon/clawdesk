@@ -17,7 +17,8 @@ const MAX_SNIPPETS = 3;
 const SNIPPET_BEFORE = 90;
 const SNIPPET_AFTER = 150;
 
-export type NewLibraryItem = { agentId: string; kind: LibraryItemKind; title: string; source: string; locator?: string | null; text: string; processing?: LibraryProcessing };
+/** `once`: the agent already has this exact text (the same file sent again, or also in the panel chat) → no second entry. */
+export type NewLibraryItem = { agentId: string; kind: LibraryItemKind; title: string; source: string; locator?: string | null; text: string; processing?: LibraryProcessing; once?: boolean };
 const materialText = sql<string>`coalesce(${libraryContents.text}, ${libraryItems.text})`;
 
 export class LibraryService {
@@ -27,22 +28,26 @@ export class LibraryService {
   add(item: NewLibraryItem): string | null {
     const text = item.text.trim().slice(0, MAX_ITEM_CHARS);
     if (!text && !item.processing) return null;
-    const id = randomUUID();
-    this.db.transaction((tx) => {
+    return this.db.transaction((tx) => {
       let contentId: number | null = null;
       if (text) {
         const hash = createHash("sha256").update(text).digest("hex");
         // Hash narrows the lookup without a second full-text B-tree; compare text for collisions.
         let content = tx.select({ id: libraryContents.id }).from(libraryContents).where(and(eq(libraryContents.hash, hash), eq(libraryContents.text, text))).get();
+        if (content && item.once) {
+          const existing = tx.select({ id: libraryItems.id }).from(libraryItems).where(and(eq(libraryItems.agentId, item.agentId), eq(libraryItems.contentId, content.id))).get();
+          if (existing) return existing.id;
+        }
         content ??= tx.insert(libraryContents).values({ text, hash, folded: text.toLocaleLowerCase("ru") }).returning({ id: libraryContents.id }).get();
         contentId = content.id;
       }
+      const id = randomUUID();
       tx.insert(libraryItems)
         .values({ id, agentId: item.agentId, kind: item.kind, title: item.title.slice(0, 300), source: item.source.slice(0, 2000), locator: item.locator ?? null,
           text: "", contentId, chars: text.length, processing: item.processing ?? null })
         .run();
+      return id;
     });
-    return id;
   }
 
   /** Recent materials, newest first; of one agent, or of all of them for the owner's own view. */

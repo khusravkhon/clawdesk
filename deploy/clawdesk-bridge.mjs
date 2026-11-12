@@ -43,6 +43,8 @@
 //   POST /owner-files/store  { inbound, name? }  a file sent to the bot/chat (media://inbound) into «Входящие» → { path, size, sha }
 //   POST /owner-files/upload { name, base64 }    a file uploaded in the panel into «Входящие»
 //   POST /owner-files/copy | /owner-files/remove { agentId, file }   POST /owner-files/copies { agentId } → { copies: [{ file, sha }] }
+//   GET  /library/inbound?after=<ms>        → { files: [{ id, name, mimeType, size, modifiedAt, agentIds }], more } documents sent to the bot
+//   POST /library/inbound/read { id }       → { id, mimeType, base64 } one of them (see clawdesk-library-inbound.mjs)
 //   POST /openclaw/update    { version }    backup, then a helper container moves the Gateway to that verified OpenClaw
 
 import { spawn } from "node:child_process";
@@ -70,6 +72,7 @@ import { ProjectBuilder } from "./clawdesk-project-builder.mjs";
 import { ProjectWork } from "./clawdesk-project-work.mjs";
 import { GoogleDocCopies } from "./clawdesk-google-docs.mjs";
 import { OwnerFiles } from "./clawdesk-owner-files.mjs";
+import { listInboundDocuments, readInboundDocument } from "./clawdesk-library-inbound.mjs";
 import { ProjectTransfer } from "./clawdesk-project-transfer.mjs";
 import { capabilities } from "./clawdesk-capabilities.mjs";
 import { sharedFolderSource } from "./clawdesk-shared-folder.mjs";
@@ -410,7 +413,7 @@ function readJson(req, limit = 32_768) {
 
 let audioSetupBusy = false;
 const claudeLogin = new ClaudeLogin();
-const localMemory = new LocalMemory({ runCli });
+const localMemory = new LocalMemory({ runCli, log });
 const storage = new StorageManager({
   stateDir: process.env.OPENCLAW_STATE_DIR || "/var/lib/clawdesk/openclaw",
   videoDir: process.env.CLAWDESK_VIDEO_DIR || "",
@@ -619,6 +622,20 @@ async function handle(req) {
   if (req.method === "GET" && url.pathname === "/capabilities") return { status: 200, body: await capabilities() };
   if (req.method === "GET" && url.pathname === "/google/status") return googleStatus();
   if (req.method === "GET" && url.pathname === "/owner-files/list") return ownerFileCall(() => ownerFiles.list());
+  // Documents sent to the bot in Telegram, for the panel's library (see clawdesk-library-inbound.mjs).
+  if (req.method === "GET" && url.pathname === "/library/inbound") {
+    const after = Number(url.searchParams.get("after") ?? 0);
+    if (!Number.isSafeInteger(after) || after < 0) return { status: 400, body: { error: "invalid_request", message: "invalid_request" } };
+    return ownerFileCall(() => listInboundDocuments(ownerFiles.stateDir, { after }));
+  }
+  if (req.method === "POST" && url.pathname === "/library/inbound/read") {
+    const body = await readJson(req);
+    try { return await readInboundDocument(ownerFiles.stateDir, body.id); }
+    catch (error) {
+      const code = error instanceof ProjectFolderError ? error.code : "file_missing";
+      return { status: error instanceof ProjectFolderError ? error.status : 404, body: { error: code, message: code } };
+    }
+  }
   // A file uploaded in the panel: up to 20 MB as base64, so its own body limit.
   if (req.method === "POST" && url.pathname === "/owner-files/upload") {
     const body = await readJson(req, 28 * 1024 * 1024);

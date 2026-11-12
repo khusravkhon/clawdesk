@@ -5,7 +5,7 @@ import { describe, expect, it } from "vitest";
 import { openDb } from "../src/db/client.js";
 import { agents } from "../src/db/schema.js";
 import type { GatewayService } from "../src/gateway/gateway-service.js";
-import { agentCommunicationPatch, mainPluginPatch, personalAgentTools, repairAgentCommunication, ASK_MAIN_PLUGIN, ASK_MAIN_TOOL, CROSS_SESSION_TOOLS, type CommunicationConfig } from "../src/provision/agent-communication.js";
+import { agentCommunicationPatch, mainPluginPatch, personalAgentTools, repairAgentCommunication, scheduleGuardPatch, ASK_MAIN_PLUGIN, ASK_MAIN_TOOL, CROSS_SESSION_TOOLS, SCHEDULE_GUARD_PATH, SCHEDULE_GUARD_PLUGIN, type CommunicationConfig } from "../src/provision/agent-communication.js";
 
 function merge(target: Record<string, unknown>, patch: Record<string, unknown>): void {
   for (const [key, value] of Object.entries(patch)) {
@@ -54,6 +54,15 @@ describe("permitted agent communication", () => {
     const applied = { tools: patch.tools, plugins: patch.plugins, agents: { entries: { trainer: {}, finance: {} } } };
     expect(mainPluginPatch(applied, [{ id: "trainer", canAskMain: true }], new Set(["trainer"]))).toBeNull();
     expect(mainPluginPatch({ ...applied, tools: { sandbox: { tools: { alsoAllow: ["clawdesk-requests"] } } } }, [{ id: "trainer", canAskMain: true }], new Set(["trainer"]))).toEqual({ tools: { sandbox: { tools: { alsoAllow: ["clawdesk-requests", ASK_MAIN_PLUGIN] } } } });
+  });
+
+  it("loads the schedule guard once in every install and respects an owner who turned it off", () => {
+    const patch = scheduleGuardPatch({ plugins: { allow: ["telegram"], load: { paths: ["/trusted/other"] } } }) as Record<string, any>;
+    expect(patch).toEqual({ plugins: { load: { paths: ["/trusted/other", SCHEDULE_GUARD_PATH] }, allow: ["telegram", SCHEDULE_GUARD_PLUGIN], entries: { [SCHEDULE_GUARD_PLUGIN]: { enabled: true } } } });
+    expect(scheduleGuardPatch({ plugins: patch.plugins })).toBeNull();
+    expect((scheduleGuardPatch({}) as Record<string, any>).plugins.allow).toBeUndefined();
+    expect(scheduleGuardPatch({ plugins: { entries: { [SCHEDULE_GUARD_PLUGIN]: { enabled: false } } } })).toBeNull();
+    expect(scheduleGuardPatch({ plugins: { deny: [SCHEDULE_GUARD_PLUGIN] } } as CommunicationConfig)).toBeNull();
   });
 
   it("repairs only existing permitted agents and does not write again once repaired", async () => {

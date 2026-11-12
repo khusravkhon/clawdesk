@@ -206,7 +206,8 @@
     "system": "System",
     "teams": "Teams",
     "usage": "Usage",
-    "extensions": "Skills & MCP"
+    "extensions": "Skills & MCP",
+    "back": "Back"
   },
   "status": {
     "restart": {
@@ -480,7 +481,12 @@
     "removeConfirm": "Remove {name} keys?",
     "added": "{name} key added",
     "others": "Other providers ({n})",
-    "othersHint": "These may need a card, Chinese ID verification or special conditions — check the provider's site."
+    "othersHint": "These may need a card, Chinese ID verification or special conditions — check the provider's site.",
+    "errors": {
+      "not_installed": "Free models are not installed on this server.",
+      "unavailable": "The free models service is not responding. It usually comes back by itself a minute after a restart; if not, restart ClawDesk on the server.",
+      "rejected": "The provider rejected the request."
+    }
   },
   "lang": {
     "ru": "Русский",
@@ -871,6 +877,7 @@
     "turnOff": "Pause",
     "turnOn": "Turn on",
     "neverRan": "has not run yet",
+    "duplicate": "Repeat: the agent already has the same task at this time, so it arrives twice. You can delete the extra one.",
     "runNow": "Run now",
     "history": "Run history",
     "edit": "Edit",
@@ -1335,6 +1342,7 @@
     "remove": "Remove the material",
     "nothing": "Nothing found. Materials searched: {count}.",
     "emptyLibrary": "This agent has no read materials yet.",
+    "emptyAll": "No materials yet. Documents sent to agents in the chat or in Telegram, and processed videos, appear here.",
     "partial": "Matches from the most recent materials: there are too many to search all of them.",
     "kind": {
       "document": "document",

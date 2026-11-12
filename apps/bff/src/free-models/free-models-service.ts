@@ -62,6 +62,23 @@ export type FreeModelsOptions = {
 
 const ACCOUNT_EMAIL = "clawdesk@panel.local";
 
+/**
+ * OpenClaw's prompt budget is the declared window minus its reserves (about 20k): a fixed 32k left 12.7k,
+ * less than an agent's own instructions and tools (seen live, 11.11.2026: the trainer's 13–17k prompt tried to
+ * compact on every turn, failed and went silent). FreeLLMAPI routes each request to a model it fits and reports
+ * the window of "auto"; that is what OpenClaw is told, bounded so a session never grows unwieldy.
+ */
+export const DEFAULT_CONTEXT_WINDOW = 32_768;
+const MIN_CONTEXT_WINDOW = 8_192;
+const MAX_CONTEXT_WINDOW = 131_072;
+export function autoContextWindow(models: unknown): number {
+  const data = (models as { data?: unknown } | null)?.data;
+  const auto = Array.isArray(data) ? data.find((m) => (m as { id?: unknown })?.id === "auto") as { context_window?: unknown; context_length?: unknown } | undefined : undefined;
+  const reported = auto?.context_window ?? auto?.context_length;
+  if (typeof reported !== "number" || !Number.isFinite(reported) || reported <= 0) return DEFAULT_CONTEXT_WINDOW;
+  return Math.min(MAX_CONTEXT_WINDOW, Math.max(MIN_CONTEXT_WINDOW, Math.floor(reported)));
+}
+
 /** Same input, same password — on any reinstall of the panel with the same deploy/.env. */
 export function derivedPassword(secret: string): string {
   return crypto.createHmac("sha256", secret).update("clawdesk/freellmapi/account/v1").digest("base64url");
@@ -79,12 +96,12 @@ export class FreeModelsService {
 
   async status(): Promise<FreeModelsStatusDto> {
     const empty = { available: false, ready: false, modelRef: FREE_MODEL_REF, providers: [] };
-    if (!this.opts.baseUrl) return { ...empty, error: "free models are not installed on this server" };
+    if (!this.opts.baseUrl) return { ...empty, error: "free models are not installed on this server", errorCode: "not_installed" };
     let res: ProvidersResponse;
     try {
       res = await this.#api<ProvidersResponse>("/api/keys/providers");
     } catch (error) {
-      return { ...empty, error: (error as Error).message };
+      return { ...empty, error: (error as Error).message, errorCode: error instanceof FreeModelsError ? error.code : "unavailable" };
     }
     const providers: FreeProviderDto[] = res.providers
       // Keyless pools log prompts for training or are very slow; not offered.
@@ -100,7 +117,7 @@ export class FreeModelsService {
       .sort((a, b) => rank(a) - rank(b) || a.name.localeCompare(b.name));
     const anyKey = providers.some((p) => p.configured);
     if (anyKey && !this.#registered) await this.ensureRegistered().catch((e: Error) => this.logger.warn({ err: e }, "freellmapi registration failed"));
-    return { available: true, ready: anyKey && this.#registered, modelRef: FREE_MODEL_REF, providers, error: null };
+    return { available: true, ready: anyKey && this.#registered, modelRef: FREE_MODEL_REF, providers, error: null, errorCode: null };
   }
 
   async addKey(platform: string, key: string): Promise<FreeModelsStatusDto> {
@@ -121,6 +138,7 @@ export class FreeModelsService {
   async ensureRegistered(): Promise<void> {
     const { apiKey } = await this.#api<{ apiKey: string }>("/api/settings/api-key");
     await this.gateway.request("secrets.store.set", { name: UNIFIED_KEY_SECRET, value: apiKey, kind: "secret", allowedHosts: ["127.0.0.1"] });
+    const contextWindow = await this.#contextWindow(apiKey);
     await patchConfig(
       this.gateway,
       {
@@ -130,7 +148,7 @@ export class FreeModelsService {
               baseUrl: GATEWAY_SIDE_BASE_URL,
               api: "openai-completions",
               apiKey: { source: "store", provider: "default", id: UNIFIED_KEY_SECRET },
-              models: [{ id: "auto", name: "Free models (FreeLLMAPI auto)", contextWindow: 32768, maxTokens: 4096 }],
+              models: [{ id: "auto", name: "Free models (FreeLLMAPI auto)", contextWindow, maxTokens: 4096 }],
             },
           },
         },
@@ -138,6 +156,16 @@ export class FreeModelsService {
       { note: "clawdesk: free models provider" },
     );
     this.#registered = true;
+  }
+
+  /** The window FreeLLMAPI reports for "auto" with the keys added so far; the safe default if it cannot say. */
+  async #contextWindow(apiKey: string): Promise<number> {
+    try {
+      const res = await fetch(`${this.opts.baseUrl}/v1/models?available=1`, { headers: { authorization: `Bearer ${apiKey}` }, signal: AbortSignal.timeout(15_000) });
+      return res.ok ? autoContextWindow(await res.json()) : DEFAULT_CONTEXT_WINDOW;
+    } catch {
+      return DEFAULT_CONTEXT_WINDOW;
+    }
   }
 
   async #api<T = unknown>(pathname: string, init: { method?: string; body?: unknown } = {}, retried = false): Promise<T> {

@@ -27,6 +27,8 @@ export const FreeModelsStatusDto = z.object({
   modelRef: z.string(),
   providers: z.array(FreeProviderDto),
   error: z.string().nullable(),
+  /** What went wrong, for the panel's own text; `error` keeps the details. */
+  errorCode: z.enum(["not_installed", "unavailable", "rejected"]).nullable(),
 });
 export type FreeModelsStatusDto = z.infer<typeof FreeModelsStatusDto>;
 

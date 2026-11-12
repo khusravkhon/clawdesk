@@ -73,7 +73,13 @@ export function memorySummary(rows) {
     const identity = status.custom?.indexIdentity?.status;
     const vector = status.vector;
     const vectorsReady = vector?.enabled === true && vector.index?.state === "complete" && vector.storeAvailable !== false && (vector.semanticAvailable ?? vector.available) !== false;
-    const indexReady = !status.dirty && identity === "valid" && (provider === "none" || vectorsReady);
+    // Sessions grow with every message: the agent the owner is talking to is "dirty" right after a reindex, and
+    // OpenClaw adds new turns by itself (seen live on main, 12.11.2026). Only the other sources' state counts.
+    const sources = Array.isArray(status.sourceCounts) ? status.sourceCounts : null;
+    const stale = sources
+      ? status.dirty === true && sources.some((source) => source?.source !== "sessions" && source?.dirty !== false)
+      : !!status.dirty;
+    const indexReady = !stale && identity === "valid" && (provider === "none" || vectorsReady);
     return {
       agentId, provider, files: Number.isSafeInteger(status.files) ? status.files : null,
       chunks: Number.isSafeInteger(status.chunks) ? status.chunks : null,
@@ -109,8 +115,8 @@ export class LocalMemory {
   #saving = Promise.resolve();
   #snapshot = { checkedAt: null, agents: [], error: null };
 
-  constructor({ runCli, stateDir = process.env.OPENCLAW_STATE_DIR, configPath = process.env.OPENCLAW_CONFIG_PATH, providerLoader = loadProvider }) {
-    Object.assign(this, { runCli, stateDir, configPath, providerLoader });
+  constructor({ runCli, stateDir = process.env.OPENCLAW_STATE_DIR, configPath = process.env.OPENCLAW_CONFIG_PATH, providerLoader = loadProvider, log = () => {} }) {
+    Object.assign(this, { runCli, stateDir, configPath, providerLoader, log });
     this.file = path.join(stateDir, "clawdesk-memory-job.json");
   }
 
@@ -199,6 +205,8 @@ export class LocalMemory {
     // Reserve before the first await so a repeated click cannot start a second installer.
     this.#task = this.#run(action).catch(async (error) => {
       this.#job = { state: "error", percent: null, error: memoryError(error), updatedAt: Date.now() };
+      // The screen shows only the code; the server log keeps what really failed (the panel never shows it).
+      try { this.log("local memory operation failed", { action, code: this.#job.error, detail: String(error?.message ?? error).slice(-2000) }); } catch { /* logging must not change the outcome */ }
       await this.#save();
     }).finally(() => { this.#task = undefined; });
     void this.#task.catch(() => {});

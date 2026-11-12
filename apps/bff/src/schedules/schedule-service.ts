@@ -52,6 +52,21 @@ export function toSchedule(job: RawJob): ScheduleDto | null {
   };
 }
 
+/**
+ * An agent asked again in chat ("remind me at 5:30") may add a second job instead of changing the first, and
+ * the owner then gets every reminder twice. The first job (OpenClaw's order) stays the original.
+ */
+export function markDuplicates(list: ScheduleDto[]): ScheduleDto[] {
+  const first = new Map<string, string>();
+  return list.map((s) => {
+    if (!s.enabled) return s;
+    const key = JSON.stringify([s.agentId, s.cron ?? s.everyMs ?? s.at ?? null, s.tz, s.prompt.replace(/\s+/g, " ").trim().toLowerCase()]);
+    const original = first.get(key);
+    if (!original) { first.set(key, s.id); return s; }
+    return { ...s, duplicateOf: original };
+  });
+}
+
 export class ScheduleService {
   get timeZone(): string { return this.deps.timeZone?.() ?? Intl.DateTimeFormat().resolvedOptions().timeZone; }
 
@@ -62,7 +77,7 @@ export class ScheduleService {
   async list(): Promise<ScheduleListDto> {
     const res = await this.deps.gateway.request<{ jobs?: RawJob[] }>("cron.list", { includeDisabled: true });
     const jobs = res.jobs ?? [];
-    const mapped = jobs.map(toSchedule).filter((s) => s !== null);
+    const mapped = markDuplicates(jobs.map(toSchedule).filter((s) => s !== null));
     return {
       schedules: mapped.sort((a, b) => a.agentId.localeCompare(b.agentId) || (a.nextRunAt ?? Infinity) - (b.nextRunAt ?? Infinity)),
       systemJobs: jobs.length - mapped.length,

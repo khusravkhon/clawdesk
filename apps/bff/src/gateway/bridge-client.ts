@@ -307,6 +307,13 @@ export class BridgeClient {
   ownerFileStore(inbound: string, name?: string): Promise<{ path: string; size: number; sha: string }> {
     return this.#call("POST", "/owner-files/store", { inbound, ...(name ? { name } : {}) }, 60_000);
   }
+  /** Documents sent to the bot at or after `after` (ms), with the agents that got them (deploy/clawdesk-library-inbound.mjs). */
+  libraryInbound(after: number): Promise<{ files: { id: string; name: string; mimeType: string; size: number; modifiedAt: number; agentIds: string[] }[]; more: boolean }> {
+    return this.#call("GET", `/library/inbound?after=${after}`, undefined, 120_000);
+  }
+  libraryInboundRead(id: string): Promise<{ id: string; mimeType: string; base64: string }> {
+    return this.#call("POST", "/library/inbound/read", { id }, 60_000);
+  }
   ownerFileUpload(name: string, base64: string): Promise<{ path: string; size: number; sha: string }> {
     return this.#call("POST", "/owner-files/upload", { name, base64 }, 120_000);
   }

@@ -29,6 +29,8 @@ export const ScheduleDto = z.object({
   lastStatus: z.enum(["ok", "error", "skipped"]).nullable(),
   lastError: z.string().nullable(),
   deliversToTelegram: z.boolean(),
+  /** Another enabled job of the same agent fires at the same time with the same task: this one repeats it. */
+  duplicateOf: z.string().optional(),
 });
 export type ScheduleDto = z.infer<typeof ScheduleDto>;
 

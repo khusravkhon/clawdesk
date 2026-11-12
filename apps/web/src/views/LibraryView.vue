@@ -147,7 +147,7 @@ watch(() => route.query.material, (id) => {
     <n-button attr-type="submit" type="primary">{{ t("library.search") }}</n-button>
   </form>
   <n-alert v-if="failed" type="error">{{ t("library.browser.error") }} <n-button size="tiny" @click="load(!!items.length)">{{ t("chat.sendRecovery.check") }}</n-button></n-alert>
-  <n-empty v-else-if="!busy && !items.length" :description="t(query ? 'library.browser.noResults' : 'library.emptyLibrary')" />
+  <n-empty v-else-if="!busy && !items.length" :description="t(query ? 'library.browser.noResults' : agent ? 'library.emptyLibrary' : 'library.emptyAll')" />
   <ul v-if="items.length" class="items">
     <li v-for="item in items" :key="item.id">
       <strong>{{ item.title }}</strong>

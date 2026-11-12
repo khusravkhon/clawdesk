@@ -29,8 +29,9 @@ async function fixture(t, { config = {}, method, loader } = {}) {
     const agent = args[args.indexOf("--agent") + 1] ?? "main";
     return { code: 0, out: JSON.stringify([row(agent, config.agents?.entries?.[agent]?.memory?.search?.provider ?? "local", args.includes("--deep"))]) };
   };
-  const memory = new LocalMemory({ runCli, stateDir: dir, configPath, providerLoader: loader ?? (async () => method ?? { run: async () => ({ profiles: [], configPatch: { models: { providers: { "llama-cpp": managed } } } }) }) });
-  return { memory, dir, configPath, calls, runCli };
+  const logs = [];
+  const memory = new LocalMemory({ runCli, stateDir: dir, configPath, log: (msg, extra) => logs.push({ msg, ...extra }), providerLoader: loader ?? (async () => method ?? { run: async () => ({ profiles: [], configPatch: { models: { providers: { "llama-cpp": managed } } } }) }) });
+  return { memory, dir, configPath, calls, runCli, logs };
 }
 
 test("consent is mandatory and only the known embedding prompt is accepted", async (t) => {
@@ -89,13 +90,15 @@ test("a restart records an interruption and permits an explicit retry", async (t
 
 test("download failure is safe, preserves memory selection, and can be retried", async (t) => {
   let fail = true;
-  const { memory, configPath } = await fixture(t, { config: { memory: { search: { provider: "none" } } }, method: { run: async () => {
+  const { memory, configPath, logs } = await fixture(t, { config: { memory: { search: { provider: "none" } } }, method: { run: async () => {
     if (fail) throw new Error("download failed: HTTP 429 SECRET");
     return { configPatch: { models: { providers: { "llama-cpp": managed } } } };
   } } });
   await memory.start("setup", true); await memory.drain();
   assert.equal((await memory.status()).job.error, "download_limited");
   assert.equal(JSON.stringify(await memory.status()).includes("SECRET"), false);
+  // The real cause stays in the server log only.
+  assert.deepEqual(logs, [{ msg: "local memory operation failed", action: "setup", code: "download_limited", detail: "download failed: HTTP 429 SECRET" }]);
   assert.equal(JSON.parse(await fs.readFile(configPath, "utf8")).memory.search.provider, "none");
   fail = false;
   await memory.start("setup", true); await memory.drain();
@@ -118,6 +121,17 @@ test("checks distinguish index readiness from embedding readiness", () => {
   assert.equal(memorySummary([{ ...row(), embeddingProbe: { ok: true, checked: false } }])[0].embeddings, "unchecked");
   assert.equal(memorySummary([{ ...row(), status: { ...row().status, vector: { enabled: true, index: { state: "complete" }, semanticAvailable: false } } }])[0].index, "pending");
   assert.equal(memoryError(new Error("SHA-256 mismatch PRIVATE")), "verification_failed");
+});
+
+test("a live chat's new session turns do not make the index unready; stale notes do", () => {
+  const withSources = (memoryDirty) => ({ ...row(), status: { ...row().status, dirty: true, sourceCounts: [
+    { source: "memory", files: 23, chunks: 40, dirty: memoryDirty }, { source: "sessions", files: 7, chunks: 89 },
+  ] } });
+  assert.equal(memorySummary([withSources(false)])[0].index, "ready");
+  assert.equal(memorySummary([withSources(true)])[0].index, "pending");
+  assert.equal(memorySummary([withSources(undefined)])[0].index, "pending");
+  // Without per-source counts the overall flag decides.
+  assert.equal(memorySummary([{ ...row(), status: { ...row().status, dirty: true } }])[0].index, "pending");
 });
 
 test("search only reads a configured local agent, caps results, and survives recreation", async (t) => {

@@ -1,0 +1,7 @@
+{
+  "id": "clawdesk-schedule-guard",
+  "name": "ClawDesk Schedule Guard",
+  "description": "Scheduled runs answer once: the agent does not send the text itself next to the automatic delivery.",
+  "activation": { "onStartup": true },
+  "configSchema": { "type": "object", "additionalProperties": false, "properties": {} }
+}
