@@ -123,6 +123,31 @@ test("checks distinguish index readiness from embedding readiness", () => {
   assert.equal(memoryError(new Error("SHA-256 mismatch PRIVATE")), "verification_failed");
 });
 
+test("a reindex a live chat interrupted is retried; other failures are not", async (t) => {
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), "clawdesk-memory-race-"));
+  t.after(() => fs.rm(dir, { recursive: true, force: true }));
+  const configPath = path.join(dir, "openclaw.json");
+  await fs.writeFile(configPath, JSON.stringify({ memory: { search: { provider: "local" } } }));
+  const run = async (failures, message) => {
+    let left = failures, indexed = 0;
+    const runCli = async (args) => {
+      if (args[1] === "index") {
+        indexed++;
+        if (left-- > 0) return { code: 1, out: "", err: message };
+        return { code: 0, out: "Memory index updated (main): 30 files indexed." };
+      }
+      return { code: 0, out: JSON.stringify([row("main")]) };
+    };
+    const memory = new LocalMemory({ runCli, stateDir: dir, configPath, retryDelayMs: 1 });
+    await memory.start("reindex"); await memory.drain();
+    return { job: (await memory.status()).job, indexed };
+  };
+  const race = "Memory index failed (main): Memory index changed while full reindex was building (expected revision 4275, found 4276); retry the full reindex.";
+  assert.deepEqual(await run(2, race).then(({ job, indexed }) => [job.state, indexed]), ["ready", 3]);
+  assert.deepEqual(await run(9, race).then(({ job, indexed }) => [job.error, indexed]), ["memory_failed", 4]);
+  assert.deepEqual(await run(1, "disk is full ENOSPC").then(({ job, indexed }) => [job.error, indexed]), ["disk_full", 1]);
+});
+
 test("a live chat's new session turns do not make the index unready; stale notes do", () => {
   const withSources = (memoryDirty) => ({ ...row(), status: { ...row().status, dirty: true, sourceCounts: [
     { source: "memory", files: 23, chunks: 40, dirty: memoryDirty }, { source: "sessions", files: 7, chunks: 89 },
