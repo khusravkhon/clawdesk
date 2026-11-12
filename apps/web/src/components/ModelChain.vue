@@ -160,7 +160,8 @@ onMounted(load);
 .card {
   background: var(--surface);
   border: 1px solid var(--border);
-  border-radius: 12px;
+  border-radius: var(--radius-card);
+  box-shadow: var(--card-shadow);
   padding: 18px 20px;
   min-width: 0;
   margin-bottom: 24px;

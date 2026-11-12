@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import type { AgentListItemDto, LibraryCursor, LibraryHitDto, LibraryItemKind, LibraryMaterialDto } from "@clawdesk/shared";
-import { NAlert, NButton, NCard, NEmpty, NInput, NPopconfirm, NSpin, useMessage } from "naive-ui";
+import { FileText, Search, Trash2, Video, X } from "@lucide/vue";
+import { NAlert, NButton, NCard, NEmpty, NInput, NPopconfirm, NRadioButton, NRadioGroup, NSpin, useMessage } from "naive-ui";
 import { onBeforeUnmount, onMounted, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import { useRoute } from "vue-router";
@@ -112,71 +113,86 @@ watch(() => route.query.material, (id) => {
 <template>
   <page-header :title="t('today.materials')" :subtitle="t('library.browser.subtitle')" />
   <n-card v-if="selectedId" class="detail">
-    <div class="actions">
+    <div class="detail-head">
       <h2>{{ material?.item.title ?? t("library.browser.savedText") }}</h2>
-      <n-button size="small" @click="closeMaterial">{{ t("library.browser.close") }}</n-button>
+      <n-button size="small" quaternary circle :aria-label="t('library.browser.close')" @click="closeMaterial"><x :size="16" /></n-button>
     </div>
     <n-alert v-if="materialFailed" type="error">{{ t("library.browser.error") }}</n-alert>
     <template v-else-if="material">
-      <p>{{ owner(material.item.agentId) }} · {{ date(material.item.at) }} · {{ processing(material.item) }}</p>
-      <p v-if="!material.text">{{ t("library.browser.noText") }}</p>
+      <p class="meta">{{ owner(material.item.agentId) }} · {{ date(material.item.at) }} · {{ processing(material.item) }}</p>
+      <p v-if="!material.text" class="meta">{{ t("library.browser.noText") }}</p>
       <pre v-else>{{ material.text }}</pre>
     </template>
     <n-spin v-else />
   </n-card>
   <form class="filters" @submit.prevent="search">
-    <label>
-      {{ t("library.browser.agent") }}
-      <select v-model="agent">
-        <option value="">{{ t("library.browser.all") }}</option>
-        <option v-for="entry in agents" :key="entry.id" :value="entry.id">{{ entry.name }}</option>
-      </select>
-    </label>
-    <label>
-      {{ t("library.browser.type") }}
-      <select v-model="kind">
-        <option value="">{{ t("library.browser.all") }}</option>
-        <option value="document">{{ t("library.kind.document") }}</option>
-        <option value="video">{{ t("library.kind.video") }}</option>
-      </select>
-    </label>
-    <label class="query">
-      {{ t("library.browser.searchText") }}
-      <n-input v-model:value="draft" :maxlength="200" :placeholder="t('library.placeholder')" />
-    </label>
-    <n-button attr-type="submit" type="primary">{{ t("library.search") }}</n-button>
+    <n-radio-group v-model:value="kind" size="small" :aria-label="t('library.browser.type')">
+      <n-radio-button value="">{{ t("library.browser.all") }}</n-radio-button>
+      <n-radio-button value="document">{{ t("library.kind.document") }}</n-radio-button>
+      <n-radio-button value="video">{{ t("library.kind.video") }}</n-radio-button>
+    </n-radio-group>
+    <select v-model="agent" :aria-label="t('library.browser.agent')">
+      <option value="">{{ t("library.browser.agent") }}: {{ t("library.browser.all") }}</option>
+      <option v-for="entry in agents" :key="entry.id" :value="entry.id">{{ entry.name }}</option>
+    </select>
+    <n-input v-model:value="draft" round clearable class="query" :maxlength="200" :placeholder="t('library.placeholder')" :aria-label="t('library.browser.searchText')">
+      <template #prefix><search :size="15" /></template>
+    </n-input>
+    <n-button attr-type="submit" type="primary" round>{{ t("library.search") }}</n-button>
   </form>
   <n-alert v-if="failed" type="error">{{ t("library.browser.error") }} <n-button size="tiny" @click="load(!!items.length)">{{ t("chat.sendRecovery.check") }}</n-button></n-alert>
-  <n-empty v-else-if="!busy && !items.length" :description="t(query ? 'library.browser.noResults' : agent ? 'library.emptyLibrary' : 'library.emptyAll')" />
+  <n-empty v-else-if="!busy && !items.length" class="empty" :description="t(query ? 'library.browser.noResults' : agent ? 'library.emptyLibrary' : 'library.emptyAll')" />
   <ul v-if="items.length" class="items">
-    <li v-for="item in items" :key="item.id">
-      <strong>{{ item.title }}</strong>
-      <p>{{ t(`library.kind.${item.kind}`) }} · {{ owner(item.agentId) }} · {{ date(item.at) }} · {{ processing(item) }}</p>
-      <a v-if="sourceUrl(item)" :href="sourceUrl(item)" target="_blank" rel="noopener noreferrer">{{ item.source }}</a>
-      <p v-else>{{ item.source }} · {{ t("library.browser.originalUnavailable") }}</p>
-      <p v-for="snippet in item.snippets" :key="snippet.from">{{ snippet.text }}</p>
+    <li v-for="item in items" :key="item.id" class="item" :class="{ open: item.id === selectedId }">
+      <span class="glyph" :class="item.kind"><component :is="item.kind === 'video' ? Video : FileText" :size="18" :stroke-width="1.75" /></span>
+      <div class="body">
+        <strong>{{ item.title }}</strong>
+        <p class="meta">{{ t(`library.kind.${item.kind}`) }} · {{ owner(item.agentId) }} · {{ date(item.at) }} · {{ processing(item) }}</p>
+        <a v-if="sourceUrl(item)" :href="sourceUrl(item)" target="_blank" rel="noopener noreferrer">{{ item.source }}</a>
+        <p v-else class="meta">{{ item.source }} · {{ t("library.browser.originalUnavailable") }}</p>
+        <p v-for="snippet in item.snippets" :key="snippet.from" class="snippet">{{ snippet.text }}</p>
+      </div>
       <div class="actions">
-        <n-button size="small" @click="openMaterial(item.id)">{{ t("library.browser.savedText") }}</n-button>
+        <n-button size="small" round secondary @click="openMaterial(item.id)">{{ t("library.browser.savedText") }}</n-button>
         <n-popconfirm :positive-text="t('library.remove')" @positive-click="remove(item.id)">
-          <template #trigger><n-button size="small">{{ t("library.remove") }}</n-button></template>
+          <template #trigger><n-button size="small" quaternary circle :aria-label="t('library.remove')"><trash2 :size="15" /></n-button></template>
           {{ t("library.browser.removeNote") }}
         </n-popconfirm>
       </div>
     </li>
   </ul>
-  <n-spin v-if="busy" />
-  <n-button v-else-if="cursor && !failed" @click="load(true)">{{ t("library.browser.more") }}</n-button>
+  <div class="more">
+    <n-spin v-if="busy" />
+    <n-button v-else-if="cursor && !failed" round @click="load(true)">{{ t("library.browser.more") }}</n-button>
+  </div>
 </template>
 
 <style scoped>
-.filters, .actions { display: flex; flex-wrap: wrap; align-items: end; gap: 10px; }
-.filters, .detail { margin-bottom: 18px; }
-.filters label { display: grid; gap: 4px; max-width: 100%; }
-.query { flex: 1 1 200px; }
-.filters select { padding: 7px; color: var(--text); background: var(--surface); border: 1px solid var(--border); border-radius: 6px; }
-.items { display: grid; gap: 10px; padding: 0; list-style: none; }
-.items li { padding: 14px; border: 1px solid var(--border); border-radius: 10px; }
-.items p, .items a { margin: 6px 0; overflow-wrap: anywhere; }
-.detail pre { max-height: 55dvh; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; }
-.detail h2 { flex: 1 1 180px; margin: 0; overflow-wrap: anywhere; }
+.filters { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin-bottom: 18px; }
+.query { flex: 1 1 220px; }
+.query { --n-color: var(--surface) !important; }
+.filters select { background: var(--surface); }
+.empty { padding: 48px 0; }
+.items { display: grid; gap: 10px; margin: 0; padding: 0; list-style: none; }
+.item { display: flex; align-items: flex-start; gap: 14px; padding: 16px 18px; border-radius: var(--radius-card); background: var(--surface); border: 1px solid var(--border); box-shadow: var(--card-shadow); transition: transform 0.25s var(--ease-out), box-shadow 0.25s ease, border-color 0.25s ease; }
+.item:hover { transform: translateY(-2px); box-shadow: var(--card-shadow-hover); }
+.item.open { border-color: var(--accent-bright); }
+.glyph { width: 40px; height: 40px; flex: none; display: grid; place-items: center; border-radius: 14px; background: rgba(59, 130, 246, 0.13); color: #2563eb; }
+.glyph.video { background: rgba(236, 72, 153, 0.13); color: #db2777; }
+.body { flex: 1; min-width: 0; }
+.body strong { font-size: 15px; overflow-wrap: anywhere; }
+.body p, .body a { margin: 4px 0 0; overflow-wrap: anywhere; }
+.body a { display: inline-block; font-size: 13px; }
+.meta { color: var(--text-2); font-size: 13px; }
+.snippet { padding: 8px 12px; border-radius: 12px; background: var(--surface-2); font-size: 13px; }
+.actions { display: flex; align-items: center; gap: 6px; flex: none; }
+.more { display: flex; justify-content: center; margin-top: 16px; }
+.detail { margin-bottom: 18px; }
+.detail-head { display: flex; align-items: flex-start; gap: 10px; }
+.detail h2 { flex: 1; margin: 0 0 6px; font-size: 20px; letter-spacing: -0.02em; overflow-wrap: anywhere; }
+.detail pre { max-height: 55dvh; overflow: auto; margin: 12px 0 0; padding: 14px 16px; border-radius: 14px; background: var(--surface-2); font: inherit; font-size: 13.5px; line-height: 1.55; white-space: pre-wrap; overflow-wrap: anywhere; }
+@media (max-width: 600px) {
+  .item { flex-wrap: wrap; }
+  .actions { width: 100%; justify-content: flex-end; }
+}
 </style>

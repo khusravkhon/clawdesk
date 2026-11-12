@@ -308,11 +308,16 @@ const subtitle = computed(() => t("dash.subtitle", { days: range.value.replace("
   display: flex;
   align-items: center;
   gap: 12px;
-  padding: 12px 14px;
-  border-radius: 12px;
+  padding: 12px 16px;
+  border-radius: 16px;
   background: var(--surface);
   border: 1px solid var(--border);
+  box-shadow: var(--card-shadow);
   min-width: 0;
+  transition: transform 0.25s var(--ease-out);
+}
+.health-item:hover {
+  transform: translateY(-2px);
 }
 .h-icon {
   color: var(--muted);
@@ -411,7 +416,7 @@ const subtitle = computed(() => t("dash.subtitle", { days: range.value.replace("
 .avatar {
   width: 36px;
   height: 36px;
-  border-radius: 10px;
+  border-radius: 12px;
   display: grid;
   place-items: center;
   background: var(--surface-2);
@@ -460,7 +465,8 @@ const subtitle = computed(() => t("dash.subtitle", { days: range.value.replace("
 .mini-fill {
   height: 100%;
   border-radius: 4px;
-  background: var(--accent);
+  background: var(--accent-gradient);
+  transition: width 0.6s var(--ease-out);
 }
 .agent-side {
   display: flex;

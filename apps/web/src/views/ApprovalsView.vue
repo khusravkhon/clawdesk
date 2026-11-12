@@ -141,7 +141,8 @@ onMounted(() => void store.refresh());
   color: var(--text);
   background: var(--surface);
   border: 1px solid var(--border);
-  border-radius: 12px;
+  border-radius: var(--radius-card);
+  box-shadow: var(--card-shadow);
   padding: 14px 16px;
   cursor: pointer;
   display: flex;
@@ -152,8 +153,8 @@ onMounted(() => void store.refresh());
   background: var(--surface-2);
 }
 .mode.active {
-  border-color: var(--accent);
-  box-shadow: 0 0 0 1px var(--accent) inset;
+  border-color: var(--accent-bright);
+  box-shadow: 0 0 0 4px var(--accent-soft);
 }
 .mode.active.risky {
   border-color: var(--warning);
@@ -207,7 +208,8 @@ onMounted(() => void store.refresh());
 .panel {
   background: var(--surface);
   border: 1px solid var(--border);
-  border-radius: 12px;
+  border-radius: var(--radius-card);
+  box-shadow: var(--card-shadow);
   padding: 16px 18px;
   min-width: 0;
 }

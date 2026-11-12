@@ -30,7 +30,7 @@ const option = computed(() => {
     grid: props.compact ? { left: 2, right: 2, top: 4, bottom: 4, containLabel: false } : { left: 4, right: 12, top: 12, bottom: 4, containLabel: true },
     tooltip: {
       trigger: "axis",
-      backgroundColor: c.surface2,
+      backgroundColor: c.surfaceSolid,
       borderColor: c.border,
       borderWidth: 1,
       padding: [8, 12],
@@ -67,7 +67,7 @@ const option = computed(() => {
         showSymbol: false,
         symbolSize: 8,
         lineStyle: { width: 2, color: c.accent },
-        itemStyle: { color: c.accent, borderColor: c.surface, borderWidth: 2 },
+        itemStyle: { color: c.accent, borderColor: c.surfaceSolid, borderWidth: 2 },
         emphasis: { focus: "none" },
         areaStyle: {
           color: new graphic.LinearGradient(0, 0, 0, 1, [

@@ -51,8 +51,8 @@ const when = (hit: LibraryHitDto) => formatRelative(hit.at, locale.value);
 <template>
   <div class="library">
     <div class="bar">
-      <n-input v-model:value="query" size="small" :placeholder="t('library.placeholder')" :maxlength="200" @keydown.enter="search" />
-      <n-button size="small" secondary :loading="busy" :disabled="!query.trim()" @click="search">
+      <n-input v-model:value="query" size="small" round :placeholder="t('library.placeholder')" :maxlength="200" @keydown.enter="search" />
+      <n-button size="small" secondary round :loading="busy" :disabled="!query.trim()" @click="search">
         <search-icon :size="13" /> &nbsp;{{ t("library.search") }}
       </n-button>
     </div>
@@ -103,9 +103,10 @@ const when = (hit: LibraryHitDto) => formatRelative(hit.at, locale.value);
   overflow-y: auto;
 }
 .hits li {
-  padding: 8px 10px;
-  border: 1px solid var(--border);
-  border-radius: 10px;
+  padding: 10px 14px;
+  border-radius: 14px;
+  background: var(--surface);
+  box-shadow: var(--pop-shadow);
 }
 .head {
   display: flex;

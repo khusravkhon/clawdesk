@@ -1,61 +1,92 @@
-/* Panel tokens; same values as theme.ts. Dark is the default look. */
+/* Panel tokens; same values as theme.ts. The theme is always named on <html> (index.html starts with dark,
+   theme.ts then applies the saved choice). Light: a soft grey canvas, white cards, ink-black primary actions
+   and a lime-to-green accent for whatever is alive (active, on, done). This block also holds the tokens
+   both themes share (radii, easings). */
 :root,
-:root[data-theme="dark"] {
-  color-scheme: dark;
-  --bg: #090a0f;
-  --surface: #12141e;
-  --surface-2: #191c2a;
-  --surface-hover: #222638;
-  --border: rgba(255, 255, 255, 0.08);
-  --border-subtle: rgba(255, 255, 255, 0.04);
-  --border-hover: rgba(255, 255, 255, 0.16);
-  --text: #f4f4f7;
-  --text-2: #9ea0ab;
-  --muted: #676977;
-  --accent: #7c70f0;
-  --accent-hover: #8f85f3;
-  --accent-pressed: #6a5ee0;
-  --accent-soft: rgba(124, 112, 240, 0.12);
-  --accent-gradient: linear-gradient(135deg, #8f85f3 0%, #6355e2 100%);
-  --good: #10b981;
-  --good-text: #34d399;
-  --good-soft: rgba(16, 185, 129, 0.12);
-  --warning: #f59e0b;
-  --warning-text: #fbbf24;
-  --warning-soft: rgba(245, 158, 11, 0.12);
-  --critical: #ef4444;
-  --critical-soft: rgba(239, 68, 68, 0.12);
-  --card-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
-  --card-shadow-hover: 0 6px 16px rgba(0, 0, 0, 0.4), 0 0 0 1px rgba(143, 133, 243, 0.2);
-}
-
 :root[data-theme="light"] {
   color-scheme: light;
-  --bg: #f7f8fa;
+  --bg: #f1f2f4;
   --surface: #ffffff;
-  --surface-2: #f0f2f5;
-  --surface-hover: #e8ebf0;
-  --border: rgba(15, 23, 42, 0.08);
-  --border-subtle: rgba(15, 23, 42, 0.04);
-  --border-hover: rgba(15, 23, 42, 0.16);
-  --text: #0f172a;
-  --text-2: #475569;
-  --muted: #94a3b8;
-  --accent: #5b4fd9;
-  --accent-hover: #6c61e0;
-  --accent-pressed: #4b3fc7;
-  --accent-soft: rgba(91, 79, 217, 0.08);
-  --accent-gradient: linear-gradient(135deg, #7c70f0 0%, #5b4fd9 100%);
-  --good: #059669;
-  --good-text: #047857;
-  --good-soft: rgba(5, 150, 105, 0.1);
+  --surface-solid: #ffffff;
+  --surface-2: #f4f5f7;
+  --surface-hover: #eceef1;
+  --track: #e6e8ec;
+  --border: rgba(17, 24, 39, 0.07);
+  --border-subtle: rgba(17, 24, 39, 0.04);
+  --border-hover: rgba(17, 24, 39, 0.16);
+  --text: #0c0d10;
+  --text-2: #565b66;
+  --muted: #9499a3;
+  --ink: #0c0d10;
+  --ink-hover: #26282e;
+  --ink-text: #ffffff;
+  --pill-active: #ffffff;
+  --pill-active-text: #0c0d10;
+  --accent: #15803d;
+  --accent-hover: #166f37;
+  --accent-pressed: #14602f;
+  --accent-bright: #22c55e;
+  --accent-soft: rgba(34, 197, 94, 0.13);
+  --accent-gradient: linear-gradient(135deg, #c8f542 0%, #3ed15f 100%);
+  --on-accent: #0c1a08;
+  --good: #16a34a;
+  --good-text: #15803d;
+  --good-soft: rgba(22, 163, 74, 0.12);
   --warning: #d97706;
   --warning-text: #b45309;
-  --warning-soft: rgba(217, 119, 6, 0.1);
+  --warning-soft: rgba(217, 119, 6, 0.12);
   --critical: #dc2626;
   --critical-soft: rgba(220, 38, 38, 0.1);
-  --card-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
-  --card-shadow-hover: 0 6px 16px rgba(0, 0, 0, 0.08), 0 0 0 1px rgba(91, 79, 217, 0.2);
+  --card-shadow: 0 1px 2px rgba(16, 24, 40, 0.04), 0 10px 28px -14px rgba(16, 24, 40, 0.1);
+  --card-shadow-hover: 0 2px 4px rgba(16, 24, 40, 0.05), 0 18px 36px -14px rgba(16, 24, 40, 0.18);
+  --pop-shadow: 0 1px 2px rgba(16, 24, 40, 0.06), 0 4px 10px -2px rgba(16, 24, 40, 0.08);
+  --radius-card: 20px;
+  --radius-control: 12px;
+  --ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --glass-blur: none;
+}
+
+/* Dark, the default, is glass: a deep green backdrop with soft light behind it, translucent cards that blur what is
+   under them, and mint for the main action and the open section. */
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --bg: #07100b;
+  --surface: rgba(255, 255, 255, 0.06);
+  --surface-solid: #121b16;
+  --surface-2: rgba(255, 255, 255, 0.07);
+  --surface-hover: rgba(255, 255, 255, 0.12);
+  --track: rgba(255, 255, 255, 0.08);
+  --border: rgba(255, 255, 255, 0.1);
+  --border-subtle: rgba(255, 255, 255, 0.05);
+  --border-hover: rgba(255, 255, 255, 0.24);
+  --text: #f1f7f3;
+  --text-2: #a8b8ae;
+  --muted: #71837a;
+  --ink: #86efac;
+  --ink-hover: #a7f3c4;
+  --ink-text: #05140b;
+  --pill-active: #86efac;
+  --pill-active-text: #05140b;
+  --accent: #86efac;
+  --accent-hover: #a7f3c4;
+  --accent-pressed: #6ee7a0;
+  --accent-bright: #4ade80;
+  --accent-soft: rgba(74, 222, 128, 0.16);
+  --accent-gradient: linear-gradient(135deg, #bbf7d0 0%, #4ade80 100%);
+  --on-accent: #05140b;
+  --good: #4ade80;
+  --good-text: #86efac;
+  --good-soft: rgba(74, 222, 128, 0.16);
+  --warning: #f59e0b;
+  --warning-text: #fbbf24;
+  --warning-soft: rgba(245, 158, 11, 0.16);
+  --critical: #f87171;
+  --critical-soft: rgba(248, 113, 113, 0.16);
+  --card-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.07), 0 24px 48px -28px rgba(0, 0, 0, 0.7);
+  --card-shadow-hover: inset 0 1px 0 rgba(255, 255, 255, 0.12), 0 28px 56px -24px rgba(0, 0, 0, 0.8), 0 0 0 1px rgba(134, 239, 172, 0.22);
+  --pop-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06), 0 6px 16px -6px rgba(0, 0, 0, 0.5);
+  --glass-blur: blur(22px) saturate(1.35);
 }
 
 html,
@@ -67,11 +98,51 @@ body {
   font-feature-settings: "cv11", "ss01";
 }
 
+/* The dark theme's backdrop: soft green light behind the glass, drifting very slowly. */
+@keyframes backdrop-drift {
+  from {
+    background-position:
+      0% 0%,
+      100% 0%,
+      50% 100%,
+      0 0;
+  }
+  to {
+    background-position:
+      12% 8%,
+      88% 14%,
+      40% 92%,
+      0 0;
+  }
+}
+:root[data-theme="dark"] #app {
+  min-height: 100dvh;
+  background-color: var(--bg);
+  background-image:
+    radial-gradient(closest-side, rgba(74, 222, 128, 0.24), transparent),
+    radial-gradient(closest-side, rgba(163, 230, 53, 0.16), transparent),
+    radial-gradient(closest-side, rgba(16, 185, 129, 0.2), transparent),
+    linear-gradient(160deg, #0b1a12 0%, #07100b 55%, #0a1510 100%);
+  background-size:
+    70vw 70vw,
+    60vw 60vw,
+    80vw 80vw,
+    100% 100%;
+  background-repeat: no-repeat;
+  background-attachment: fixed;
+  animation: backdrop-drift 36s ease-in-out infinite alternate;
+}
+/* Glass: whatever is a card blurs the backdrop under it. Named here once, for every screen. */
+:root[data-theme="dark"] :is(.n-card, .tile, .health-item, .card, .panel, .agent, .item, .interactive-item, .stage, .box, .mode, .option, .project-tile, .team-card, .department-card, .foot, .find) {
+  -webkit-backdrop-filter: var(--glass-blur);
+  backdrop-filter: var(--glass-blur);
+}
+
 code {
   font-family: "JetBrains Mono", ui-monospace, "Cascadia Code", Consolas, monospace;
   font-size: 12px;
   padding: 1px 6px;
-  border-radius: 5px;
+  border-radius: 6px;
   background: var(--surface-2);
   color: var(--text-2);
 }
@@ -84,17 +155,294 @@ code {
   font-variant-numeric: tabular-nums;
 }
 
-/* Modern sub-navigation pill bar */
+/* --- Motion -------------------------------------------------------------------------------------------- */
+
+/* A page rises into place when its section opens (AppShell keys the wrapper by the page's component). */
+@keyframes page-in {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+.page-in {
+  animation: page-in 0.36s var(--ease-out) both;
+}
+
+@keyframes pop-in {
+  from {
+    opacity: 0;
+    transform: scale(0.94);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes live-pulse {
+  0% {
+    box-shadow: 0 0 0 0 rgba(34, 197, 94, 0.5);
+  }
+  100% {
+    box-shadow: 0 0 0 9px rgba(34, 197, 94, 0);
+  }
+}
+
+/* Everything pressable gives under the finger and springs back. */
+.n-button,
+.pressable {
+  transition:
+    transform 0.18s var(--ease-spring),
+    box-shadow 0.18s ease,
+    background-color 0.18s ease,
+    border-color 0.18s ease,
+    color 0.18s ease;
+}
+.n-button:not(.n-button--disabled):active,
+.pressable:active {
+  transform: scale(0.96);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/* --- Focus --------------------------------------------------------------------------------------------- */
+
+a:focus-visible,
+button:focus-visible,
+select:focus-visible,
+summary:focus-visible,
+[tabindex]:focus-visible {
+  outline: 2px solid var(--accent-bright);
+  outline-offset: 2px;
+  border-radius: 8px;
+}
+
+/* --- Naive UI, shaped to the panel's look ---------------------------------------------------------------- */
+
+.n-card {
+  box-shadow: var(--card-shadow);
+  transition:
+    box-shadow 0.25s ease,
+    transform 0.25s var(--ease-out);
+}
+
+/* Segmented control: a grey track, the chosen option is a white pill that lifts. */
+.n-radio-group.n-radio-group--button-group {
+  display: inline-flex;
+  padding: 3px;
+  border-radius: 999px;
+  background: var(--track);
+}
+.n-radio-group .n-radio-group__splitor {
+  display: none;
+}
+.n-radio-group .n-radio-button {
+  border: 0 !important;
+  border-radius: 999px !important;
+  background: transparent;
+  color: var(--text-2);
+  font-weight: 500;
+  transition:
+    background-color 0.2s ease,
+    color 0.2s ease,
+    box-shadow 0.2s ease,
+    transform 0.18s var(--ease-spring);
+}
+.n-radio-group .n-radio-button .n-radio-button__state-border {
+  display: none;
+}
+.n-radio-group .n-radio-button:not(.n-radio-button--disabled):hover {
+  color: var(--text);
+}
+.n-radio-group .n-radio-button.n-radio-button--checked {
+  background: var(--pill-active);
+  color: var(--pill-active-text);
+  box-shadow: var(--pop-shadow);
+}
+.n-radio-group .n-radio-button:not(.n-radio-button--disabled):active {
+  transform: scale(0.95);
+}
+
+.n-tag {
+  font-weight: 500;
+}
+
+.n-switch .n-switch__button {
+  transition:
+    left 0.25s var(--ease-spring),
+    max-width 0.2s ease,
+    background-color 0.2s ease;
+}
+
+/* Fields that sit on the grey canvas, not inside a card, are white. */
+.on-canvas .n-input,
+.n-input.on-canvas,
+.on-canvas .n-base-selection {
+  --n-color: var(--surface) !important;
+}
+
+/* --- Native controls (screens that use plain HTML fields) ------------------------------------------------ */
+
+.page select,
+.page input[type="datetime-local"],
+.page input[type="time"],
+.page input[type="date"] {
+  box-sizing: border-box;
+  max-width: 100%;
+  min-width: 0;
+  height: 36px;
+  padding: 0 12px;
+  font: inherit;
+  font-size: 14px;
+  color: var(--text);
+  background: var(--surface-2);
+  border: 1px solid transparent;
+  border-radius: var(--radius-control);
+  transition:
+    border-color 0.18s ease,
+    box-shadow 0.18s ease,
+    background-color 0.18s ease;
+}
+.page select:hover,
+.page input[type="datetime-local"]:hover,
+.page input[type="time"]:hover,
+.page input[type="date"]:hover {
+  background: var(--surface-hover);
+}
+.page select:focus,
+.page input[type="datetime-local"]:focus,
+.page input[type="time"]:focus,
+.page input[type="date"]:focus {
+  outline: none;
+  background: var(--surface);
+  border-color: var(--accent-bright);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+.page input[type="checkbox"] {
+  accent-color: var(--accent-bright);
+  width: 16px;
+  height: 16px;
+  vertical-align: -3px;
+}
+/* Zero specificity: any component's own link style wins over this default. */
+:where(.page a) {
+  color: var(--accent);
+  text-decoration: none;
+  font-weight: 500;
+}
+:where(.page a:hover) {
+  text-decoration: underline;
+}
+
+/* --- Shared pieces --------------------------------------------------------------------------------------- */
+
+/* A link that reads as a soft button: quick actions, "open" links. */
+.pill-link {
+  text-decoration: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 7px 14px;
+  border-radius: 999px;
+  background: var(--surface-2);
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition:
+    transform 0.18s var(--ease-spring),
+    background-color 0.18s ease,
+    box-shadow 0.18s ease;
+}
+.pill-link:hover {
+  background: var(--surface-hover);
+}
+.pill-link:active {
+  transform: scale(0.96);
+}
+.pill-link.strong {
+  background: var(--ink);
+  color: var(--ink-text);
+}
+.pill-link.strong:hover {
+  background: var(--ink-hover);
+}
+.pill-link.live {
+  background: var(--accent-gradient);
+  color: var(--on-accent);
+}
+
+/* A toggle chip: on is the accent gradient, off is a quiet grey. */
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 32px;
+  padding: 0 13px;
+  border: 0;
+  border-radius: 999px;
+  background: var(--surface);
+  color: var(--text-2);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 500;
+  white-space: nowrap;
+  cursor: pointer;
+  box-shadow: var(--pop-shadow);
+  transition:
+    transform 0.18s var(--ease-spring),
+    background 0.2s ease,
+    color 0.2s ease;
+}
+.chip:hover {
+  color: var(--text);
+}
+.chip:active {
+  transform: scale(0.94);
+}
+.chip.on {
+  background: var(--accent-gradient);
+  color: var(--on-accent);
+}
+.chip .chip-count {
+  font-variant-numeric: tabular-nums;
+  opacity: 0.7;
+}
+
+.live-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--accent-bright);
+  flex: none;
+  animation: live-pulse 1.6s ease-out infinite;
+}
+
+/* Sub-navigation pill bar */
 .subnav-bar {
   display: flex;
   align-items: center;
-  gap: 6px;
-  padding: 5px;
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: 10px;
+  gap: 4px;
+  padding: 4px;
+  background: var(--track);
+  border-radius: 999px;
   overflow-x: auto;
   margin-bottom: 22px;
+  width: fit-content;
+  max-width: 100%;
+  box-sizing: border-box;
 }
 
 .subnav-pill {
@@ -106,30 +454,28 @@ code {
   font-weight: 500;
   color: var(--text-2);
   text-decoration: none;
-  border-radius: 7px;
+  border-radius: 999px;
   white-space: nowrap;
-  transition: all 0.16s ease;
+  transition: all 0.18s ease;
 }
 
 .subnav-pill:hover {
   color: var(--text);
-  background: var(--surface-2);
 }
 
 .subnav-pill.active {
-  color: var(--text);
-  background: var(--surface-2);
+  color: var(--pill-active-text);
+  background: var(--pill-active);
   font-weight: 600;
-  border: 1px solid var(--border);
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.18);
+  box-shadow: var(--pop-shadow);
 }
 
-/* Modern status pills */
+/* Status pills */
 .status-pill {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  padding: 3px 9px;
+  padding: 3px 10px;
   border-radius: 9999px;
   font-size: 12px;
   font-weight: 500;
@@ -147,7 +493,6 @@ code {
 .status-pill.draft {
   background: var(--warning-soft);
   color: var(--warning-text);
-  border: 1px solid rgba(245, 158, 11, 0.2);
 }
 .status-pill.draft .status-dot {
   background: var(--warning);
@@ -155,41 +500,44 @@ code {
 
 .status-pill.planned {
   background: var(--accent-soft);
-  color: var(--accent-hover);
-  border: 1px solid rgba(124, 112, 240, 0.25);
+  color: var(--accent);
 }
 .status-pill.planned .status-dot {
-  background: var(--accent);
+  background: var(--accent-bright);
 }
 
 .status-pill.archived {
   background: var(--surface-2);
   color: var(--muted);
-  border: 1px solid var(--border);
 }
 .status-pill.archived .status-dot {
   background: var(--muted);
 }
 
-/* Modern interactive card list item */
+/* Interactive card list item */
 .interactive-item {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 16px;
-  padding: 13px 16px;
-  border-radius: 10px;
+  padding: 14px 18px;
+  border-radius: 16px;
   border: 1px solid var(--border);
   background: var(--surface);
-  transition: all 0.18s cubic-bezier(0.16, 1, 0.3, 1);
+  transition:
+    transform 0.22s var(--ease-out),
+    box-shadow 0.22s ease,
+    border-color 0.22s ease;
   cursor: pointer;
   text-decoration: none;
   color: inherit;
 }
 
 .interactive-item:hover {
-  background: var(--surface-hover);
   border-color: var(--border-hover);
-  transform: translateY(-1px);
-  box-shadow: var(--card-shadow);
+  transform: translateY(-2px);
+  box-shadow: var(--card-shadow-hover);
+}
+.interactive-item:active {
+  transform: scale(0.985);
 }

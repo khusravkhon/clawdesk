@@ -7,6 +7,7 @@ export const router = createRouter({
   history: createWebHistory(),
   routes: [
     { path: "/", name: "dashboard", component: () => import("./views/LandingView.vue") },
+    { path: "/conveyor", name: "conveyor", component: () => import("./views/ConveyorView.vue"), meta: { aiOptional: true } },
     { path: "/today", name: "today", component: () => import("./views/TodayView.vue"), meta: { aiOptional: true } },
     { path: "/assistant", name: "assistant", component: () => import("./views/AssistantView.vue") },
     { path: "/agents", name: "agents", component: () => import("./views/AgentsView.vue") },

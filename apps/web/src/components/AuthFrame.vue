@@ -42,8 +42,8 @@ const { t } = useI18n();
   display: grid;
   place-items: center;
   font-weight: 700;
-  color: #fff;
-  background: linear-gradient(135deg, #8f85f3, #5b4fd9);
+  color: var(--on-accent);
+  background: var(--accent-gradient);
 }
 h1 {
   margin: 0;

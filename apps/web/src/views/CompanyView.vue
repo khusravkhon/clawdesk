@@ -449,7 +449,8 @@ onMounted(load);
   padding: 16px 20px;
   background: var(--surface);
   border: 1px solid var(--border);
-  border-radius: 12px;
+  border-radius: var(--radius-card);
+  box-shadow: var(--card-shadow);
   margin-bottom: 20px;
   flex-wrap: wrap;
 }
@@ -485,7 +486,8 @@ onMounted(load);
 .department-card {
   background: var(--surface);
   border: 1px solid var(--border);
-  border-radius: 14px;
+  border-radius: var(--radius-card);
+  box-shadow: var(--card-shadow);
   padding: 18px 20px;
   display: flex;
   flex-direction: column;

@@ -334,7 +334,8 @@ onMounted(load);
 .team-card {
   background: var(--surface);
   border: 1px solid var(--border);
-  border-radius: 14px;
+  border-radius: var(--radius-card);
+  box-shadow: var(--card-shadow);
   padding: 20px 22px;
   display: flex;
   flex-direction: column;
@@ -383,9 +384,9 @@ onMounted(load);
   border-radius: 6px;
 }
 .team-badge.github {
-  background: rgba(124, 112, 240, 0.12);
-  color: var(--accent-hover);
-  border: 1px solid rgba(124, 112, 240, 0.25);
+  background: var(--accent-soft);
+  color: var(--accent);
+  border: 1px solid transparent;
 }
 .team-badge.project {
   background: var(--surface-2);

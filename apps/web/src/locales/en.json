@@ -2929,5 +2929,97 @@
       "main_folders": "The main agent already sees the shared folder.",
       "not_applied": "The agent's copy was not confirmed — try again."
     }
+  },
+  "conveyor": {
+    "title": "Conveyor",
+    "subtitle": "A live map of the system: the assistant, agents and everything they hold",
+    "filter": "What to show",
+    "kinds": {
+      "agent": "Agents",
+      "material": "Materials",
+      "schedule": "Schedules",
+      "reminder": "Reminders",
+      "task": "Tasks"
+    },
+    "kind": {
+      "core": "Main assistant",
+      "agent": "Agent",
+      "material": "Material",
+      "schedule": "Schedule",
+      "reminder": "Reminder",
+      "task": "Task"
+    },
+    "state": {
+      "live": "Working",
+      "ok": "All good",
+      "waiting": "Needs attention",
+      "error": "Error",
+      "off": "Paused"
+    },
+    "parts": {
+      "agent": "agents",
+      "states": "agent states",
+      "material": "materials",
+      "schedule": "schedules",
+      "reminder": "reminders",
+      "task": "tasks"
+    },
+    "fields": {
+      "model": "Model",
+      "purpose": "Purpose",
+      "lastActivity": "Last activity",
+      "error": "Error",
+      "owner": "Belongs to",
+      "source": "Source",
+      "saved": "Saved",
+      "size": "Size",
+      "chars": "{n} characters",
+      "prompt": "What it does",
+      "next": "Next run",
+      "last": "Last run",
+      "due": "When",
+      "text": "Text",
+      "executor": "Assignee",
+      "status": "Status",
+      "waits": "Waiting for",
+      "updated": "Updated"
+    },
+    "status": {
+      "live": "{n} working",
+      "attention": "{n} need attention",
+      "nodes": "on the map: {n}",
+      "updated": "updated at {time}"
+    },
+    "search": "Find on the map",
+    "demo": "Demo",
+    "demoOn": "Show the demo",
+    "demoTitle": "Demo mode",
+    "demoNote": "This is sample data, not your system. Turn Demo off to return to your own.",
+    "offline": "No connection to the panel: the map of your system could not be loaded.",
+    "failed": "Could not load: {parts}. The rest is shown.",
+    "empty": "Only the assistant is here so far. Save a material in the chat, add a schedule or create an agent — they will appear on the map.",
+    "more": "All materials",
+    "moreMeta": "open the library",
+    "paused": "paused",
+    "open": "Open",
+    "chat": "Message",
+    "close": "Close",
+    "fit": "Show everything",
+    "zoomIn": "Zoom in",
+    "zoomOut": "Zoom out",
+    "hint": "Drag the map, scroll to zoom, click the nodes"
+  },
+  "palette": {
+    "title": "Search",
+    "placeholder": "A section, agent, material or action…",
+    "empty": "Nothing found",
+    "chatWith": "message",
+    "keys": "↑↓ choose · Enter open · Esc close · Ctrl+K anywhere",
+    "groups": {
+      "sections": "Sections",
+      "agents": "Agents",
+      "materials": "Materials",
+      "actions": "Actions"
+    }
   }
 }

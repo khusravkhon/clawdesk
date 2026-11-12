@@ -2,11 +2,12 @@
 // Panel frame. Desktop: left sidebar that folds to icons. Phone: top bar, menu slides in from the left.
 import { Menu as MenuIcon } from "@lucide/vue";
 import { NButton, NDrawer, NLayout, NLayoutContent, NLayoutSider, useNotification } from "naive-ui";
-import { h, onBeforeUnmount, onMounted, ref } from "vue";
+import { h, onBeforeUnmount, onMounted, ref, type VNode } from "vue";
 import { useI18n } from "vue-i18n";
 import { useRouter } from "vue-router";
 import { useApprovalsStore } from "../stores/approvals";
 import { desktopNotify } from "../desktop";
+import CommandPalette from "./CommandPalette.vue";
 import SidebarNav from "./SidebarNav.vue";
 
 const { t } = useI18n();
@@ -28,6 +29,17 @@ onMounted(() =>
   }),
 );
 
+// A page rises into place when another section opens; the same page with other parameters stays as it is.
+const pageIds = new WeakMap<object, number>();
+let lastPageId = 0;
+function pageKey(page: VNode | undefined): number {
+  const type = page?.type;
+  if (typeof type !== "object" || type === null) return 0;
+  if (!pageIds.has(type)) pageIds.set(type, ++lastPageId);
+  return pageIds.get(type)!;
+}
+
+const palette = ref<InstanceType<typeof CommandPalette> | null>(null);
 const collapsed = ref(false);
 const drawerOpen = ref(false);
 
@@ -42,12 +54,17 @@ onBeforeUnmount(() => phoneQuery.removeEventListener("change", onQuery));
 </script>
 
 <template>
+  <command-palette ref="palette" />
   <n-layout v-if="!isPhone" has-sider class="shell">
-    <n-layout-sider bordered collapse-mode="width" :collapsed="collapsed" :collapsed-width="64" :width="232" :native-scrollbar="false">
-      <sidebar-nav :collapsed="collapsed" collapsible @toggle="collapsed = !collapsed" />
+    <n-layout-sider collapse-mode="width" :collapsed="collapsed" :collapsed-width="68" :width="240" :native-scrollbar="false">
+      <sidebar-nav :collapsed="collapsed" collapsible @toggle="collapsed = !collapsed" @search="palette?.show()" />
     </n-layout-sider>
     <n-layout-content>
-      <div class="page"><router-view /></div>
+      <div class="page">
+        <router-view v-slot="{ Component }">
+          <div :key="pageKey(Component)" class="page-in"><component :is="Component" /></div>
+        </router-view>
+      </div>
     </n-layout-content>
   </n-layout>
 
@@ -60,9 +77,13 @@ onBeforeUnmount(() => phoneQuery.removeEventListener("change", onQuery));
       <span class="brand-name">{{ t("app.title") }}</span>
     </header>
     <n-drawer v-model:show="drawerOpen" placement="left" :width="260">
-      <sidebar-nav @navigate="drawerOpen = false" />
+      <sidebar-nav @navigate="drawerOpen = false" @search="drawerOpen = false; palette?.show()" />
     </n-drawer>
-    <main class="page"><router-view /></main>
+    <main class="page">
+      <router-view v-slot="{ Component }">
+        <div :key="pageKey(Component)" class="page-in"><component :is="Component" /></div>
+      </router-view>
+    </main>
   </div>
 </template>
 
@@ -71,7 +92,7 @@ onBeforeUnmount(() => phoneQuery.removeEventListener("change", onQuery));
   height: 100vh;
 }
 .page {
-  max-width: 1200px;
+  max-width: 1240px;
   margin: 0 auto;
   padding: 28px 32px 48px;
 }
@@ -84,19 +105,19 @@ onBeforeUnmount(() => phoneQuery.removeEventListener("change", onQuery));
   gap: 8px;
   height: 52px;
   padding: 0 8px;
-  background: var(--bg);
-  border-bottom: 1px solid var(--border);
+  background: color-mix(in srgb, var(--bg) 85%, transparent);
+  backdrop-filter: blur(12px);
 }
 .logo {
-  width: 24px;
-  height: 24px;
-  border-radius: 7px;
+  width: 26px;
+  height: 26px;
+  border-radius: 9px;
   display: grid;
   place-items: center;
-  font-weight: 700;
-  font-size: 13px;
-  color: #fff;
-  background: linear-gradient(135deg, #8f85f3, #5b4fd9);
+  font-weight: 800;
+  font-size: 14px;
+  color: var(--on-accent);
+  background: var(--accent-gradient);
 }
 .brand-name {
   font-weight: 600;

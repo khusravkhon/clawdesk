@@ -99,7 +99,8 @@ async function save(): Promise<void> {
   gap: 8px;
   padding: 18px;
   border: 1px solid var(--border);
-  border-radius: 12px;
+  border-radius: var(--radius-card);
+  box-shadow: var(--card-shadow);
   background: var(--surface);
   color: inherit;
   font: inherit;
