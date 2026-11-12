@@ -641,7 +641,7 @@ watch(agentId, (id) => {
 
 <template>
   <div class="chat">
-    <header class="bar">
+    <header class="bar on-canvas">
       <n-select
         :value="agentId"
         :options="agentOptions"
@@ -652,7 +652,7 @@ watch(agentId, (id) => {
       />
       <span v-if="agent?.model" class="model">{{ agent.model }}</span>
     </header>
-    <div v-if="space.mode === 'personal'" class="conversation-bar">
+    <div v-if="space.mode === 'personal'" class="conversation-bar on-canvas">
       <n-select
         :value="conversationId ?? 'main'"
         :options="conversationOptions"
@@ -660,10 +660,10 @@ watch(agentId, (id) => {
         size="small"
         @update:value="selectConversation"
       />
-      <n-button size="small" @click="conversationForm = !conversationForm">{{ t("chat.conversations.new") }}</n-button>
+      <n-button size="small" round secondary @click="conversationForm = !conversationForm">{{ t("chat.conversations.new") }}</n-button>
       <form v-if="conversationForm" class="conversation-form" @submit.prevent="createConversation">
-        <input v-model="conversationTitle" :aria-label="t('chat.conversations.title')" :placeholder="t('chat.conversations.title')" maxlength="80" required />
-        <n-button attr-type="submit" size="small" type="primary" :loading="creatingConversation" :disabled="!conversationTitle.trim()">
+        <input v-model="conversationTitle" class="field" :aria-label="t('chat.conversations.title')" :placeholder="t('chat.conversations.title')" maxlength="80" required />
+        <n-button attr-type="submit" size="small" type="primary" round :loading="creatingConversation" :disabled="!conversationTitle.trim()">
           {{ t("chat.conversations.create") }}
         </n-button>
       </form>
@@ -683,7 +683,7 @@ watch(agentId, (id) => {
           <h2>{{ t("chat.emptyTitle", { name: agent ? displayName(agent) : t("agents.main") }) }}</h2>
           <p>{{ t("chat.emptyLead") }}</p>
           <div class="chips">
-            <button v-for="s in suggestions" :key="s" class="chip" type="button" @click="send(s)">{{ s }}</button>
+            <button v-for="s in suggestions" :key="s" class="suggest pressable" type="button" @click="send(s)">{{ s }}</button>
           </div>
         </div>
 
@@ -753,7 +753,7 @@ watch(agentId, (id) => {
         <n-button v-else size="tiny" :disabled="!!draft || !!staged.length" @click="composer && restoreRejected(composer)">{{ t("chat.sendRecovery.restore") }}</n-button>
         <n-button size="tiny" @click="dismissPending">{{ t("chat.sendRecovery.dismiss") }}</n-button>
       </div>
-      <div id="library"><LibrarySearch :key="agentId" :agent-id="agentId" /></div>
+      <div id="library" class="on-canvas"><LibrarySearch :key="agentId" :agent-id="agentId" /></div>
       <div v-if="agentVideoJobs.length" class="videos">
         <span v-for="job in agentVideoJobs" :key="job.id" class="file staged-file">
           <film :size="12" /> {{ job.title ?? job.url }} — {{ videoLine(job) }}
@@ -827,8 +827,7 @@ watch(agentId, (id) => {
   display: flex;
   align-items: center;
   gap: 12px;
-  padding-bottom: 12px;
-  border-bottom: 1px solid var(--border);
+  padding-bottom: 10px;
 }
 .picker {
   width: 260px;
@@ -841,24 +840,37 @@ watch(agentId, (id) => {
   gap: 8px;
 }
 .conversation-bar {
-  padding: 8px 0;
-  border-bottom: 1px solid var(--border);
+  padding: 0 0 10px;
 }
 .conversation-bar > .n-select {
   width: 220px;
   max-width: 100%;
 }
-.conversation-form input {
+.field {
   min-width: 0;
-  padding: 4px 8px;
-  color: inherit;
-  background: transparent;
-  border: 1px solid var(--border);
-  border-radius: 6px;
+  height: 28px;
+  padding: 0 12px;
+  font: inherit;
+  font-size: 13px;
+  color: var(--text);
+  background: var(--surface);
+  border: 1px solid transparent;
+  border-radius: 999px;
+  transition:
+    border-color 0.18s ease,
+    box-shadow 0.18s ease;
+}
+.field:focus {
+  outline: none;
+  border-color: var(--accent-bright);
+  box-shadow: 0 0 0 3px var(--accent-soft);
 }
 .model {
+  padding: 3px 10px;
+  border-radius: 999px;
+  background: var(--track);
   font-size: 12px;
-  color: var(--muted);
+  color: var(--text-2);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -888,17 +900,19 @@ watch(agentId, (id) => {
   width: 56px;
   height: 56px;
   margin: 0 auto 14px;
-  border-radius: 16px;
+  border-radius: 20px;
   display: grid;
   place-items: center;
   font-size: 28px;
-  background: var(--surface-2);
+  background: var(--surface);
+  box-shadow: var(--card-shadow);
+  animation: pop-in 0.5s var(--ease-spring) backwards;
 }
 .empty h2 {
   margin: 0;
-  font-size: 20px;
-  font-weight: 600;
-  letter-spacing: -0.01em;
+  font-size: 24px;
+  font-weight: 700;
+  letter-spacing: -0.03em;
 }
 .empty p {
   margin: 8px 0 20px;
@@ -911,45 +925,56 @@ watch(agentId, (id) => {
   gap: 8px;
   justify-content: center;
 }
-.chip {
+.suggest {
   font: inherit;
   font-size: 13px;
+  font-weight: 500;
   color: var(--text);
   background: var(--surface);
-  border: 1px solid var(--border);
+  border: 0;
   border-radius: 999px;
-  padding: 7px 14px;
+  padding: 9px 16px;
   cursor: pointer;
+  box-shadow: var(--pop-shadow);
 }
-.chip:hover {
-  background: var(--surface-2);
+.suggest:hover {
+  box-shadow: var(--card-shadow-hover);
+  transform: translateY(-2px);
+}
+@keyframes message-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px) scale(0.98);
+  }
 }
 .row {
   display: flex;
   gap: 12px;
+  animation: message-in 0.32s var(--ease-out) backwards;
 }
 .row.user {
   justify-content: flex-end;
 }
 .bubble {
   max-width: 80%;
-  background: var(--accent-soft);
-  border: 1px solid var(--border);
-  padding: 9px 14px;
-  border-radius: 16px 16px 4px 16px;
+  background: var(--ink);
+  color: var(--ink-text);
+  padding: 10px 16px;
+  border-radius: 20px 20px 6px 20px;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
   font-size: 14px;
   line-height: 1.55;
 }
 .avatar {
-  width: 30px;
-  height: 30px;
-  border-radius: 9px;
+  width: 34px;
+  height: 34px;
+  border-radius: 12px;
   display: grid;
   place-items: center;
-  background: var(--surface-2);
-  font-size: 16px;
+  background: var(--surface);
+  box-shadow: var(--pop-shadow);
+  font-size: 17px;
   flex: none;
 }
 .body {
@@ -968,9 +993,9 @@ watch(agentId, (id) => {
   align-items: center;
   gap: 4px;
   font-size: 11px;
-  padding: 2px 8px;
-  border-radius: 6px;
-  background: var(--surface-2);
+  padding: 3px 10px;
+  border-radius: 999px;
+  background: var(--track);
   color: var(--text-2);
   font-family: "JetBrains Mono", ui-monospace, Consolas, monospace;
 }
@@ -989,7 +1014,15 @@ watch(agentId, (id) => {
 .notice.error {
   color: var(--critical);
 }
+/* The assistant's answer is a white bubble; the owner's own message is the ink one. */
 .md {
+  display: inline-block;
+  max-width: 100%;
+  box-sizing: border-box;
+  padding: 11px 16px;
+  border-radius: 6px 20px 20px 20px;
+  background: var(--surface);
+  box-shadow: var(--pop-shadow);
   font-size: 14px;
   line-height: 1.65;
   overflow-wrap: anywhere;
@@ -1007,8 +1040,7 @@ watch(agentId, (id) => {
 }
 .md :deep(pre) {
   background: var(--surface-2);
-  border: 1px solid var(--border);
-  border-radius: 8px;
+  border-radius: 12px;
   padding: 10px 12px;
   overflow-x: auto;
 }
@@ -1039,7 +1071,7 @@ watch(agentId, (id) => {
   width: 5px;
   height: 5px;
   border-radius: 50%;
-  background: var(--accent);
+  background: var(--accent-bright);
   animation: blink 1.2s infinite ease-in-out;
 }
 .dots i:nth-child(2) {
@@ -1111,10 +1143,10 @@ watch(agentId, (id) => {
   opacity: 0.85;
 }
 .staged-file {
-  padding: 4px 8px;
-  border: 1px solid var(--border);
+  padding: 5px 11px;
   border-radius: 999px;
   background: var(--surface);
+  box-shadow: var(--pop-shadow);
 }
 .staged-file button {
   display: inline-flex;
@@ -1137,6 +1169,12 @@ watch(agentId, (id) => {
 .composer {
   padding-top: 12px;
 }
+#library,
+.videos,
+.staged {
+  max-width: 760px;
+  margin: 0 auto;
+}
 .box {
   max-width: 760px;
   margin: 0 auto;
@@ -1144,12 +1182,19 @@ watch(agentId, (id) => {
   align-items: flex-end;
   gap: 8px;
   background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: 14px;
-  padding: 8px 8px 8px 14px;
+  border: 1px solid transparent;
+  border-radius: 24px;
+  padding: 9px 9px 9px 16px;
+  box-shadow: var(--card-shadow);
+  transition:
+    border-color 0.2s ease,
+    box-shadow 0.2s ease;
 }
 .box:focus-within {
-  border-color: var(--accent);
+  border-color: var(--accent-bright);
+  box-shadow:
+    0 0 0 4px var(--accent-soft),
+    var(--card-shadow);
 }
 textarea {
   flex: 1;

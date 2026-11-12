@@ -223,7 +223,8 @@ onMounted(() => {
 .card {
   background: var(--surface);
   border: 1px solid var(--border);
-  border-radius: 12px;
+  border-radius: var(--radius-card);
+  box-shadow: var(--card-shadow);
   padding: 18px 20px;
   min-width: 0;
 }
@@ -274,8 +275,8 @@ onMounted(() => {
   cursor: pointer;
 }
 .emoji.on {
-  border-color: var(--accent);
-  box-shadow: 0 0 0 1px var(--accent) inset;
+  border-color: var(--accent-bright);
+  box-shadow: 0 0 0 4px var(--accent-soft);
 }
 .emoji-input {
   width: 70px;
@@ -325,7 +326,8 @@ onMounted(() => {
   color: var(--text);
   background: var(--surface);
   border: 1px solid var(--border);
-  border-radius: 10px;
+  border-radius: var(--radius-card);
+  box-shadow: var(--card-shadow);
   padding: 12px 14px;
   cursor: pointer;
   display: flex;
@@ -333,8 +335,8 @@ onMounted(() => {
   gap: 4px;
 }
 .option.on {
-  border-color: var(--accent);
-  box-shadow: 0 0 0 1px var(--accent) inset;
+  border-color: var(--accent-bright);
+  box-shadow: 0 0 0 4px var(--accent-soft);
 }
 .opt-name {
   font-weight: 600;

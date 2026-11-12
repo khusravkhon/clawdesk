@@ -21,6 +21,18 @@
       ],
       "port": 5173,
       "autoPort": true
+    },
+    {
+      "name": "web-corepack",
+      "runtimeExecutable": "corepack",
+      "runtimeArgs": [
+        "pnpm",
+        "--filter",
+        "@clawdesk/web",
+        "dev"
+      ],
+      "port": 5173,
+      "autoPort": true
     }
   ]
 }

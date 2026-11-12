@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import type { ReminderPreferences, TodayDto } from "@clawdesk/shared";
 import { wallMinuteToInstant, zonedMinute } from "@clawdesk/shared";
+import { ArrowUpRight, BellPlus, FilePlus2, MessagesSquare } from "@lucide/vue";
 import { NAlert, NButton, NCard, NCheckbox, NEmpty, NInput, NPopconfirm, NSkeleton, NTag, useMessage } from "naive-ui";
 import { computed, onMounted, onUnmounted, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
@@ -193,24 +194,25 @@ async function sync(agentId: string): Promise<void> {
 
 <template>
   <page-header :title="t('today.title')" :subtitle="t('today.subtitle')">
-    <n-button :loading="loading" @click="load(true)">{{ t('today.refresh') }}</n-button>
+    <n-button size="small" secondary :loading="loading" @click="load(true)">{{ t('today.refresh') }}</n-button>
   </page-header>
   <n-alert v-if="!online || failed" type="warning" class="block" :title="t(!online ? 'today.offline' : 'today.loadFailed')">{{ t('today.kept') }}</n-alert>
   <n-skeleton v-if="!data && loading" height="180px" />
-  <n-card class="block" :title="t('today.quick.title')">
-    <div class="links">
-      <router-link to="/chat">{{ t('today.quick.chat') }}</router-link>
-      <router-link :to="{ name: 'chat', query: { compose: 'attachment' } }">{{ t('today.quick.document') }}</router-link>
-      <a href="#reminder-text" @click="focusReminder">{{ t('today.newReminder') }}</a>
-    </div>
-  </n-card>
+  <nav class="quick block" :aria-label="t('today.quick.title')">
+    <router-link to="/chat" class="pill-link strong"><messages-square :size="15" />{{ t('today.quick.chat') }}</router-link>
+    <router-link :to="{ name: 'chat', query: { compose: 'attachment' } }" class="pill-link white"><file-plus2 :size="15" />{{ t('today.quick.document') }}</router-link>
+    <a href="#reminder-text" class="pill-link white" @click="focusReminder"><bell-plus :size="15" />{{ t('today.newReminder') }}</a>
+  </nav>
   <template v-if="data">
     <p class="muted">{{ t('today.updated', { time: date(data.generatedAt) }) }} · {{ data.timeZone }}</p>
-    <n-card class="block next" :title="t('today.nextTitle')">
-      <p>{{ t(`today.next.${next.key}`) }}</p>
-      <a v-if="next.to.startsWith('#')" :href="next.to">{{ t('today.open') }}</a>
-      <router-link v-else :to="next.to">{{ t('today.open') }}</router-link>
-    </n-card>
+    <section class="block next">
+      <div>
+        <div class="next-label">{{ t('today.nextTitle') }}</div>
+        <p>{{ t(`today.next.${next.key}`) }}</p>
+      </div>
+      <a v-if="next.to.startsWith('#')" :href="next.to" class="pill-link strong">{{ t('today.open') }}<arrow-up-right :size="15" /></a>
+      <router-link v-else :to="next.to" class="pill-link strong">{{ t('today.open') }}<arrow-up-right :size="15" /></router-link>
+    </section>
     <div class="grid">
       <n-card id="reminders" :title="t('today.reminders')">
         <n-alert v-if="stale('reminders')" type="warning">{{ t('today.unknown') }} · {{ date(data.reminders.checkedAt) }}</n-alert>
@@ -250,10 +252,10 @@ async function sync(agentId: string): Promise<void> {
           <fieldset :disabled="creating">
             <legend>{{ t('today.repeat.days') }}</legend>
             <div class="actions">
-              <label v-for="day in weekdays" :key="day"><input v-model="repeatDays" type="checkbox" :value="day" /> {{ weekday(day) }}</label>
+              <label v-for="day in weekdays" :key="day" class="day" :class="{ on: repeatDays.includes(day) }"><input v-model="repeatDays" type="checkbox" :value="day" />{{ weekday(day) }}</label>
             </div>
           </fieldset>
-          <n-button attr-type="submit" :loading="creating" :disabled="!mutable || !text.trim() || !due">{{ t('today.add') }}</n-button>
+          <n-button attr-type="submit" type="primary" round :loading="creating" :disabled="!mutable || !text.trim() || !due">{{ t('today.add') }}</n-button>
         </form>
         <div v-if="data.reminders.data?.series?.length">
           <h3>{{ t('today.repeat.series') }}</h3>
@@ -293,25 +295,25 @@ async function sync(agentId: string): Promise<void> {
           <p v-else>{{ t('today.unknown') }}</p>
           <p v-if="data.budget.data" class="muted">{{ t('today.quick.limits', { daily: data.budget.data.dailyUsd || '—', monthly: data.budget.data.monthlyUsd || '—' }) }}</p>
           <p class="muted">{{ t('today.checked', { time: date(data.budget.checkedAt) }) }}</p>
-          <router-link to="/usage">{{ t('today.open') }}</router-link>
+          <router-link to="/usage" class="pill-link">{{ t('today.open') }}</router-link>
         </n-card>
         <n-card :title="t('today.quick.backups')">
           <p v-if="stale('backups')">{{ t('today.unknown') }} · {{ date(data.backups.checkedAt) }}</p>
           <p v-else-if="data.backups.data?.lastAt">{{ t('today.quick.lastBackup', { date: date(data.backups.data.lastAt) }) }}</p>
           <p v-else>{{ t(data.backups.data?.available ? 'today.quick.noBackup' : 'today.quick.backupUnavailable') }}</p>
           <n-alert v-if="data.backups.data?.failed" type="warning">{{ t('today.next.backupIssue') }}</n-alert>
-          <router-link to="/system">{{ t('today.open') }}</router-link>
+          <router-link to="/system" class="pill-link">{{ t('today.open') }}</router-link>
         </n-card>
         <n-card :title="t('today.approvals')">
           <p v-if="stale('approvals')">{{ t('today.unknown') }} · {{ date(data.approvals.checkedAt) }}</p>
           <p v-else>{{ t('today.approvalCount', { count: data.approvals.data?.count ?? 0 }) }}</p>
-          <router-link to="/approvals">{{ t('today.reviewApprovals') }}</router-link>
+          <router-link to="/approvals" class="pill-link">{{ t('today.reviewApprovals') }}</router-link>
         </n-card>
         <n-card :title="t('today.connection')">
           <p>{{ t('today.gateway') }}: {{ t(stale('connection') ? 'today.unknown' : 'today.connected') }}</p>
           <p v-for="bot in data.connection.data?.telegram ?? []" :key="bot.accountId" class="wrap">Telegram · {{ bot.accountId }}: {{ t(stale('connection') ? 'today.unknown' : bot.running ? 'today.running' : 'today.stopped') }}</p>
           <p class="muted">{{ date(data.connection.checkedAt) }}</p>
-          <router-link to="/status">{{ t('today.diagnostics') }}</router-link> · <router-link to="/telegram">Telegram</router-link>
+          <div class="links"><router-link to="/status" class="pill-link">{{ t('today.diagnostics') }}</router-link><router-link to="/telegram" class="pill-link">Telegram</router-link></div>
         </n-card>
         <n-card :title="t('today.memory')">
           <p>{{ t('today.facts', { count: stale('notes') ? '—' : data.notes.data?.count ?? 0 }) }}</p>
@@ -323,7 +325,7 @@ async function sync(agentId: string): Promise<void> {
           </div>
           <p>{{ t('today.search') }}: {{ t(`today.searchHealth.${searchHealth}`) }}</p>
           <p class="muted">{{ t('today.checked', { time: date(data.search.checkedAt) }) }}</p>
-          <div class="links"><router-link to="/assistant#memory-notes">{{ t('today.ownerFacts') }}</router-link><router-link to="/library">{{ t('today.materials') }}</router-link><router-link to="/assistant#memory-search">{{ t('today.searchSetup') }}</router-link></div>
+          <div class="links"><router-link to="/assistant#memory-notes" class="pill-link">{{ t('today.ownerFacts') }}</router-link><router-link to="/library" class="pill-link">{{ t('today.materials') }}</router-link><router-link to="/assistant#memory-search" class="pill-link">{{ t('today.searchSetup') }}</router-link></div>
         </n-card>
       </div>
     </div>
@@ -331,7 +333,7 @@ async function sync(agentId: string): Promise<void> {
       <p class="muted">{{ t('today.agentSchedulesNote') }}</p>
       <p v-if="stale('schedules')">{{ t('today.unknown') }} · {{ date(data.schedules.checkedAt) }}</p>
       <p v-for="schedule in schedules" :key="schedule.id" class="wrap">{{ schedule.label }} · {{ schedule.agentId }} · {{ date(schedule.nextRunAt) }}</p>
-      <router-link to="/schedules">{{ t('today.manageSchedules') }}</router-link>
+      <router-link to="/schedules" class="pill-link">{{ t('today.manageSchedules') }}</router-link>
     </n-card>
   </template>
   <n-alert v-else-if="!loading" type="warning">{{ t('today.noSnapshot') }} <n-button size="small" @click="load(true)">{{ t('today.refresh') }}</n-button></n-alert>
@@ -341,14 +343,30 @@ async function sync(agentId: string): Promise<void> {
 .grid { display: grid; grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr); gap: 16px; align-items: start; }
 .stack { display: grid; gap: 16px; min-width: 0; }
 .block { margin-bottom: 20px; }
-.next { border-left: 3px solid var(--primary, #8f85f3); }
-.item { padding: 14px 0; border-bottom: 1px solid var(--border); }
+.quick { display: flex; flex-wrap: wrap; gap: 8px; }
+.pill-link.white { background: var(--surface); box-shadow: var(--pop-shadow); }
+.next { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px 20px; padding: 18px 22px; border-radius: var(--radius-card); background: var(--accent-gradient); color: var(--on-accent); box-shadow: 0 14px 30px -18px rgba(62, 209, 95, 0.9); }
+.next-label { font-size: 12px; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; opacity: 0.7; }
+.next p { margin: 4px 0 0; font-size: 17px; font-weight: 600; letter-spacing: -0.01em; }
+.item { margin-top: 10px; padding: 14px 16px; border-radius: 16px; background: var(--surface-2); transition: background-color 0.2s ease; }
+.item:hover { background: var(--surface-hover); }
 .wrap { overflow-wrap: anywhere; white-space: pre-wrap; }
 .muted { color: var(--text-2); font-size: 13px; }
-.actions, .links { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 10px; }
-.form { display: grid; gap: 8px; margin-top: 20px; }
+.actions, .links { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-top: 10px; }
+.actions label { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; color: var(--text-2); }
+.form { display: grid; gap: 8px; margin-top: 22px; padding-top: 18px; border-top: 1px solid var(--border); }
+.form > label, legend { font-size: 13px; font-weight: 500; color: var(--text-2); }
+.form > input { justify-self: start; }
+.form > button { justify-self: start; }
+fieldset { margin: 4px 0; padding: 0; border: 0; }
+/* A weekday is a chip: the checkbox itself stays for the keyboard and screen readers, out of sight. */
+.day { position: relative; height: 32px; padding: 0 12px; border-radius: 999px; background: var(--surface-2); color: var(--text-2); font-weight: 500; cursor: pointer; transition: transform 0.18s var(--ease-spring), background 0.2s ease, color 0.2s ease; }
+.day:active { transform: scale(0.94); }
+.day.on { background: var(--accent-gradient); color: var(--on-accent); }
+.day input { position: absolute; inset: 0; width: 100%; height: 100%; margin: 0; opacity: 0; cursor: pointer; }
+.day:has(input:focus-visible) { outline: 2px solid var(--accent-bright); outline-offset: 2px; }
 .quiet { margin-top: 20px; }
-summary { cursor: pointer; }
-input { box-sizing: border-box; max-width: 100%; min-width: 0; padding: 8px; background: var(--bg); color: var(--text); border: 1px solid var(--border); border-radius: 5px; font: inherit; }
+summary { cursor: pointer; font-weight: 500; }
+h3 { margin: 22px 0 0; font-size: 14px; }
 @media (max-width: 850px) { .grid { grid-template-columns: minmax(0, 1fr); } }
 </style>

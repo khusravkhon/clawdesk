@@ -20,9 +20,17 @@ defineProps<{ label: string; value: string; note?: string; icon?: Component }>()
 .tile {
   background: var(--surface);
   border: 1px solid var(--border);
-  border-radius: 12px;
-  padding: 16px 18px;
+  border-radius: var(--radius-card);
+  padding: 18px 20px;
   min-width: 0;
+  box-shadow: var(--card-shadow);
+  transition:
+    transform 0.25s var(--ease-out),
+    box-shadow 0.25s ease;
+}
+.tile:hover {
+  transform: translateY(-3px);
+  box-shadow: var(--card-shadow-hover);
 }
 .head {
   display: flex;
@@ -36,9 +44,9 @@ defineProps<{ label: string; value: string; note?: string; icon?: Component }>()
 }
 .value {
   margin-top: 10px;
-  font-size: 28px;
-  font-weight: 600;
-  letter-spacing: -0.02em;
+  font-size: 30px;
+  font-weight: 700;
+  letter-spacing: -0.03em;
   line-height: 1.1;
   white-space: nowrap;
   overflow: hidden;

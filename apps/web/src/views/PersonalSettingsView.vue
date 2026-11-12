@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { ChevronRight } from "@lucide/vue";
 import { NAlert, NButton, NCard, NInput, useMessage } from "naive-ui";
 import { computed, ref } from "vue";
 import { useI18n } from "vue-i18n";
@@ -46,13 +47,13 @@ async function save(): Promise<void> {
       </label>
       <p>{{ t("personalSettings.zoneEffect", { device: browserTimeZone() }) }}</p>
       <n-alert v-if="!valid || failed" type="error">{{ t(!valid ? "personalSettings.invalidZone" : "personalSettings.failed") }}</n-alert>
-      <n-button attr-type="submit" type="primary" :loading="saving" :disabled="!name.trim() || !valid || !changed">{{ t("today.save") }}</n-button>
+      <n-button attr-type="submit" type="primary" round :loading="saving" :disabled="!name.trim() || !valid || !changed">{{ t("today.save") }}</n-button>
     </form>
   </n-card>
   <router-link v-else to="/setup/mode">{{ t("personalSettings.setup") }}</router-link>
   <div class="groups">
     <n-card v-for="group in groups" :key="group.key" :title="t('personalSettings.' + group.key)">
-      <ul><li v-for="[to, label] in group.links" :key="to"><router-link :to="to">{{ t(label) }}</router-link></li></ul>
+      <router-link v-for="[to, label] in group.links" :key="to" :to="to" class="row pressable">{{ t(label) }}<chevron-right :size="16" /></router-link>
     </n-card>
   </div>
 </template>
@@ -62,5 +63,10 @@ async function save(): Promise<void> {
 .form label { display: grid; gap: 4px; }
 .form button { justify-self: start; }
 .groups { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 235px), 1fr)); gap: 12px; margin-top: 16px; }
-.groups ul { margin: 0; padding-inline-start: 20px; }
+.row { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin: 0 -10px; padding: 10px; border-radius: 12px; color: var(--text); font-weight: 500; text-decoration: none; }
+.row:hover { background: var(--surface-2); text-decoration: none; }
+.row svg { color: var(--muted); transition: transform 0.2s var(--ease-spring); }
+.row:hover svg { transform: translateX(3px); color: var(--text); }
+.form label { font-size: 13px; font-weight: 500; color: var(--text-2); }
+.form p { margin: 0; font-size: 13px; color: var(--text-2); }
 </style>

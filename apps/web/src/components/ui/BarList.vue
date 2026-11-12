@@ -69,7 +69,7 @@ li:hover .fill {
 .fill {
   height: 100%;
   border-radius: 4px;
-  background: var(--accent);
+  background: var(--accent-gradient);
   transition: width 0.4s ease;
 }
 </style>

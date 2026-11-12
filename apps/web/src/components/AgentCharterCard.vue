@@ -102,7 +102,8 @@ onMounted(load);
 </template>
 
 <style scoped>
-.card { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 18px 20px; margin-bottom: 16px; min-width: 0; }
+.card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-card);
+  box-shadow: var(--card-shadow); padding: 18px 20px; margin-bottom: 16px; min-width: 0; }
 .card-title { display: flex; align-items: center; gap: 8px; margin: 0 0 14px; font-size: 15px; font-weight: 600; }
 .card-title :deep(svg) { color: var(--accent); }
 .hint { margin: -6px 0 12px; font-size: 12.5px; color: var(--muted); line-height: 1.5; }

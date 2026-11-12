@@ -163,10 +163,10 @@ function goBack() {
   margin-bottom: 2px;
   padding: 0 10px 0 8px;
   color: var(--text-2);
-  border: 1px solid var(--border);
+  border: 0;
   background: var(--surface);
-  border-radius: 6px;
-  transition: all 0.15s ease;
+  border-radius: 999px;
+  box-shadow: var(--pop-shadow);
 }
 
 .back-btn:hover {
@@ -189,9 +189,9 @@ function goBack() {
 
 h1 {
   margin: 0;
-  font-size: 26px;
+  font-size: 30px;
   font-weight: 700;
-  letter-spacing: -0.025em;
+  letter-spacing: -0.035em;
   line-height: 1.2;
   color: var(--text);
 }
@@ -202,10 +202,9 @@ h1 {
   text-transform: uppercase;
   letter-spacing: 0.04em;
   padding: 3px 8px;
-  border-radius: 6px;
-  background: var(--surface-2);
-  color: var(--text-2);
-  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--accent-soft);
+  color: var(--accent);
 }
 
 .subtitle {
@@ -219,10 +218,7 @@ h1 {
   gap: 5px;
   font-size: 13px;
   color: var(--text-2);
-  background: var(--surface);
-  border: 1px solid var(--border);
-  padding: 2px 8px;
-  border-radius: 6px;
+  padding: 0;
 }
 
 .actions {

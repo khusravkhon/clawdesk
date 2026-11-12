@@ -2,6 +2,7 @@
 // Keys are the same ones the menu uses (SidebarNav, personal-settings.ts).
 const LABELS: Record<string, string> = {
   "/": "nav.overview",
+  "/conveyor": "conveyor.title",
   "/today": "today.title",
   "/chat": "nav.chat",
   "/library": "nav.materials",
@@ -20,6 +21,24 @@ const LABELS: Record<string, string> = {
   "/status": "nav.status",
   "/system": "nav.system",
 };
+
+const COMPANY_PAGES: [path: string, labelKey: string][] = [
+  ["/company/projects", "projects.title"],
+  ["/company/work-items", "workItems.title"],
+  ["/company/requests", "requests.title"],
+  ["/company/activity", "activity.title"],
+  ["/company/office", "office.title"],
+  ["/company/documents", "documents.title"],
+  ["/company/access", "access.title"],
+  ["/company/capabilities", "capabilities.title"],
+];
+
+/** Every page the command palette can open in this mode, as [path, i18n key]. */
+export function palettePages(mode: "personal" | "company"): [path: string, labelKey: string][] {
+  const hidden = mode === "personal" ? ["/company", "/teams"] : ["/today", "/library", "/settings"];
+  const pages = Object.entries(LABELS).filter(([path]) => !hidden.includes(path));
+  return mode === "company" ? [...pages, ...COMPANY_PAGES] : pages;
+}
 
 /** The i18n key naming the page at `path`, or null when it has no short name. */
 export function pageLabelKey(path: string): string | null {

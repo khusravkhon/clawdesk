@@ -1,7 +1,7 @@
 <script setup lang="ts">
 // Sidebar body: brand, sections, theme and language. Shared by the desktop sidebar and the phone drawer.
 import type { Locale } from "@clawdesk/shared";
-import { Activity, Blocks, Bot, ChartColumn, FolderGit2, CalendarClock, CalendarDays, Database, HardDrive, LayoutDashboard, Library, LogOut, MessagesSquare, Settings, ShieldCheck, UserRound, Moon, PanelLeftClose, PanelLeftOpen, Send, Sun } from "@lucide/vue";
+import { Activity, Blocks, Bot, ChartColumn, FolderGit2, CalendarClock, CalendarDays, Database, HardDrive, LayoutDashboard, Library, LogOut, MessagesSquare, Settings, ShieldCheck, UserRound, Moon, PanelLeftClose, PanelLeftOpen, Search, Send, Sun, Workflow } from "@lucide/vue";
 import { NButton, NMenu, NSelect, NTooltip, type MenuOption } from "naive-ui";
 import { computed, h, type Component } from "vue";
 import { useI18n } from "vue-i18n";
@@ -13,7 +13,7 @@ import { useSpaceStore } from "../stores/space";
 import { themeMode, toggleTheme } from "../theme";
 
 const props = defineProps<{ collapsed?: boolean; collapsible?: boolean }>();
-const emit = defineEmits<{ toggle: []; navigate: [] }>();
+const emit = defineEmits<{ toggle: []; navigate: []; search: [] }>();
 
 const { t, locale } = useI18n();
 const route = useRoute();
@@ -28,6 +28,7 @@ const link = (to: string, label: string, badge?: () => number) => () =>
 
 const menu = computed<MenuOption[]>(() => [
   { key: "/", label: link("/", t("nav.overview")), icon: icon(LayoutDashboard) },
+  { key: "/conveyor", label: link("/conveyor", t("conveyor.title")), icon: icon(Workflow) },
   ...(space.mode === "personal" ? [{ key: "/today", label: link("/today", t("today.title")), icon: icon(CalendarDays) }] : []),
   { key: "/chat", label: link("/chat", t("nav.chat")), icon: icon(MessagesSquare) },
   ...(space.mode === "personal" ? [{ key: "/library", label: link("/library", t("nav.materials")), icon: icon(Library) }] : []),
@@ -76,6 +77,14 @@ const collapsed = computed(() => !!props.collapsed);
       <span v-if="!collapsed" class="brand-name">{{ t("app.title") }}</span>
     </div>
 
+    <button type="button" class="find pressable" :class="{ collapsed }" :aria-label="t('palette.title')" :title="collapsed ? t('palette.title') : undefined" @click="emit('search')">
+      <search :size="16" />
+      <template v-if="!collapsed">
+        <span>{{ t("palette.title") }}</span>
+        <kbd>Ctrl K</kbd>
+      </template>
+    </button>
+
     <n-menu :value="activeKey" :options="menu" :collapsed="collapsed" :collapsed-width="64" :collapsed-icon-size="18" :indent="14" />
 
     <div class="foot" :class="{ collapsed }">
@@ -115,7 +124,9 @@ const collapsed = computed(() => !!props.collapsed);
   display: flex;
   flex-direction: column;
   height: 100%;
-  padding: 12px 8px;
+  /* The scroll area around the menu takes its content's height: without this the footer rides up. */
+  min-height: 100dvh;
+  padding: 14px 10px;
   box-sizing: border-box;
 }
 .brand {
@@ -130,30 +141,70 @@ const collapsed = computed(() => !!props.collapsed);
   padding-right: 0;
 }
 .logo {
-  width: 28px;
-  height: 28px;
-  border-radius: 8px;
+  width: 30px;
+  height: 30px;
+  border-radius: 10px;
   display: grid;
   place-items: center;
-  font-weight: 700;
-  font-size: 15px;
-  color: #fff;
-  background: linear-gradient(135deg, #8f85f3, #5b4fd9);
-  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.12) inset;
+  font-weight: 800;
+  font-size: 16px;
+  color: var(--on-accent);
+  background: var(--accent-gradient);
+  box-shadow: 0 6px 14px -6px rgba(62, 209, 95, 0.7);
   flex: none;
+  transition: transform 0.3s var(--ease-spring);
+}
+.brand:hover .logo {
+  transform: rotate(-8deg) scale(1.06);
 }
 .brand-name {
-  font-weight: 600;
-  font-size: 15px;
-  letter-spacing: -0.01em;
+  font-weight: 700;
+  font-size: 16px;
+  letter-spacing: -0.02em;
+}
+.find {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  margin: 0 4px 10px;
+  height: 38px;
+  padding: 0 12px;
+  border: 0;
+  border-radius: 12px;
+  background: var(--surface);
+  color: var(--muted);
+  font: inherit;
+  font-size: 13.5px;
+  cursor: pointer;
+  box-shadow: var(--pop-shadow);
+}
+.find:hover {
+  color: var(--text);
+}
+.find.collapsed {
+  justify-content: center;
+  padding: 0;
+}
+.find span {
+  flex: 1;
+  text-align: left;
+}
+.find kbd {
+  padding: 1px 6px;
+  border-radius: 6px;
+  background: var(--surface-2);
+  font: inherit;
+  font-size: 11px;
 }
 .foot {
-  margin-top: auto;
   display: flex;
   align-items: center;
   gap: 6px;
-  padding: 10px 6px 2px;
-  border-top: 1px solid var(--border);
+  margin: auto 4px 0;
+  padding: 6px;
+  border-radius: 16px;
+  background: var(--surface);
+  box-shadow: var(--pop-shadow);
 }
 .foot.collapsed {
   flex-direction: column;
@@ -167,6 +218,24 @@ const collapsed = computed(() => !!props.collapsed);
   align-items: center;
   gap: 8px;
 }
+/* The open section is a white pill lifted off the grey canvas. */
+:deep(.n-menu-item-content) {
+  transition: transform 0.18s var(--ease-spring);
+}
+:deep(.n-menu-item-content:active) {
+  transform: scale(0.97);
+}
+:deep(.n-menu-item-content::before) {
+  transition:
+    background-color 0.2s ease,
+    box-shadow 0.2s ease;
+}
+:deep(.n-menu-item-content--selected::before) {
+  box-shadow: var(--pop-shadow);
+}
+:deep(.n-menu-item-content--selected .n-menu-item-content-header) {
+  font-weight: 600;
+}
 :deep(.nav-badge) {
   margin-left: auto;
   min-width: 18px;
@@ -174,8 +243,8 @@ const collapsed = computed(() => !!props.collapsed);
   padding: 0 5px;
   box-sizing: border-box;
   border-radius: 999px;
-  background: var(--warning);
-  color: #1a1300;
+  background: var(--ink);
+  color: var(--ink-text);
   font-size: 11px;
   font-weight: 600;
   display: inline-grid;

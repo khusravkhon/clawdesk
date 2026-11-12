@@ -443,7 +443,8 @@ onMounted(() => {
 .card {
   background: var(--surface);
   border: 1px solid var(--border);
-  border-radius: 12px;
+  border-radius: var(--radius-card);
+  box-shadow: var(--card-shadow);
   padding: 16px 18px;
   margin-bottom: 12px;
   min-width: 0;
