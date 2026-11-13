@@ -2,7 +2,7 @@
 // clawdesk-bridge.mjs).
 //
 // A backup is one tar in <data>/backups (0600, the folder 0700) holding:
-//   manifest.json      format, kind, time, OpenClaw version
+//   manifest.json      format, kind, time, OpenClaw version; skippedLinks when links were left out
 //   openclaw.tar.gz    `openclaw backup create --verify`: config, agents, sessions, workspaces, Google (gog)
 //                      tokens, and the shared files folder (mounted inside the main workspace)
 //   panel/             panel database (SQLite snapshot), Gateway device identity
@@ -82,6 +82,68 @@ async function copyTree(from, to, skip = () => false) {
   }
 }
 
+// --- links OpenClaw's archive refuses
+//
+// `openclaw backup create` stops on a symbolic link whose target is absolute or leaves the archived
+// folders (a Python venv an agent made: venv/bin/python3 -> /usr/bin/python3). Such a link is no data of
+// the install, so the backup goes without it: for the time of the archive the link is renamed to
+// *.clawdesk-backup.tmp (OpenClaw skips *.tmp in the state folder) and then renamed back. The list goes
+// into manifest.json, and a journal in the backups folder lets the next backup or bridge start put the
+// links back if this one was cut short.
+// openclaw-bump-review: both rules (what is refused, what is skipped) are OpenClaw's own.
+const DISPLACED = ".clawdesk-backup.tmp";
+const LINK_JOURNAL = path.join(BACKUP_DIR, ".displaced-links.json");
+const within = (root, target) => target === root || target.startsWith(root + path.sep);
+
+/** Links in the folders agents write into that OpenClaw's archive would refuse: [{ path, target }]. */
+export async function findOutsideLinks(stateDir = STATE_DIR) {
+  const found = [];
+  async function walk(dir) {
+    const entries = await fs.readdir(dir, { withFileTypes: true }).catch(() => []);
+    for (const entry of entries) {
+      const full = path.join(dir, entry.name);
+      if (entry.isDirectory()) await walk(full);
+      else if (entry.isSymbolicLink() && !entry.name.endsWith(DISPLACED)) {
+        const target = await fs.readlink(full).catch(() => null);
+        if (target !== null && (path.isAbsolute(target) || !within(stateDir, path.resolve(dir, target)))) found.push({ path: full, target });
+      }
+    }
+  }
+  // Workspaces and company projects: the only places where links foreign to OpenClaw appear.
+  for (const entry of await fs.readdir(stateDir, { withFileTypes: true }).catch(() => [])) {
+    if (entry.isDirectory() && (/^workspace(-|$)/.test(entry.name) || entry.name === "company-projects")) await walk(path.join(stateDir, entry.name));
+  }
+  return found;
+}
+
+/** Sets the links aside; the journal is written first, so a cut-short backup can be undone. */
+export async function displaceLinks(links, journal = LINK_JOURNAL) {
+  if (!links.length) return;
+  await fs.writeFile(journal, JSON.stringify(links), { mode: 0o600 });
+  for (const link of links) await fs.rename(link.path, link.path + DISPLACED).catch(() => undefined);
+}
+
+/** Puts back every link the journal names; returns how many came back. Safe to call with no journal. */
+export async function restoreDisplacedLinks(journal = LINK_JOURNAL, stateDir = STATE_DIR) {
+  let links;
+  try {
+    links = JSON.parse(await fs.readFile(journal, "utf8"));
+  } catch {
+    return 0;
+  }
+  let restored = 0;
+  for (const link of Array.isArray(links) ? links : []) {
+    if (typeof link?.path !== "string" || !within(stateDir, path.resolve(link.path))) continue;
+    const aside = link.path + DISPLACED;
+    // Only a link this module set aside goes back, and never over something that appeared meanwhile.
+    if (!(await fs.lstat(aside).catch(() => null))?.isSymbolicLink()) continue;
+    if (await fs.lstat(link.path).catch(() => null)) await fs.unlink(aside);
+    else { await fs.rename(aside, link.path); restored++; }
+  }
+  await fs.rm(journal, { force: true });
+  return restored;
+}
+
 let busy = false;
 
 /** Creates a backup; one at a time. */
@@ -96,7 +158,15 @@ export async function createBackup(kind) {
     await fs.mkdir(BACKUP_DIR, { recursive: true, mode: 0o700 });
     await fs.mkdir(staging, { mode: 0o700 });
 
-    const oc = await run("node", ["dist/index.js", "backup", "create", "--verify", "--json", "--output", staging], { timeoutMs: 15 * 60_000 });
+    await restoreDisplacedLinks(); // left by a backup that was cut short
+    const outsideLinks = await findOutsideLinks();
+    await displaceLinks(outsideLinks);
+    let oc;
+    try {
+      oc = await run("node", ["dist/index.js", "backup", "create", "--verify", "--json", "--output", staging], { timeoutMs: 15 * 60_000 });
+    } finally {
+      await restoreDisplacedLinks();
+    }
     const archive = oc.code === 0 ? JSON.parse(oc.out.slice(oc.out.indexOf("{"))).archivePath : null;
     if (!archive) throw new BackupError("openclaw_backup_failed", tail(oc.err || oc.out) || "openclaw backup create failed", 502);
     await fs.rename(archive, path.join(staging, "openclaw.tar.gz"));
@@ -109,7 +179,9 @@ export async function createBackup(kind) {
     const env = SECRET_ENV.filter((k) => process.env[k]).map((k) => `${k}=${process.env[k]}`).join("\n");
     await fs.writeFile(path.join(staging, "env"), `${env}\n`, { mode: 0o600 });
     const version = JSON.parse(await fs.readFile("/app/package.json", "utf8")).version ?? null;
-    const manifest = { format: 1, kind, createdAt: new Date().toISOString(), openclawVersion: version, stateDir: STATE_DIR };
+    // Links left out of the archive (see above), so a restore can say what is missing.
+    const skippedLinks = outsideLinks.map((link) => ({ path: path.relative(STATE_DIR, link.path).split(path.sep).join("/"), target: link.target }));
+    const manifest = { format: 1, kind, createdAt: new Date().toISOString(), openclawVersion: version, stateDir: STATE_DIR, ...(skippedLinks.length ? { skippedLinks } : {}) };
     await fs.writeFile(path.join(staging, "manifest.json"), `${JSON.stringify(manifest, null, 2)}\n`, { mode: 0o600 });
 
     const tmp = path.join(BACKUP_DIR, `.${name}.tmp`);

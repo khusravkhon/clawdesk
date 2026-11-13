@@ -152,6 +152,13 @@ if(await exists(files)) { const saved=path.join(root,"shared-files"); await fs.r
 for(const [from,to] of [["panel","panel-data"],["freellmapi","freellmapi-data"],["auth-secrets","openclaw-auth-secrets"]]) pairs.push([await exists(path.join(root,from))?path.join(root,from):empty,"/restore/"+to]);
 try { await applyPayload(pairs,process.env.RESTORE_STAGE.replaceAll(".","")); } catch(error) { console.error(error.code === "restore_rolled_back" ? "Restore failed and original data was retained" : "Restore needs manual recovery; keep rollback directories"); process.exit(error.code === "restore_rolled_back" ? 76 : 75); }'\'' "$W"
 chown -R 1000:1000 "$STATE_DIR" /restore 2>/dev/null || true
+# Last, after the data is in place and owned: the links agents had made (restore-safe.mjs checks each one).
+# Reported on stderr; a link that cannot be made never fails the restore.
+node --input-type=module -e '\''import fs from "node:fs/promises"; import {restoreLinks} from "/restore-safe.mjs";
+const saved=JSON.parse(await fs.readFile(process.argv[1]+"/prepared-links.json","utf8").catch(()=>"{}"));
+const made=await restoreLinks(process.env.STATE_DIR,saved.links??[],1000);
+if(made||saved.dropped) console.error("links restored: "+made+(saved.dropped?", left out as unsafe: "+saved.dropped:""));
+for(const line of saved.skipped??[]) console.error("not in the backup (the link points outside the install): "+line);'\'' "$W" >&2 || echo "links were not restored" >&2
 sed "s/^/ENV /" "$W/env"
 ')" || { restore_status=$?; if [[ $restore_status == 76 ]]; then STOPPED=1; fi; exit "$restore_status"; }
 

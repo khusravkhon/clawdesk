@@ -1,5 +1,9 @@
-// Restore accepts only ordinary files/directories. Links, devices and paths outside the
+// Restore writes only ordinary files/directories. Devices, hard links and paths outside the
 // archive are rejected before the selected installation is stopped.
+// Symbolic links (agents make them: a venv, node_modules/.bin) are never written while the data is
+// replaced. In OpenClaw's own archive a relative link that stays inside the archive is tolerated and
+// skipped; after OpenClaw's staged restore the links are taken out, checked, and the ones that stay
+// inside the state folder are made again as the last step (restoreLinks). Anything else is dropped.
 import fs from 'node:fs/promises';
 import { createReadStream, existsSync } from 'node:fs';
 import { DatabaseSync } from 'node:sqlite';
@@ -27,7 +31,7 @@ function pax(data) {
     const equals = pair.indexOf('=');
     if (equals < 1) throw new Error('invalid PAX property');
     const key = pair.slice(0, equals);
-    if (!['path', 'size', 'mtime', 'atime', 'ctime', 'uid', 'gid', 'uname', 'gname', 'comment'].includes(key)) throw new Error('unsupported PAX property');
+    if (!['path', 'linkpath', 'size', 'mtime', 'atime', 'ctime', 'uid', 'gid', 'uname', 'gname', 'comment'].includes(key)) throw new Error('unsupported PAX property');
     if (key === 'size') {
       const value = pair.slice(equals + 1);
       if (!/^(0|[1-9][0-9]*)$/.test(value) || !Number.isSafeInteger(Number(value)) || Number(value) > 100 * 1024 ** 3) throw new Error('invalid PAX size');
@@ -38,7 +42,15 @@ function pax(data) {
   return values;
 }
 
-export async function extractSafe(archive, destination, gzip = false) {
+/** A link target that is relative and, from the entry's folder, stays inside the archive. */
+function safeLinkTarget(name, link) {
+  if (!link || link.includes('\\') || /[\x00-\x1f\x7f]/.test(link) || link.startsWith('/') || /^[A-Za-z]:/.test(link)) return false;
+  const resolved = path.posix.normalize(path.posix.join(path.posix.dirname(name), link));
+  return resolved !== '..' && !resolved.startsWith('../');
+}
+
+/** `skipLinks`: safe symbolic links are accepted and not written (OpenClaw's own archive); otherwise any link is refused. */
+export async function extractSafe(archive, destination, gzip = false, skipLinks = false) {
   await fs.mkdir(destination, { recursive: true, mode: 0o700 });
   if ((await fs.readdir(destination)).length) throw new Error('restore staging must be empty');
   const input = createReadStream(archive);
@@ -89,19 +101,24 @@ export async function extractSafe(archive, destination, gzip = false) {
         const data = await read(size);
         extension = type === 'L' ? { path: data.toString('utf8').replace(/\0.*$/s, '') } : pax(data);
       } else {
-        if (!['', '0', '5'].includes(type)) throw new Error('archive links and special files are not allowed');
+        const symlink = type === '2' && skipLinks;
+        if (!symlink && (!['', '0', '5'].includes(type) || extension.linkpath !== undefined)) throw new Error('archive links and special files are not allowed');
         // Pinned node-tar emits size with long paths. Accept matching metadata only;
         // never apply it as an override (node-tar header.js also separates extension headers).
         if (extension.size !== undefined && Number(extension.size) !== size) throw new Error('PAX size disagrees with file header');
         const prefix = text(345, 155);
         const raw = extension.path ?? `${prefix ? `${prefix}/` : ''}${text(0, 100)}`;
         const name = safeName(raw);
+        const link = symlink ? extension.linkpath ?? text(157, 100) : '';
         extension = {};
         if (!name && type !== '5') throw new Error('invalid root entry');
         if (names.has(name)) throw new Error('duplicate archive entry');
         names.add(name);
         const target = path.join(destination, ...name.split('/'));
-        if (type === '5') {
+        if (symlink) {
+          // Checked and left unwritten: this pass only validates the archive.
+          if (size !== 0 || !safeLinkTarget(name, link)) throw new Error('unsafe archive link');
+        } else if (type === '5') {
           if (size !== 0) throw new Error('invalid directory entry');
           await fs.mkdir(target, { recursive: true, mode: 0o700 });
         } else {
@@ -133,14 +150,70 @@ export async function prepareRestore(archive, target, version) {
   for (const line of env.trim().split('\n').filter(Boolean)) {
     if (!/^(OPENCLAW_GATEWAY_TOKEN|FREELLMAPI_ENCRYPTION_KEY|GOG_KEYRING_PASSWORD)=[A-Za-z0-9_./+=:@%-]+$/.test(line)) throw new Error('unsupported backup secret');
   }
-  await extractSafe(path.join(target, 'openclaw.tar.gz'), path.join(target, 'validated-openclaw'), true);
+  await extractSafe(path.join(target, 'openclaw.tar.gz'), path.join(target, 'validated-openclaw'), true, true);
   return { format: manifest.format, kind: manifest.kind, createdAt: manifest.createdAt, openclawVersion: manifest.openclawVersion };
+}
+
+const insideDir = (root, target) => target === root || target.startsWith(root + path.sep);
+
+/** Removes every symbolic link under `dir` (never following one) and returns them as [{ full, target }]. */
+export async function takeLinks(dir) {
+  const links = [];
+  async function scan(current) {
+    for (const item of await fs.readdir(current, { withFileTypes: true })) {
+      const full = path.join(current, item.name);
+      if (item.isSymbolicLink()) {
+        links.push({ full, target: await fs.readlink(full) });
+        await fs.unlink(full);
+      } else if (item.isDirectory()) await scan(full);
+    }
+  }
+  await scan(dir);
+  return links;
+}
+
+/** Of the links taken out of the staged state: the ones to make again, as paths relative to the state folder. */
+export function linksToRestore(state, links) {
+  const kept = [];
+  for (const { full, target } of links) {
+    if (!insideDir(state, full) || full === state || path.isAbsolute(target) || /^[A-Za-z]:/.test(target)) continue;
+    if (!insideDir(state, path.resolve(path.dirname(full), target))) continue;
+    kept.push({ path: path.relative(state, full).split(path.sep).join('/'), target });
+  }
+  return kept;
+}
+
+/**
+ * Makes the saved links again in the restored state folder; returns how many. A link is made only where
+ * nothing exists, in a real folder (not reached through another link), with a relative target that stays
+ * inside the state folder.
+ */
+export async function restoreLinks(stateDir, links, owner) {
+  const root = await fs.realpath(stateDir);
+  let created = 0;
+  for (const entry of Array.isArray(links) ? links : []) {
+    try {
+      if (typeof entry?.path !== 'string' || typeof entry.target !== 'string') continue;
+      const name = safeName(entry.path);
+      if (!name || !safeLinkTarget(name, entry.target)) continue;
+      const full = path.join(root, ...name.split('/'));
+      const parent = path.dirname(full);
+      if (await fs.realpath(parent) !== parent || !insideDir(root, path.resolve(parent, entry.target))) continue;
+      if (await fs.lstat(full).catch(() => null)) continue;
+      await fs.symlink(entry.target, full);
+      if (owner !== undefined) await fs.lchown(full, owner, owner).catch(() => undefined);
+      created++;
+    } catch { /* one link that cannot be made does not stop the rest */ }
+  }
+  return created;
 }
 
 export async function preparePayload(archive, target, version) {
   const manifest = await prepareRestore(archive, target, version);
   const result = spawnSync('node', ['/app/dist/index.js', 'backup', 'restore', path.join(target, 'openclaw.tar.gz'), '--target', path.join(target, 'oc'), '--json'], { cwd: '/app', encoding: 'utf8', timeout: 15 * 60_000, maxBuffer: 4 * 1024 * 1024 });
   if (result.status !== 0) throw new Error('OpenClaw recovery validation failed');
+  // Links leave the staged copy here: the data is replaced without them, the safe ones come back last.
+  const stagedLinks = await takeLinks(path.join(target, 'oc'));
   const candidates = [];
   async function scan(dir) {
     for (const item of await fs.readdir(dir, { withFileTypes: true })) {
@@ -177,6 +250,13 @@ export async function preparePayload(archive, target, version) {
   await fs.mkdir(path.join(state, 'clawdesk'), { recursive: true, mode: 0o700 });
   await fs.writeFile(path.join(state, 'clawdesk', 'folder-sync.restored'), '', { mode: 0o600 });
   await fs.writeFile(path.join(target, 'prepared-state.txt'), path.dirname(candidates[0]), { mode: 0o600 });
+  // What restore.sh makes again at the end, and what the backup itself left out (shown to the person).
+  const links = linksToRestore(state, stagedLinks);
+  const saved = JSON.parse(await fs.readFile(path.join(target, 'manifest.json'), 'utf8')).skippedLinks;
+  const skipped = (Array.isArray(saved) ? saved : []).slice(0, 200)
+    .filter((link) => typeof link?.path === 'string' && typeof link.target === 'string')
+    .map((link) => `${link.path} -> ${link.target}`.replace(/[\x00-\x1f\x7f]/g, '?').slice(0, 400));
+  await fs.writeFile(path.join(target, 'prepared-links.json'), JSON.stringify({ links, dropped: stagedLinks.length - links.length, skipped }), { mode: 0o600 });
   // The fully restored payload is now independent of the original (possibly user-editable) archive.
   return manifest;
 }
