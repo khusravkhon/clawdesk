@@ -46,7 +46,7 @@ function git(args, { cwd, token, timeoutMs = 300_000 } = {}) {
     child.on("error", (e) => { clearTimeout(timer); resolve({ code: null, out, err: String(e) }); });
   });
 }
-async function must(res, what) {
+async function must(res, _what) {
   if (res.code !== 0) fail("github_git_failed", 502);
   return res.out;
 }

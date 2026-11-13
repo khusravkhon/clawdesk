@@ -150,7 +150,7 @@ describe("project requirements interview", () => {
     const gateway = {
       onEvent: (listener: (event: { event: string; payload?: unknown }) => void) => { listeners.push(listener); return () => { listeners.splice(listeners.indexOf(listener), 1); }; },
       request: async <T>(method: string, params: Record<string, unknown>): Promise<T> => {
-        if (method === "chat.send") { sent.push(params); setTimeout(() => listeners.forEach((listener) => listener({ event: "chat", payload: { sessionKey: params.sessionKey, state: "final" } })), 5); return {} as T; }
+        if (method === "chat.send") { sent.push(params); setTimeout(() => { for (const listener of listeners) listener({ event: "chat", payload: { sessionKey: params.sessionKey, state: "final" } }); }, 5); return {} as T; }
         return { messages: [{ role: "user", content: "q" }, { role: "assistant", content: "ответ модели" }] } as T;
       },
     } as unknown as GatewayService;

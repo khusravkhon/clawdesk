@@ -301,7 +301,7 @@ export class ProjectBuilder {
         });
     }
     stop(id) {
-        return this.#with(id, async (workspace, state) => {
+        return this.#with(id, async (_workspace, state) => {
             const record = await this.#record(state, id);
             if (!record)
                 return this.#dto(null, "empty");

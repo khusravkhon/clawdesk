@@ -40,3 +40,4 @@ export * from "./project-transfer.js";
 export * from "./capabilities.js";
 export * from "./project-load.js";
 export * from "./project-existing-plan.js";
+export * from "./changes.js";

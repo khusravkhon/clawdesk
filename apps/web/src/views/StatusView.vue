@@ -94,7 +94,9 @@ onUnmounted(() => clearInterval(timer));
 
         <n-card :title="t('status.agents')">
           <n-alert v-if="system.agentsError" type="error">{{ system.agentsError }}</n-alert>
-          <n-empty v-else-if="!system.agents?.agents.length" :description="t('status.noAgents')" />
+          <n-empty v-else-if="!system.agents?.agents.length" :description="t('status.noAgents')">
+            <template #extra><n-button size="small" round @click="$router.push('/agents/new')">{{ t("agents.create") }}</n-button></template>
+          </n-empty>
           <n-list v-else>
             <n-list-item v-for="agent in system.agents.agents" :key="agent.id">
               <n-thing :title="`${agent.emoji ?? '🤖'} ${agent.name}`" :description="agent.model ?? undefined">

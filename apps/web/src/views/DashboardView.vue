@@ -26,6 +26,7 @@ import StatTile from "../components/ui/StatTile.vue";
 import UsageMetrics from "../components/UsageMetrics.vue";
 import { formatCompact, formatCost, formatDay, formatInt, formatRelative } from "../format";
 import { modelErrorHint } from "../model-errors";
+import { FALLBACK_REFRESH_MS, onChanges } from "../changes";
 
 const { t, locale } = useI18n();
 const range = ref<DashboardRange>("7d");
@@ -57,13 +58,15 @@ async function load(): Promise<void> {
 }
 
 let timer: ReturnType<typeof setInterval> | undefined;
+let leaveChanges: (() => void) | undefined;
 const visibilityChanged = () => { if (!document.hidden) void load(); };
 onMounted(() => {
   void load();
-  timer = setInterval(() => void load(), 30_000);
+  leaveChanges = onChanges(["agents", "schedules", "reminders", "library"], () => void load());
+  timer = setInterval(() => void load(), FALLBACK_REFRESH_MS);
   document.addEventListener("visibilitychange", visibilityChanged);
 });
-onUnmounted(() => { stopped = true; clearInterval(timer); document.removeEventListener("visibilitychange", visibilityChanged); });
+onUnmounted(() => { stopped = true; clearInterval(timer); leaveChanges?.(); document.removeEventListener("visibilitychange", visibilityChanged); });
 watch(range, () => { rangeRevision++; data.value = null; error.value = null; void load(); });
 
 const loc = computed(() => locale.value);
@@ -214,7 +217,9 @@ const subtitle = computed(() => t("dash.subtitle", { days: range.value.replace("
           <n-button text size="small" @click="$router.push('/agents')">{{ t("dash.all") }}</n-button>
         </template>
         <n-alert v-if="data?.errors.agents" type="warning" :bordered="false">{{ data.errors.agents }}</n-alert>
-        <n-empty v-else-if="data && !data.agents?.length" :description="t('status.noAgents')" size="small" class="empty" />
+        <n-empty v-else-if="data && !data.agents?.length" :description="t('status.noAgents')" size="small" class="empty">
+          <template #extra><n-button size="small" round @click="$router.push('/agents/new')">{{ t("agents.create") }}</n-button></template>
+        </n-empty>
         <ul v-else class="agents">
           <li v-for="agent in data?.agents ?? []" :key="agent.id" class="agent">
             <div class="avatar">{{ agent.emoji ?? (agent.role === "main" ? "🧭" : "🤖") }}</div>

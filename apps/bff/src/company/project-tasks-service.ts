@@ -230,7 +230,7 @@ export class ProjectTasksService {
     } finally { this.#busy.delete(projectId); }
   }
 
-  async #sendStage(projectId: string, taskId: string, stage: ProjectExecutorRole, agentId: string, message: string, send: (agentId: string, message: string) => Promise<void>): Promise<void> {
+  async #sendStage(_projectId: string, taskId: string, stage: ProjectExecutorRole, agentId: string, message: string, send: (agentId: string, message: string) => Promise<void>): Promise<void> {
     await send(agentId, message);
     this.deps.db.insert(projectTaskEvents).values({ taskId, kind: "sent", note: stage, createdAt: Date.now(), requestId: randomUUID() }).run();
   }

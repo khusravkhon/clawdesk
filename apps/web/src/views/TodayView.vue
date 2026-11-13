@@ -2,12 +2,13 @@
 import type { ReminderPreferences, TodayDto } from "@clawdesk/shared";
 import { wallMinuteToInstant, zonedMinute } from "@clawdesk/shared";
 import { ArrowUpRight, BellPlus, FilePlus2, MessagesSquare } from "@lucide/vue";
-import { NAlert, NButton, NCard, NCheckbox, NEmpty, NInput, NPopconfirm, NSkeleton, NTag, useMessage } from "naive-ui";
+import { NAlert, NButton, NCard, NCheckbox, NDatePicker, NEmpty, NInput, NPopconfirm, NSelect, NSkeleton, NTag, useMessage } from "naive-ui";
 import { computed, onMounted, onUnmounted, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import { RouterLink } from "vue-router";
 import { api, browserTimeZone } from "../api/client";
 import PageHeader from "../components/ui/PageHeader.vue";
+import { onChanges } from "../changes";
 
 const { t, locale } = useI18n();
 const message = useMessage();
@@ -17,6 +18,7 @@ const failed = ref(false);
 const online = ref(navigator.onLine);
 let stopped = false;
 let timer: ReturnType<typeof setInterval> | undefined;
+let leaveChanges: (() => void) | undefined;
 const quiet = ref<ReminderPreferences["quietHours"]>({ enabled: false, start: "22:00", end: "08:00", timeZone: browserTimeZone() });
 const quietDirty = ref(false);
 let quietInitialized = false;
@@ -27,6 +29,7 @@ const due = ref("");
 const exactDue = ref<number | null>(null);
 const repeatDays = ref<number[]>([]);
 const snoozeMinutes = ref(30);
+const snoozeOptions = computed(() => [15, 30, 60, 120, 1440].map((minutes) => ({ value: minutes, label: t("today.repeat.minutes", { minutes }) })));
 const timeZone = computed(() => data.value?.timeZone ?? browserTimeZone());
 const weekdays = [1, 2, 3, 4, 5, 6, 0];
 const weekday = (day: number) => new Intl.DateTimeFormat(locale.value, { weekday: "short", timeZone: "UTC" }).format(Date.UTC(2026, 0, 4 + day));
@@ -58,7 +61,9 @@ async function load(manual = false): Promise<void> {
 const wake = () => { online.value = navigator.onLine; if (online.value && !document.hidden) void load(); };
 onMounted(() => {
   void load(true);
-  timer = setInterval(() => void load(), 30_000);
+  leaveChanges = onChanges(["reminders", "library", "agents"], () => void load());
+  // Delivery happens on the server's clock, unannounced: a shorter safety net than other screens.
+  timer = setInterval(() => void load(), 60_000);
   window.addEventListener("online", wake);
   window.addEventListener("offline", wake);
   document.addEventListener("visibilitychange", wake);
@@ -66,6 +71,7 @@ onMounted(() => {
 onUnmounted(() => {
   stopped = true;
   clearInterval(timer);
+  leaveChanges?.();
   window.removeEventListener("online", wake);
   window.removeEventListener("offline", wake);
   document.removeEventListener("visibilitychange", wake);
@@ -219,7 +225,9 @@ async function sync(agentId: string): Promise<void> {
         <n-alert v-if="data.reminders.data?.partial" type="info">{{ t('today.partial') }}</n-alert>
         <p class="muted">{{ t('today.fixedNote') }}</p>
         <p v-if="!stale('reminders')">{{ t(data.reminders.data?.telegramConfigured ? 'today.repeat.telegramOn' : 'today.repeat.telegramOff') }}</p>
-        <n-empty v-if="!reminders.length && !stale('reminders')" :description="t('today.noReminders')" />
+        <n-empty v-if="!reminders.length && !stale('reminders')" :description="t('today.noReminders')">
+          <template v-if="mutable" #extra><n-button size="small" round @click="focusReminder">{{ t("today.newReminder") }}</n-button></template>
+        </n-empty>
         <p v-if="overdue" class="muted">{{ t('today.quick.overdue', { count: overdue }) }}</p>
         <n-alert v-if="deliveryIssues" type="warning">{{ t('today.quick.undelivered', { count: deliveryIssues }) }}</n-alert>
         <article v-for="item in reminders" :key="item.id" class="item">
@@ -230,9 +238,7 @@ async function sync(agentId: string): Promise<void> {
           <div class="actions">
             <n-button size="small" :disabled="!mutable || busy.has(item.id)" @click="act(item.id, 'done')">{{ t('today.done') }}</n-button>
             <label>{{ t('today.repeat.snooze') }}
-              <select v-model.number="snoozeMinutes" :disabled="mutating">
-                <option v-for="minutes in [15, 30, 60, 120, 1440]" :key="minutes" :value="minutes">{{ t('today.repeat.minutes', { minutes }) }}</option>
-              </select>
+              <n-select v-model:value="snoozeMinutes" size="small" class="snooze" :options="snoozeOptions" :disabled="mutating" :consistent-menu-width="false" />
             </label>
             <n-button size="small" :disabled="!mutable || busy.has(item.id)" @click="act(item.id, 'snooze')">{{ t('today.repeat.snooze') }}</n-button>
             <n-button size="small" :disabled="!mutable || busy.has(item.id)" @click="act(item.id, 'skip')">{{ t('today.skip') }}</n-button>
@@ -242,8 +248,11 @@ async function sync(agentId: string): Promise<void> {
         <form class="form" @submit.prevent="create">
           <label for="reminder-text">{{ t('today.newReminder') }}</label>
           <n-input ref="reminderField" v-model:value="text" type="textarea" :input-props="{ id: 'reminder-text' }" :maxlength="2000" :disabled="creating" :placeholder="t('today.reminderPlaceholder')" />
-          <label for="reminder-due">{{ t('today.when', { zone: timeZone }) }}</label>
-          <input id="reminder-due" v-model="due" type="datetime-local" required :disabled="creating" @input="exactDue = null" />
+          <!-- The label wraps the picker: it has no input-props, and its own input then gets this name. -->
+          <label class="due">{{ t('today.when', { zone: timeZone }) }}
+            <!-- Wall-clock text in the chosen time zone, as before; the picker only edits it. -->
+            <n-date-picker class="due-picker" :formatted-value="due || null" type="datetime" value-format="yyyy-MM-dd'T'HH:mm" format="dd.MM.yyyy HH:mm" clearable :disabled="creating" @update:formatted-value="(value: string | null) => { due = value ?? ''; exactDue = null; }" />
+          </label>
           <p v-if="timeZone !== browserTimeZone()" class="muted">{{ t('today.repeat.deviceZone', { zone: browserTimeZone() }) }}</p>
           <div class="actions">
             <n-button size="small" :disabled="creating" @click="presetDue('hour')">{{ t('today.repeat.hour') }}</n-button>
@@ -353,10 +362,13 @@ async function sync(agentId: string): Promise<void> {
 .wrap { overflow-wrap: anywhere; white-space: pre-wrap; }
 .muted { color: var(--text-2); font-size: 13px; }
 .actions, .links { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-top: 10px; }
+.snooze { width: 140px; }
 .actions label { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; color: var(--text-2); }
 .form { display: grid; gap: 8px; margin-top: 22px; padding-top: 18px; border-top: 1px solid var(--border); }
 .form > label, legend { font-size: 13px; font-weight: 500; color: var(--text-2); }
 .form > input { justify-self: start; }
+.due { display: grid; gap: 8px; }
+.due-picker { max-width: 260px; }
 .form > button { justify-self: start; }
 fieldset { margin: 4px 0; padding: 0; border: 0; }
 /* A weekday is a chip: the checkbox itself stays for the keyboard and screen readers, out of sight. */

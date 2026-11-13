@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { ProjectBriefFields } from "./company.js";
+import type { ProjectBriefFields } from "./company.js";
 
 // P2: the project's requirements interview with the model. After each round of answers the main agent's
 // model asks 1–3 new questions (with examples and options), marks its guesses as assumptions and retells

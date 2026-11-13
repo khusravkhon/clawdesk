@@ -17,7 +17,7 @@ const answer = ref("");
 const acknowledgeGaps = ref(false);
 const answerField = ref<keyof ProjectBriefFields | null>(null);
 const templateId = ref<"task-board-v1" | null>(null);
-const confirmed = ref(false), html = ref("");
+const confirmed = ref(false), previewUrl = ref("");
 const frame = ref<HTMLIFrameElement | null>(null);
 let generation = 0, previewGeneration = 0, disposed = false;
 let pending: { signature: string; request: BuilderMutationRequest } | null = null;
@@ -38,12 +38,15 @@ function updateAnswer(value: string): void {
 
 async function preview(): Promise<void> {
   const sequence = ++previewGeneration;
-  html.value = "";
+  previewUrl.value = "";
   if (data.value?.runtime.state !== "running") return;
   const id = props.projectId;
   try {
-    const result = await api.company.builderPreview(id);
-    if (!disposed && id === props.projectId && sequence === previewGeneration) html.value = result;
+    // Checked first so a stopped preview shows an error instead of a JSON body in the frame.
+    await api.company.builderPreview(id);
+    // A real URL, not srcdoc: a srcdoc frame takes the panel's strict policy and its inline scripts stop working;
+    // the preview route answers with its own, narrower policy.
+    if (!disposed && id === props.projectId && sequence === previewGeneration) previewUrl.value = `/api/company/projects/${encodeURIComponent(id)}/builder/preview?v=${sequence}`;
   } catch (e) { if (!disposed && id === props.projectId && sequence === previewGeneration) error.value = explain(e); }
 }
 async function load(): Promise<void> {
@@ -122,7 +125,7 @@ async function onPreviewMessage(event: MessageEvent): Promise<void> {
     }
   } finally { inFlight--; messageIds.delete(msg.id); }
 }
-watch(() => props.projectId, () => { generation++; previewGeneration++; data.value = null; analysis.value = null; answer.value = ""; answerField.value = null; html.value = ""; templateId.value = null; pending = null; busy.value = false; void load(); }, { immediate: true });
+watch(() => props.projectId, () => { generation++; previewGeneration++; data.value = null; analysis.value = null; answer.value = ""; answerField.value = null; previewUrl.value = ""; templateId.value = null; pending = null; busy.value = false; void load(); }, { immediate: true });
 watch(() => props.refreshToken, () => { if (!busy.value) void load(); });
 onMounted(() => window.addEventListener("message", onPreviewMessage));
 onBeforeUnmount(() => { disposed = true; generation++; previewGeneration++; window.removeEventListener("message", onPreviewMessage); });
@@ -219,7 +222,7 @@ onBeforeUnmount(() => { disposed = true; generation++; previewGeneration++; wind
       <template v-if="data.runtime.state === 'running'">
         <h3>{{ t('projectBuilder.preview') }}</h3><p>{{ t('projectBuilder.previewHint') }}</p>
         <n-button :disabled="busy || loading" @click="preview">{{ t('projectBuilder.reloadPreview') }}</n-button>
-        <iframe v-if="html" ref="frame" :title="t('projectBuilder.preview')" :srcdoc="html" sandbox="allow-scripts" referrerpolicy="no-referrer" class="builder-preview" />
+        <iframe v-if="previewUrl" ref="frame" :title="t('projectBuilder.preview')" :src="previewUrl" sandbox="allow-scripts" referrerpolicy="no-referrer" class="builder-preview" />
       </template>
       </template>
     </template>

@@ -26,6 +26,8 @@ jobs:
       # One OpenClaw version everywhere (deploy/openclaw.version and its copies).
       - run: node scripts/openclaw-version.mjs check
       - run: pnpm install --frozen-lockfile
+      # Biome lint (formatting is not enforced); web unit tests run with pnpm test below.
+      - run: pnpm lint
       - run: pnpm -r build
       - run: pnpm typecheck
       - run: pnpm test

@@ -96,7 +96,9 @@ onMounted(load);
     <n-alert v-if="notice" type="success" :bordered="false" class="block">{{ notice }}</n-alert>
 
     <n-card class="block" :title="t('documents.files')">
-      <n-empty v-if="data && !data.files.length" :description="t('documents.empty')" />
+      <n-empty v-if="data && !data.files.length" :description="t('documents.empty')">
+        <template #extra><n-button size="small" round :loading="busy" @click="picker?.click()">{{ t("documents.upload") }}</n-button></template>
+      </n-empty>
       <div v-for="file in data?.files ?? []" :key="file.path" class="row">
         <div class="file">
           <strong>{{ fileName(file.path) }}</strong>

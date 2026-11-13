@@ -36,9 +36,9 @@ Oct 11, 2026 · @Khusrav
 
 | Компонент | Стек | Отвечает за |
 | --- | --- | --- |
-| `apps/web` — админка | Vue 3, TypeScript, Vite, Pinia, Vue Router, vue-i18n (ru / en / tg), UI-кит (Naive UI или PrimeVue) | Экраны, мастера, чат с агентом, конструктор агентов |
-| `apps/bff` — бэкенд панели | Node 24 LTS, Fastify, `@openclaw/gateway-client` 2026.8.1, Drizzle + SQLite, zod | Вход в панель, наши метаданные, превращение действий UI в цепочки RPC, прокси событий в браузер |
-| OpenClaw Gateway | пакет `openclaw` 2026.8.1, как зависимость | Агенты, сессии, память, cron, каналы (Telegram), плагины, sandbox |
+| `apps/web` — админка | Vue 3, TypeScript, Vite, Pinia, Vue Router, vue-i18n (ru / en / tg), Naive UI | Экраны, мастера, чат с агентом, конструктор агентов |
+| `apps/bff` — бэкенд панели | Node 24 LTS, Fastify, `@openclaw/gateway-client` (версия из `deploy/openclaw.version`), Drizzle + SQLite, zod | Вход в панель, наши метаданные, превращение действий UI в цепочки RPC, прокси событий в браузер |
+| OpenClaw Gateway | пакет `openclaw` (версия из `deploy/openclaw.version`, сейчас 2026.8.35), как зависимость | Агенты, сессии, память, cron, каналы (Telegram), плагины, sandbox |
 | Docker на хосте | Docker Engine | Песочницы младших агентов |
 
 Почему BFF на Node, а не на ASP.NET: официальный клиент и TypeBox-схемы протокола есть только для npm, а общие типы с фронтом дают один язык на весь репозиторий.
@@ -110,7 +110,7 @@ deploy/
 | `ModelCredentialStatus` | `provider`, `method` (api\_key / setup-token), `ok`, `checkedAt` | Auth-профиль агента (секрет там) |
 | `AuditEvent` | `at`, `actor`, `action`, `target`, `result` | Дополняется audit-леджером Gateway |
 
-Пример того, во что BFF превращает агента «Диетолог» (имена ключей взяты из документации; точную форму сверить со схемой `gateway-protocol` 2026.8.1):
+Пример того, во что BFF превращает агента «Диетолог» (имена ключей взяты из документации; точную форму сверить со схемой `gateway-protocol` закреплённой версии):
 
 ```json5
 {
@@ -230,7 +230,7 @@ curl -fsSL https://<ваш-домен>/install.sh | bash
 
 Этап 0 по шагам — с него начинать в режиме кода:
 
-- [ ] Поднять `openclaw@2026.8.1` в Docker, `openclaw onboard` вручную один раз
+- [ ] Поднять `openclaw` закреплённой версии в Docker, `openclaw onboard` вручную один раз
 - [ ] Минимальный BFF: `connect` → парование устройства → сохранить `deviceToken` → `agents.list`
 - [ ] Скрипт: `agents.create` → `agents.files.set` → `cron.add` → `chat.send`, всё через RPC
 - [ ] Выяснить, есть ли RPC для логина модели и OAuth плагина; если нет — проверить CLI-фолбэк

@@ -353,7 +353,7 @@ test("preview transport preserves UTF-8 across chunks and bounds raw bytes", lin
     await f.builder.start("project-a", { planId: request.planId });
     await f.builder.request("project-a", { method: "GET", path: "/api/tasks" });
     const args = f.calls.find(args => args[0] === "exec" && args.some(value => value.includes("const chunks=[]")));
-    const AsyncFunction = Object.getPrototypeOf(async function () {}).constructor;
+    const AsyncFunction = Object.getPrototypeOf(async () => {}).constructor;
     const client = new AsyncFunction("fetch", "process", "console", args[args.indexOf("-e") + 1]);
     const body = JSON.stringify([{ title: "Привет мир 👋" }]);
     const bytes = Buffer.from(body);

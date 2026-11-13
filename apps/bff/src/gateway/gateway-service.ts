@@ -261,7 +261,7 @@ export class GatewayService {
       return;
     }
     const code = readConnectErrorDetailCode(details);
-    const terminal = code !== null && code.startsWith("AUTH_");
+    const terminal = code?.startsWith("AUTH_") === true;
     this.#setStatus({
       state: terminal ? "auth_failed" : "connecting",
       hint: terminal ? hintForAuthCode(code) : null,

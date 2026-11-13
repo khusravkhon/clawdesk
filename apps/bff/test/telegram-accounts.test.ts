@@ -278,7 +278,7 @@ describe("Telegram bot accounts", () => {
     await telegram.sendToOwner("test", "second");
     expect(calls.find((c) => c.method === "send")?.params).toMatchObject({ accountId: "second", to: "42", message: "test" });
     // OpenClaw 2026.8.35 refuses a send without its agent when several agents exist (seen live).
-    expect((calls.find((c) => c.method === "send")?.params as { agentId?: string }).agentId).toBeTruthy();
+    expect((calls.find((c) => c.method === "send")?.params as { agentId?: string } | undefined)?.agentId).toBeTruthy();
     expect((await telegram.status("second")).lastError).toBe("network failure");
     expect((await telegram.status()).running).toBe(true);
   });

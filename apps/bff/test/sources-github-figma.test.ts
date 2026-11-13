@@ -5,7 +5,7 @@ import pino from "pino";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { openDb } from "../src/db/client.js";
 import type { GatewayService } from "../src/gateway/gateway-service.js";
-import { SourcesError, SourcesService } from "../src/sources/sources-service.js";
+import { type SourcesError, SourcesService } from "../src/sources/sources-service.js";
 
 type Json = Record<string, unknown>;
 

@@ -13,6 +13,7 @@ import PageHeader from "../components/ui/PageHeader.vue";
 import { buildFlow, demoSources, FLOW_KINDS, layoutFlow, sizeOf, type FlowKind, type FlowNode, type FlowSources } from "../conveyor";
 import { formatRelative, intlLocale } from "../format";
 import { useSpaceStore } from "../stores/space";
+import { FALLBACK_REFRESH_MS, onChanges } from "../changes";
 
 type ItemKind = Exclude<FlowKind, "core">;
 type Part = ItemKind | "states";
@@ -209,12 +210,14 @@ function up(): void {
 }
 function choose(id: string): void { selectedId.value = selectedId.value === id ? null : id; }
 
+let leaveChanges: (() => void) | undefined;
 onMounted(() => {
   void load();
-  timer = setInterval(() => void load(), 30_000);
+  leaveChanges = onChanges(["agents", "schedules", "reminders", "library", "workItems"], () => void load());
+  timer = setInterval(() => void load(), FALLBACK_REFRESH_MS);
   document.addEventListener("visibilitychange", visibilityChanged);
 });
-onBeforeUnmount(() => { stopped = true; clearInterval(timer); document.removeEventListener("visibilitychange", visibilityChanged); });
+onBeforeUnmount(() => { stopped = true; clearInterval(timer); leaveChanges?.(); document.removeEventListener("visibilitychange", visibilityChanged); });
 </script>
 
 <template>

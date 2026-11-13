@@ -68,7 +68,7 @@ describe("permitted agent communication", () => {
   it("repairs only existing permitted agents and does not write again once repaired", async () => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), "clawdesk-communication-"));
     const { db, close } = openDb(path.join(dir, "panel.sqlite"));
-    let config: CommunicationConfig = { agents: { entries: { main: {}, trainer: {}, finance: {} } } };
+    const config: CommunicationConfig = { agents: { entries: { main: {}, trainer: {}, finance: {} } } };
     const patches: unknown[] = [];
     const gateway = { request: async (method: string, params: Record<string, unknown>) => {
       if (method === "agents.list") return { agents: [{ id: "main" }, { id: "trainer" }, { id: "finance" }] };

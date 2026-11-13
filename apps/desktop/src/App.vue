@@ -179,7 +179,7 @@ onMounted(async () => {
   update.value = await check().catch(() => null);
 });
 onUnmounted(() => {
-  unlisten.forEach((u) => u());
+  for (const u of unlisten) u();
   media.removeEventListener("change", onScheme);
 });
 watch(dark, syncTheme);

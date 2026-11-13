@@ -1,8 +1,8 @@
 <script setup lang="ts">
 import type { AgentListItemDto, LibraryCursor, LibraryHitDto, LibraryItemKind, LibraryMaterialDto } from "@clawdesk/shared";
 import { FileText, Search, Trash2, Video, X } from "@lucide/vue";
-import { NAlert, NButton, NCard, NEmpty, NInput, NPopconfirm, NRadioButton, NRadioGroup, NSpin, useMessage } from "naive-ui";
-import { onBeforeUnmount, onMounted, ref, watch } from "vue";
+import { NAlert, NButton, NCard, NEmpty, NInput, NPopconfirm, NRadioButton, NRadioGroup, NSelect, NSpin, useMessage } from "naive-ui";
+import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import { useRoute } from "vue-router";
 import { api } from "../api/client";
@@ -14,6 +14,7 @@ const route = useRoute();
 const message = useMessage();
 const agents = ref<AgentListItemDto[]>([]);
 const agent = ref("");
+const agentOptions = computed(() => [{ value: "", label: `${t("library.browser.agent")}: ${t("library.browser.all")}` }, ...agents.value.map((entry) => ({ value: entry.id, label: entry.name }))]);
 const kind = ref<LibraryItemKind | "">("");
 const draft = ref("");
 const query = ref("");
@@ -131,17 +132,16 @@ watch(() => route.query.material, (id) => {
       <n-radio-button value="document">{{ t("library.kind.document") }}</n-radio-button>
       <n-radio-button value="video">{{ t("library.kind.video") }}</n-radio-button>
     </n-radio-group>
-    <select v-model="agent" :aria-label="t('library.browser.agent')">
-      <option value="">{{ t("library.browser.agent") }}: {{ t("library.browser.all") }}</option>
-      <option v-for="entry in agents" :key="entry.id" :value="entry.id">{{ entry.name }}</option>
-    </select>
+    <n-select v-model:value="agent" :options="agentOptions" class="agent-filter" :consistent-menu-width="false" :aria-label="t('library.browser.agent')" />
     <n-input v-model:value="draft" round clearable class="query" :maxlength="200" :placeholder="t('library.placeholder')" :aria-label="t('library.browser.searchText')">
       <template #prefix><search :size="15" /></template>
     </n-input>
     <n-button attr-type="submit" type="primary" round>{{ t("library.search") }}</n-button>
   </form>
   <n-alert v-if="failed" type="error">{{ t("library.browser.error") }} <n-button size="tiny" @click="load(!!items.length)">{{ t("chat.sendRecovery.check") }}</n-button></n-alert>
-  <n-empty v-else-if="!busy && !items.length" class="empty" :description="t(query ? 'library.browser.noResults' : agent ? 'library.emptyLibrary' : 'library.emptyAll')" />
+  <n-empty v-else-if="!busy && !items.length" class="empty" :description="t(query ? 'library.browser.noResults' : agent ? 'library.emptyLibrary' : 'library.emptyAll')">
+    <template v-if="!query" #extra><n-button size="small" round @click="$router.push('/chat')">{{ t("library.openChat") }}</n-button></template>
+  </n-empty>
   <ul v-if="items.length" class="items">
     <li v-for="item in items" :key="item.id" class="item" :class="{ open: item.id === selectedId }">
       <span class="glyph" :class="item.kind"><component :is="item.kind === 'video' ? Video : FileText" :size="18" :stroke-width="1.75" /></span>
@@ -171,7 +171,7 @@ watch(() => route.query.material, (id) => {
 .filters { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin-bottom: 18px; }
 .query { flex: 1 1 220px; }
 .query { --n-color: var(--surface) !important; }
-.filters select { background: var(--surface); }
+.agent-filter { width: auto; min-width: 180px; max-width: 260px; }
 .empty { padding: 48px 0; }
 .items { display: grid; gap: 10px; margin: 0; padding: 0; list-style: none; }
 .item { display: flex; align-items: flex-start; gap: 14px; padding: 16px 18px; border-radius: var(--radius-card); background: var(--surface); border: 1px solid var(--border); box-shadow: var(--card-shadow); transition: transform 0.25s var(--ease-out), box-shadow 0.25s ease, border-color 0.25s ease; }

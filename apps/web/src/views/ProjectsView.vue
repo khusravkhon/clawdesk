@@ -197,7 +197,9 @@ onMounted(async () => {
           </n-form-item>
         </div>
 
-        <n-empty v-if="!groups.length" :description="t('projects.empty')" />
+        <n-empty v-if="!groups.length" :description="t('projects.empty')">
+          <template #extra><n-button size="small" round :disabled="!data || saving" @click="edit()">{{ t("projects.create") }}</n-button></template>
+        </n-empty>
 
         <div v-for="group in groups" :key="group.id" class="group-section">
           <div class="group-title-row">

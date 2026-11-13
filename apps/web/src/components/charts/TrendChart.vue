@@ -21,7 +21,7 @@ const props = defineProps<{
   compact?: boolean;
 }>();
 
-const escape = (s: string) => s.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]!);
+const escapeHtml = (s: string) => s.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]!);
 
 const option = computed(() => {
   const c = colors.value;
@@ -38,9 +38,9 @@ const option = computed(() => {
       axisPointer: { type: "line", lineStyle: { color: c.axis, width: 1 } },
       formatter: (items: { dataIndex: number }[]) => {
         const i = items[0]?.dataIndex ?? 0;
-        return `<div style="color:${c.text2};margin-bottom:4px">${escape(props.labels[i] ?? "")}</div>
+        return `<div style="color:${c.text2};margin-bottom:4px">${escapeHtml(props.labels[i] ?? "")}</div>
           <div style="display:flex;align-items:center;gap:8px"><span style="width:8px;height:8px;border-radius:50%;background:${c.accent}"></span>
-          ${escape(props.name)} <b style="margin-left:auto;padding-left:12px">${escape(props.format(props.values[i] ?? 0))}</b></div>`;
+          ${escapeHtml(props.name)} <b style="margin-left:auto;padding-left:12px">${escapeHtml(props.format(props.values[i] ?? 0))}</b></div>`;
       },
     },
     xAxis: {

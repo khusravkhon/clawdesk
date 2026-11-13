@@ -1,8 +1,5 @@
 import type { Locale } from "@clawdesk/shared";
 import { createI18n } from "vue-i18n";
-import en from "./locales/en.json";
-import ru from "./locales/ru.json";
-import tg from "./locales/tg.json";
 
 const STORAGE_KEY = "clawdesk.locale";
 const SUPPORTED: Locale[] = ["ru", "en", "tg"];
@@ -21,11 +18,35 @@ function initialLocale(): Locale {
 export const i18n = createI18n({
   legacy: false,
   locale: initialLocale(),
-  fallbackLocale: "en",
-  messages: { ru, en, tg },
+  // Every language has the same keys (checked), so no fallback is needed and none is loaded.
+  fallbackLocale: false,
+  messages: {},
 });
 
-export function setLocale(locale: Locale): void {
+// One language per file, fetched when chosen: the first load carries one language instead of three.
+const LOADERS: Record<Locale, () => Promise<{ default: Record<string, unknown> }>> = {
+  ru: () => import("./locales/ru.json"),
+  en: () => import("./locales/en.json"),
+  tg: () => import("./locales/tg.json"),
+};
+
+async function loadMessages(locale: Locale): Promise<void> {
+  if (i18n.global.availableLocales.includes(locale)) return;
+  const messages = await LOADERS[locale]();
+  i18n.global.setLocaleMessage(locale, messages.default as never);
+}
+
+/** Resolves once the starting language is loaded; main.ts waits for it before the first screen. */
+export const i18nReady: Promise<void> = loadMessages(i18n.global.locale.value as Locale).then(() => {
+  document.documentElement.lang = i18n.global.locale.value;
+});
+
+export async function setLocale(locale: Locale): Promise<void> {
+  try {
+    await loadMessages(locale);
+  } catch {
+    return; // the file did not arrive (connection lost): stay on the current language
+  }
   i18n.global.locale.value = locale;
   document.documentElement.lang = locale;
   try {

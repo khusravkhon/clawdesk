@@ -8,6 +8,7 @@ import { useI18n } from "vue-i18n";
 import { useRouter } from "vue-router";
 import { api, ApiError } from "../api/client";
 import PageHeader from "../components/ui/PageHeader.vue";
+import { onChanges } from "../changes";
 
 const { t, te } = useI18n();
 const router = useRouter();
@@ -44,8 +45,10 @@ async function act(request: WorkRequestDto, action: "answer" | "deny" | "clarify
   } catch (e) { if (e instanceof ApiError) pending = null; error.value = explain(e); }
   finally { busy.value = null; await load(); }
 }
-onMounted(() => { void load(); timer = setInterval(() => { if (!busy.value) void load(); }, 10_000); });
-onBeforeUnmount(() => clearInterval(timer));
+let leaveChanges: (() => void) | undefined;
+// Agents file and move these through their plugin as well, which the stream does not see: a 30 s safety net.
+onMounted(() => { void load(); leaveChanges = onChanges(["requests"], () => { if (!busy.value) void load(); }); timer = setInterval(() => { if (!busy.value) void load(); }, 30_000); });
+onBeforeUnmount(() => { clearInterval(timer); leaveChanges?.(); });
 </script>
 
 <template>

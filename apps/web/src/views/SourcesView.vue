@@ -595,7 +595,7 @@ onMounted(async () => {
   flex: none;
   background: var(--surface-2);
   color: var(--text);
-  border: 1px solid rgba(255, 255, 255, 0.06);
+  border: 1px solid var(--border-subtle);
 }
 .logo.notion {
   background: #ffffff;
@@ -605,7 +605,7 @@ onMounted(async () => {
 .logo.folder {
   color: var(--accent);
   background: var(--accent-soft);
-  border-color: rgba(99, 102, 241, 0.2);
+  border-color: var(--border);
 }
 .logo.github {
   background: #24292f;
