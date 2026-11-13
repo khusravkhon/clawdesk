@@ -4,7 +4,7 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import os from 'node:os';
 import { spawnSync } from 'node:child_process';
-import { extractSafe, prepareRestore, preparePayload, applyPayload, clearRestoredPluginLeases } from './restore-safe.mjs';
+import { extractSafe, prepareRestore, preparePayload, applyPayload, clearRestoredPluginLeases, takeLinks, linksToRestore, restoreLinks } from './restore-safe.mjs';
 import { DatabaseSync } from 'node:sqlite';
 
 test('prepared restore clears source startup/plugin locks and preserves delivery leases and user data', async () => {
@@ -98,6 +98,84 @@ for (const entry of [
   } finally { await fs.rm(root, { recursive: true, force: true }); }
 });
 
+test('a safe symbolic link in OpenClaw\'s archive is accepted and never written', async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'restore-links-'));
+  try {
+    const archive = path.join(root, 'archive.tar');
+    await fs.writeFile(archive, tar([
+      { name: 'venv/bin/python3.11', body: 'binary' },
+      { name: 'venv/bin/python', type: '2', link: 'python3.11' },
+      { name: 'PaxHeader', type: 'x', body: paxRecord('linkpath', '../bin/python3.11') }, { name: 'venv/lib/py', type: '2' },
+    ]));
+    const names = await extractSafe(archive, path.join(root, 'out'), false, true);
+    assert.deepEqual(names.sort(), ['venv/bin/python', 'venv/bin/python3.11', 'venv/lib/py']);
+    assert.deepEqual(await fs.readdir(path.join(root, 'out', 'venv', 'bin')), ['python3.11']);
+    assert.equal(await fs.lstat(path.join(root, 'out', 'venv', 'lib')).catch(() => null), null);
+    // The panel's own archive takes no links at all.
+    await assert.rejects(extractSafe(archive, path.join(root, 'strict')), /links/);
+  } finally { await fs.rm(root, { recursive: true, force: true }); }
+});
+
+for (const entries of [
+  [{ name: 'venv/python3', type: '2', link: '/usr/bin/python3' }],
+  [{ name: 'venv/escape', type: '2', link: '../../outside' }],
+  [{ name: 'venv/drive', type: '2', link: 'C:/outside' }],
+  [{ name: 'venv/empty', type: '2', link: '' }],
+  [{ name: 'venv/body', type: '2', link: 'x', body: 'data' }],
+  [{ name: 'PaxHeader', type: 'x', body: paxRecord('linkpath', '/etc/passwd') }, { name: 'venv/pax', type: '2' }],
+  [{ name: 'PaxHeader', type: 'x', body: paxRecord('linkpath', 'x') }, { name: 'venv/file', body: 'abc' }],
+  [{ name: 'venv/hard', type: '1', link: 'x' }],
+]) test(`an unsafe link is rejected even where links are tolerated: ${entries.at(-1).name}`, async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'restore-links-bad-'));
+  try {
+    await fs.writeFile(path.join(root, 'archive.tar'), tar(entries));
+    await assert.rejects(extractSafe(path.join(root, 'archive.tar'), path.join(root, 'out'), false, true));
+  } finally { await fs.rm(root, { recursive: true, force: true }); }
+});
+
+test('links leave the staged state and only the safe ones are made again', async (t) => {
+  const root = await fs.realpath(await fs.mkdtemp(path.join(os.tmpdir(), 'restore-links-apply-')));
+  try {
+    const staged = path.join(root, 'staged'), state = path.join(staged, 'payload', 'state'), outside = path.join(root, 'outside');
+    await fs.mkdir(path.join(state, 'workspace', 'venv', 'bin'), { recursive: true });
+    await fs.mkdir(outside);
+    await fs.writeFile(path.join(state, 'workspace', 'venv', 'bin', 'python3.11'), 'binary');
+    try { await fs.symlink('python3.11', path.join(state, 'workspace', 'venv', 'bin', 'python')); }
+    catch (error) { if (error.code === 'EPERM' && process.platform === 'win32') return t.skip('Windows symlink permission unavailable'); throw error; }
+    await fs.symlink(outside, path.join(state, 'workspace', 'venv', 'bin', 'python3'));           // absolute
+    await fs.symlink('../../../../../outside', path.join(state, 'workspace', 'escape'));          // leaves the state folder
+    await fs.symlink('state', path.join(staged, 'payload', 'alias'));                             // not in the state folder
+
+    const taken = await takeLinks(staged);
+    assert.equal(taken.length, 4);
+    assert.deepEqual(await fs.readdir(path.join(state, 'workspace', 'venv', 'bin')), ['python3.11']);
+    const links = linksToRestore(state, taken);
+    assert.deepEqual(links, [{ path: 'workspace/venv/bin/python', target: 'python3.11' }]);
+
+    // The restored state folder: the same files, no links yet.
+    const live = path.join(root, 'live');
+    await fs.cp(state, live, { recursive: true });
+    await fs.writeFile(path.join(live, 'workspace', 'taken'), 'already here');
+    await fs.symlink(outside, path.join(live, 'workspace', 'door'));
+    const made = await restoreLinks(live, [
+      ...links,
+      { path: 'workspace/taken', target: 'venv' },                    // something exists there
+      { path: 'workspace/abs', target: outside },                     // absolute target
+      { path: 'workspace/up', target: '../../outside' },              // leaves the state folder
+      { path: '../outside/planted', target: 'x' },                    // path outside the state folder
+      { path: 'workspace/door/planted', target: 'x' },                // parent reached through a link
+      { path: 'workspace/missing/dir/link', target: 'x' },            // no such folder
+      { path: 7, target: 'x' },
+    ]);
+    assert.equal(made, 1);
+    assert.equal(await fs.readlink(path.join(live, 'workspace', 'venv', 'bin', 'python')), 'python3.11');
+    assert.equal(await fs.readFile(path.join(live, 'workspace', 'venv', 'bin', 'python'), 'utf8'), 'binary');
+    assert.equal(await fs.readFile(path.join(live, 'workspace', 'taken'), 'utf8'), 'already here');
+    for (const name of ['abs', 'up']) assert.equal(await fs.lstat(path.join(live, 'workspace', name)).catch(() => null), null, name);
+    assert.deepEqual(await fs.readdir(outside), []);
+  } finally { await fs.rm(root, { recursive: true, force: true }); }
+});
+
 test('duplicate entries and corrupted checksum are rejected', async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), 'restore-test-'));
   try {
@@ -152,6 +230,7 @@ test('official OpenClaw backup roundtrip in an isolated Linux fixture', { skip: 
     await fs.mkdir(path.join(state, 'workspace'), { recursive: true });
     await fs.writeFile(path.join(state, 'openclaw.json'), JSON.stringify({ gateway: { mode: 'local', auth: { mode: 'token', token: 'fake-fixture-token' } }, agents: { defaults: { workspace: path.join(state, 'workspace') } }, channels: { telegram: { enabled: false, botToken: '123:fake-fixture-token' } } }));
     await fs.writeFile(path.join(state, 'workspace', 'USER.md'), '# Fixture owner\nRemember my local note.\n');
+    await fs.symlink('USER.md', path.join(state, 'workspace', 'USER-link.md'));
     await fs.mkdir(path.join(state, 'cron'), { recursive: true });
     await fs.writeFile(path.join(state, 'cron', 'jobs.json'), JSON.stringify({ version: 1, jobs: [{ id: 'fixture-schedule', enabled: false, name: 'Fixture only' }] }));
     await fs.mkdir(path.join(state, 'models', 'llama.cpp'), { recursive: true });
@@ -185,6 +264,9 @@ test('official OpenClaw backup roundtrip in an isolated Linux fixture', { skip: 
     const restored = path.join(root, 'restored');
     await assert.rejects(prepareRestore(archive, path.join(root, 'wrong-version'), '0.0.0'), /version/);
     await preparePayload(archive, restored, version);
+    const preparedLinks = JSON.parse(await fs.readFile(path.join(restored, 'prepared-links.json'), 'utf8'));
+    assert.deepEqual(preparedLinks.links, [{ path: 'workspace/USER-link.md', target: 'USER.md' }]);
+    assert.deepEqual(await takeLinks(path.join(restored, 'oc')), [], 'the staged copy holds no links');
     const oc = cli('backup', 'restore', path.join(restored, 'openclaw.tar.gz'), '--target', path.join(root, 'target'), '--json');
     // The SDK's returned target is not used to prove success: read the actual restored files.
     void oc;

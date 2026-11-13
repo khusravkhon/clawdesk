@@ -53,7 +53,7 @@ import http from "node:http";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { DatabaseSync } from "node:sqlite";
-import { BackupError, createBackup, deleteBackup, listBackups, resetGateway, startReset } from "./clawdesk-backup.mjs";
+import { BackupError, createBackup, deleteBackup, listBackups, resetGateway, restoreDisplacedLinks, startReset } from "./clawdesk-backup.mjs";
 import { OpenClawUpdateError, startUpdate as startOpenClawUpdate, updateInfo as openclawUpdateInfo } from "./clawdesk-openclaw-update.mjs";
 import { cloneTeamRepo, fetchTeamRepo, prepareMemberRepo, pushTeamBranch, removeTeamRepo, TeamError, teamRepoStatus } from "./clawdesk-teams.mjs";
 import { isAuthorizationCode, mcpLoginArgs } from "./clawdesk-oauth.mjs";
@@ -795,6 +795,8 @@ if (!TOKEN) {
   const timer = setInterval(sync, 15000);
   timer.unref();
   void sync();
+  // A backup cut short by a restart may have left agents' links set aside: put them back now.
+  void restoreDisplacedLinks().then((count) => { if (count) log("links set aside by an unfinished backup restored", { count }); }).catch(() => log("could not restore links set aside by a backup"));
   http
     .createServer(async (req, res) => {
       let result;
