@@ -44,6 +44,9 @@ import { registerLibraryRoutes } from "./routes/library.js";
 import { registerDashboardRoutes } from "./routes/dashboard.js";
 import { registerTodayRoutes } from "./routes/today.js";
 import { registerHealthRoutes } from "./routes/health.js";
+import { registerSecurityHeaders } from "./security-headers.js";
+import { ChangeBus, topicsOfGatewayEvent } from "./changes/change-bus.js";
+import { registerChangeRoutes } from "./routes/changes.js";
 import { registerGatewayRestartRoutes } from "./routes/gateway-restart.js";
 import type { FreeModelsService } from "./free-models/free-models-service.js";
 import { registerFreeModelRoutes } from "./routes/free-models.js";
@@ -143,10 +146,16 @@ export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
     return send(status, { error: status >= 500 ? "internal_error" : "request_error", message: status >= 500 ? "internal error" : (error as Error).message });
   });
 
+  registerSecurityHeaders(app);
   deps.audit.attach(app);
   // First: its guard stands in front of every other /api route.
   registerAuthRoutes(app, deps);
   registerHealthRoutes(app, deps);
+  // What changed, for screens that would otherwise poll: the panel's own changes and the Gateway's runs.
+  const changes = new ChangeBus();
+  registerChangeRoutes(app, changes);
+  const leaveGateway = deps.gateway.onEvent?.((event) => changes.emit(topicsOfGatewayEvent(event as { event: string })));
+  app.addHook("onClose", async () => leaveGateway?.());
   registerGatewayRestartRoutes(app, deps);
   registerAgentRoutes(app, deps);
   registerAiRoutes(app, deps);

@@ -453,7 +453,7 @@ onMounted(load);
 }
 .tpl:hover,
 .tpl:focus-visible {
-  border-color: #18a058;
+  border-color: var(--accent);
   outline: none;
 }
 .emoji {

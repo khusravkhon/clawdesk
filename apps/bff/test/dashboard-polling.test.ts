@@ -13,9 +13,12 @@ async function polling(hidden = false) {
   const pending: Array<(value: unknown) => void> = [];
   const api = { dashboard: vi.fn(() => new Promise((resolve) => pending.push(resolve))) };
   const clear = vi.fn();
-  const create = new Function("ref", "onMounted", "onUnmounted", "watch", "api", "ApiError", "document", "setInterval", "clearInterval", `${javascript}; return { range, data, loading, load };`);
-  const component = create((value: unknown) => ({ value }), (handler: () => void) => { mount = handler; }, (handler: () => void) => { unmount = handler; }, (_ref: unknown, handler: () => void) => { changed = handler; }, api, Error, document, (handler: () => void) => { tick = handler; return 1; }, clear);
-  return { component, api, pending, document, listeners, clear, mount: () => mount(), unmount: () => unmount(), changed: () => changed(), tick: () => tick() };
+  // The change stream: the topics the screen asked for, its handler, and whether it let go.
+  const stream = { topics: [] as string[], fire: () => {}, left: false };
+  const onChanges = (topics: string[], handler: () => void) => { stream.topics = topics; stream.fire = handler; return () => { stream.left = true; }; };
+  const create = new Function("ref", "onMounted", "onUnmounted", "watch", "api", "ApiError", "document", "setInterval", "clearInterval", "onChanges", "FALLBACK_REFRESH_MS", `${javascript}; return { range, data, loading, load };`);
+  const component = create((value: unknown) => ({ value }), (handler: () => void) => { mount = handler; }, (handler: () => void) => { unmount = handler; }, (_ref: unknown, handler: () => void) => { changed = handler; }, api, Error, document, (handler: () => void) => { tick = handler; return 1; }, clear, onChanges, 120_000);
+  return { component, api, pending, document, listeners, clear, stream, mount: () => mount(), unmount: () => unmount(), changed: () => changed(), tick: () => tick() };
 }
 const settle = async () => { await Promise.resolve(); await Promise.resolve(); };
 
@@ -52,4 +55,16 @@ it("skips hidden tabs, refreshes on visibility, and cleans listeners and late re
   expect(state.component.data.value).toBeNull();
   await state.component.load();
   expect(state.api.dashboard).toHaveBeenCalledTimes(1);
+});
+
+it("reloads when the change stream names one of its areas, and lets go of the stream on unmount", async () => {
+  const state = await polling();
+  state.mount();
+  expect(state.stream.topics).toEqual(expect.arrayContaining(["agents", "schedules"]));
+  state.pending.shift()!({ range: "7d" });
+  await settle();
+  state.stream.fire();
+  expect(state.api.dashboard).toHaveBeenCalledTimes(2);
+  state.unmount();
+  expect(state.stream.left).toBe(true);
 });

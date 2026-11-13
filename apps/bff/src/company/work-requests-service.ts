@@ -546,7 +546,7 @@ export class WorkRequestsService {
     const { db } = this.deps;
     const agent = db.select().from(agents).where(eq(agents.id, agentId)).get();
     const team = agent?.teamId ? db.select().from(teams).where(eq(teams.id, agent.teamId)).get() : undefined;
-    if (!team || team.ownerRequests !== "topic" || !team.telegramGroupId) return null;
+    if (team?.ownerRequests !== "topic" || !team.telegramGroupId) return null;
     const binding = db.select().from(channelBindings).where(and(eq(channelBindings.agentId, agentId), eq(channelBindings.channel, "telegram"), eq(channelBindings.peerKind, "group"), eq(channelBindings.peerId, team.telegramGroupId))).get();
     return binding?.topicId ? { chatId: team.telegramGroupId, topicId: binding.topicId } : null;
   }

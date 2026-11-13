@@ -239,7 +239,7 @@ onMounted(load);
 }
 .provider:hover,
 .provider:focus-visible {
-  border-color: #18a058;
+  border-color: var(--accent);
   outline: none;
 }
 .logo {
@@ -249,8 +249,8 @@ onMounted(load);
   display: grid;
   place-items: center;
   font-weight: 700;
-  background: rgba(24, 160, 88, 0.15);
-  color: #18a058;
+  background: var(--accent-soft);
+  color: var(--accent);
   flex: none;
 }
 .name {

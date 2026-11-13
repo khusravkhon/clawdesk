@@ -1,0 +1,58 @@
+{
+	"$schema": "./node_modules/@biomejs/biome/configuration_schema.json",
+	"vcs": { "enabled": true, "clientKind": "git", "useIgnoreFile": true },
+	"files": {
+		"includes": [
+			"apps/*/src/**",
+			"apps/*/test/**",
+			"packages/*/src/**",
+			"deploy/**/*.mjs",
+			"scripts/**/*.mjs",
+			"!**/locales",
+			"!**/dist",
+			"!**/src-tauri"
+		]
+	},
+	"formatter": { "enabled": false },
+	"assist": { "enabled": false },
+	"linter": {
+		"enabled": true,
+		"rules": {
+			"preset": "recommended",
+			"style": {
+				"noNonNullAssertion": "off",
+				"useTemplate": "off"
+			},
+			"suspicious": {
+				"noControlCharactersInRegex": "off",
+				"noAssignInExpressions": "off",
+				"noImplicitAnyLet": "off"
+			},
+			"complexity": {
+				"noImportantStyles": "off",
+				"noCommaOperator": "off"
+			}
+		}
+	},
+	"overrides": [
+		{
+			"includes": ["**/*.vue"],
+			"linter": {
+				"rules": {
+					"correctness": { "noUnusedVariables": "off", "noUnusedImports": "off" },
+					"suspicious": { "noFocusedTests": "off" },
+					"style": { "useImportType": "off" }
+				}
+			}
+		},
+		{
+			"includes": ["apps/*/test/**", "deploy/**/*.test.mjs", "scripts/**/*.test.mjs"],
+			"linter": {
+				"rules": {
+					"suspicious": { "noExplicitAny": "off" },
+					"correctness": { "noUnusedFunctionParameters": "off" }
+				}
+			}
+		}
+	]
+}

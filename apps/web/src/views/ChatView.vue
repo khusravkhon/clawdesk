@@ -1,6 +1,6 @@
 <script setup lang="ts">
 // Chat with an agent, with separate conversations in personal mode.
-import type { AgentListItemDto, ChatAttachmentInput, ChatAttachmentLimitsDto, ChatAttachmentReadDto, ChatConversation, ChatMessageDto, ChatRunPhase, ChatStreamEvent } from "@clawdesk/shared";
+import type { AgentListItemDto, ChatAttachmentInput, ChatAttachmentLimitsDto, ChatAttachmentReadDto, ChatMessageDto, ChatRunPhase, ChatStreamEvent } from "@clawdesk/shared";
 import type { VideoJobDto, VideoJobMode } from "@clawdesk/shared";
 import { CHAT_ATTACHMENT_ACCEPT, isVideoUrl, panelChatSessionKey } from "@clawdesk/shared";
 import { AlertCircle, ArrowUp, CircleSlash, Download, Film, Images, Paperclip, Square, Wrench, X } from "@lucide/vue";
@@ -12,12 +12,14 @@ import { useRoute, useRouter } from "vue-router";
 import { api, ApiError } from "../api/client";
 import ApprovalCard from "../components/ApprovalCard.vue";
 import AutomaticWorkNotice from "../components/AutomaticWorkNotice.vue";
+import ChatConversationBar from "../components/ChatConversationBar.vue";
 import LibrarySearch from "../components/LibrarySearch.vue";
 import { formatBytes, intlLocale } from "../format";
 import { modelErrorHint } from "../model-errors";
 import { useApprovalsStore } from "../stores/approvals";
 import { useSpaceStore } from "../stores/space";
 import { PollBackoff } from "../chat-poll";
+import { type AttachmentProblem, checkAttachment, newSendId, rejectedAttachment, toBase64 } from "../chat-attachments";
 
 const { t, locale } = useI18n();
 const message = useMessage();
@@ -39,15 +41,6 @@ const agentId = computed(() => (route.params.agentId as string | undefined) || "
 const conversationId = computed(() => space.mode === "personal" && typeof route.query.conversation === "string" ? route.query.conversation : undefined);
 const chatKey = computed(() => `${agentId.value}:${conversationId.value ?? "main"}`);
 const sessionKey = computed(() => panelChatSessionKey(agentId.value, conversationId.value));
-const conversations = ref<ChatConversation[]>([]);
-const conversationOptions = computed(() => [
-  { value: "main", label: t("chat.conversations.main") },
-  ...conversations.value.map(({ id, title }) => ({ value: id, label: title })),
-]);
-const conversationForm = ref(false);
-const conversationTitle = ref("");
-const creatingConversation = ref(false);
-
 function selectConversation(id: string): void {
   const query = { ...route.query };
   if (id === "main") delete query.conversation;
@@ -55,40 +48,6 @@ function selectConversation(id: string): void {
   void router.push({ name: "chat", params: route.params, query });
 }
 
-let conversationListVersion = 0;
-async function loadConversations(id: string): Promise<void> {
-  const version = ++conversationListVersion;
-  if (space.mode !== "personal") return;
-  try {
-    const result = await api.chat.conversations(id);
-    if (alive && version === conversationListVersion) conversations.value = result.conversations;
-  } catch (error) {
-    if (alive && version === conversationListVersion) message.error(error instanceof ApiError ? error.body.message : String(error));
-  }
-}
-
-async function createConversation(): Promise<void> {
-  const title = conversationTitle.value.trim();
-  if (!title || creatingConversation.value) return;
-  const id = agentId.value;
-  const key = chatKey.value;
-  creatingConversation.value = true;
-  try {
-    const created = await api.chat.createConversation(id, title);
-    if (!alive || id !== agentId.value) return;
-    conversations.value = [created, ...conversations.value];
-    void loadConversations(id);
-    if (key === chatKey.value) {
-      conversationForm.value = false;
-      conversationTitle.value = "";
-      selectConversation(created.id);
-    }
-  } catch (error) {
-    if (alive && key === chatKey.value) message.error(error instanceof ApiError ? error.body.message : String(error));
-  } finally {
-    if (alive) creatingConversation.value = false;
-  }
-}
 const agent = computed(() => agents.value.find((a) => a.id === agentId.value) ?? null);
 const agentOptions = computed(() => agents.value.map((a) => ({ value: a.id, label: `${a.emoji ?? (a.role === "main" ? "🧭" : "🤖")}  ${displayName(a)}` })));
 const displayName = (a: AgentListItemDto) => (a.role === "main" && a.name === a.id ? t("agents.main") : a.name);
@@ -160,25 +119,13 @@ const attachButton = ref<InstanceType<typeof NButton> | null>(null);
 
 // Files staged for the next message: read in the browser, sent with chat.send, never stored by the panel.
 const limits = ref<ChatAttachmentLimitsDto | null>(null);
-const supported = CHAT_ATTACHMENT_ACCEPT.split(",");
 
 const bytes = (value: number) => formatBytes(value, locale.value);
 
-function newSendId(): string {
-  if (typeof crypto.randomUUID === "function") return crypto.randomUUID();
-  const data = crypto.getRandomValues(new Uint8Array(16));
-  data[6] = (data[6]! & 0x0f) | 0x40;
-  data[8] = (data[8]! & 0x3f) | 0x80;
-  const hex = Array.from(data, (byte) => byte.toString(16).padStart(2, "0")).join("");
-  return [hex.slice(0, 8), hex.slice(8, 12), hex.slice(12, 16), hex.slice(16, 20), hex.slice(20)].join("-");
-}
-
-async function toBase64(file: File): Promise<string> {
-  const buffer = new Uint8Array(await file.arrayBuffer());
-  let binary = "";
-  // In chunks: one spread of a whole file would overflow the argument list.
-  for (let i = 0; i < buffer.length; i += 8192) binary += String.fromCharCode(...buffer.subarray(i, i + 8192));
-  return btoa(binary);
+function problemText(problem: AttachmentProblem, name: string): string {
+  if (problem.key === "tooMany") return t("chat.attach.tooMany", { count: problem.count });
+  if (problem.key === "tooLarge" || problem.key === "tooMuch") return t(`chat.attach.${problem.key}`, { name, limit: problem.limit ? bytes(problem.limit) : "" });
+  return t(`chat.attach.${problem.key}`, { name });
 }
 
 async function pick(event: Event): Promise<void> {
@@ -191,28 +138,15 @@ async function pick(event: Event): Promise<void> {
   if (!origin) return;
   for (const file of files) {
     if (!alive) return;
-    if (max && origin.files.length >= max.maxFiles) {
-      if (key !== chatKey.value) return;
-      message.error(t("chat.attach.tooMany", { count: max.maxFiles }));
-      break;
-    }
-    const type = file.type as ChatAttachmentInput["mimeType"];
-    if (!supported.includes(type)) {
-      if (key === chatKey.value) message.error(t("chat.attach.unsupported", { name: file.name }));
+    const check = checkAttachment(file, origin.files, max);
+    if (!check.ok) {
+      if (key === chatKey.value) message.error(problemText(check.problem, file.name));
+      if (check.stop) break;
       continue;
-    }
-    const limit = max ? (type.startsWith("image/") ? max.maxImageBytes : max.maxFileBytes) : Infinity;
-    if (file.size > limit) {
-      if (key === chatKey.value) message.error(t("chat.attach.tooLarge", { name: file.name, limit: bytes(limit) }));
-      continue;
-    }
-    if (max && origin.files.reduce((sum, stagedFile) => sum + stagedFile.sizeBytes, 0) + file.size > max.maxTotalBytes) {
-      if (key === chatKey.value) message.error(t("chat.attach.tooMuch", { limit: bytes(max.maxTotalBytes) }));
-      break;
     }
     try {
       const content = await toBase64(file);
-      if (alive) origin.files.push({ id: newSendId(), fileName: file.name, mimeType: type, sizeBytes: file.size, content });
+      if (alive) origin.files.push({ id: newSendId(), fileName: file.name, mimeType: check.mimeType, sizeBytes: file.size, content });
     } catch {
       if (alive && key === chatKey.value) message.error(t("chat.attach.readFailed", { name: file.name }));
     }
@@ -422,6 +356,7 @@ function onEvent(ev: ChatStreamEvent, version: number): void {
       phase.value = "writing";
       liveText.value = ev.replace ? ev.text : liveText.value + ev.text;
       break;
+    // biome-ignore lint/suspicious/noFallthroughSwitchClause: an error ends the run like final and aborted
     case "error":
       lastFailure.value = ev.message;
       // falls through
@@ -442,22 +377,8 @@ function onEvent(ev: ChatStreamEvent, version: number): void {
 function attachmentError(error: ApiError): string {
   if (error.body.error === "document_queue_full") return t("chat.documentErrors.document_queue_full");
   const details = error.body.details as { code?: string; fileName?: string; limit?: number } | undefined;
-  if (error.body.error !== "attachment_rejected" || !details?.code) return error.body.message;
-  const name = details.fileName ?? "";
-  const limit = details.limit ? bytes(details.limit) : "";
-  switch (details.code) {
-    case "too_many_files":
-      return t("chat.attach.tooMany", { count: details.limit ?? 0 });
-    case "unsupported_type":
-      return t("chat.attach.unsupported", { name });
-    case "file_too_large":
-    case "image_too_large":
-      return t("chat.attach.tooLarge", { name, limit });
-    case "request_too_large":
-      return t("chat.attach.tooMuch", { limit });
-    default:
-      return t("chat.attach.rejected", { name });
-  }
+  const problem = error.body.error === "attachment_rejected" ? rejectedAttachment(details) : null;
+  return problem ? problemText(problem, details?.fileName ?? "") : error.body.message;
 }
 
 async function send(text = draft.value): Promise<void> {
@@ -589,8 +510,6 @@ function open(): void {
   historyError.value = null;
   historyPoll.success();
   settledRunId = null;
-  conversationForm.value = false;
-  conversationTitle.value = "";
   endRun();
   connect();
   void loadHistory();
@@ -608,7 +527,6 @@ function onVisible(): void {
 
 onMounted(async () => {
   open();
-  void loadConversations(agentId.value);
   document.addEventListener("visibilitychange", onVisible);
   clock = setInterval(() => (now.value = Date.now()), 1000);
   poll = setInterval(() => {
@@ -633,10 +551,6 @@ onBeforeUnmount(() => {
   document.removeEventListener("visibilitychange", onVisible);
 });
 watch(chatKey, open, { flush: "sync" });
-watch(agentId, (id) => {
-  conversations.value = [];
-  void loadConversations(id);
-});
 </script>
 
 <template>
@@ -652,22 +566,7 @@ watch(agentId, (id) => {
       />
       <span v-if="agent?.model" class="model">{{ agent.model }}</span>
     </header>
-    <div v-if="space.mode === 'personal'" class="conversation-bar on-canvas">
-      <n-select
-        :value="conversationId ?? 'main'"
-        :options="conversationOptions"
-        :aria-label="t('chat.conversations.label')"
-        size="small"
-        @update:value="selectConversation"
-      />
-      <n-button size="small" round secondary @click="conversationForm = !conversationForm">{{ t("chat.conversations.new") }}</n-button>
-      <form v-if="conversationForm" class="conversation-form" @submit.prevent="createConversation">
-        <input v-model="conversationTitle" class="field" :aria-label="t('chat.conversations.title')" :placeholder="t('chat.conversations.title')" maxlength="80" required />
-        <n-button attr-type="submit" size="small" type="primary" round :loading="creatingConversation" :disabled="!conversationTitle.trim()">
-          {{ t("chat.conversations.create") }}
-        </n-button>
-      </form>
-    </div>
+    <chat-conversation-bar v-if="space.mode === 'personal'" :agent-id="agentId" :conversation-id="conversationId" @select="selectConversation" />
 
     <div ref="scroller" class="scroll">
       <div class="thread">
@@ -833,37 +732,11 @@ watch(agentId, (id) => {
   width: 260px;
   max-width: 60vw;
 }
-.conversation-bar, .conversation-form, .recovery {
+.recovery {
   display: flex;
   align-items: center;
   flex-wrap: wrap;
   gap: 8px;
-}
-.conversation-bar {
-  padding: 0 0 10px;
-}
-.conversation-bar > .n-select {
-  width: 220px;
-  max-width: 100%;
-}
-.field {
-  min-width: 0;
-  height: 28px;
-  padding: 0 12px;
-  font: inherit;
-  font-size: 13px;
-  color: var(--text);
-  background: var(--surface);
-  border: 1px solid transparent;
-  border-radius: 999px;
-  transition:
-    border-color 0.18s ease,
-    box-shadow 0.18s ease;
-}
-.field:focus {
-  outline: none;
-  border-color: var(--accent-bright);
-  box-shadow: 0 0 0 3px var(--accent-soft);
 }
 .model {
   padding: 3px 10px;

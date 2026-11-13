@@ -269,7 +269,7 @@ export class VideoService {
    */
   file(id: string): { stream: fs.ReadStream; fileName: string; bytes: number } {
     const row = this.deps.db.select().from(videoJobs).where(eq(videoJobs.id, id)).get();
-    if (!row || row.state !== "ready" || !row.fileName || !this.deps.videoDir) throw new VideoJobRejected("not_found");
+    if (row?.state !== "ready" || !row.fileName || !this.deps.videoDir) throw new VideoJobRejected("not_found");
     const dir = path.resolve(this.deps.videoDir);
     const full = path.resolve(dir, row.fileName);
     if (full !== path.normalize(full) || !full.startsWith(dir + path.sep) || !fs.existsSync(full)) throw new VideoJobRejected("not_found");

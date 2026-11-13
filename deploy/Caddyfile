@@ -20,11 +20,10 @@
 
 	reverse_proxy {$CLAWDESK_UPSTREAM:gateway:8080}
 
+	# nosniff, X-Frame-Options, Referrer-Policy and CSP come from the panel itself (apps/bff/src/security-headers.ts),
+	# so they are the same with or without Caddy. HSTS is only right over HTTPS, hence here.
 	header {
 		Strict-Transport-Security "max-age=31536000"
-		X-Content-Type-Options "nosniff"
-		X-Frame-Options "DENY"
-		Referrer-Policy "strict-origin-when-cross-origin"
 		-Server
 	}
 }

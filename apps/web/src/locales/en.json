@@ -1346,6 +1346,7 @@
     "nothing": "Nothing found. Materials searched: {count}.",
     "emptyLibrary": "This agent has no read materials yet.",
     "emptyAll": "No materials yet. Documents sent to agents in the chat or in Telegram, and processed videos, appear here.",
+    "openChat": "Open chat",
     "partial": "Matches from the most recent materials: there are too many to search all of them.",
     "kind": {
       "document": "document",

@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { isVideoUrl, parseVideoUrl, VideoUrlError } from "@clawdesk/shared";
+import { isVideoUrl, parseVideoUrl, type VideoUrlError } from "@clawdesk/shared";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { ChatService } from "../src/chat/chat-service.js";
 import { openDb } from "../src/db/client.js";
@@ -77,7 +77,7 @@ function harness(options: { result?: BridgeVideoResult; fail?: BridgeError; spee
 
 let open: { cleanup: () => void }[] = [];
 beforeEach(() => (open = []));
-afterEach(() => open.forEach((item) => item.cleanup()));
+afterEach(() => { for (const item of open) item.cleanup(); });
 const make = (options?: Parameters<typeof harness>[0]) => {
   const result = harness(options);
   open.push(result);

@@ -15,6 +15,10 @@
     "build": "pnpm -r build",
     "typecheck": "pnpm -r typecheck",
     "test": "pnpm -r test",
-    "spike": "pnpm --filter @clawdesk/bff spike"
+    "spike": "pnpm --filter @clawdesk/bff spike",
+    "lint": "biome ci"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "2.6.4"
   }
 }

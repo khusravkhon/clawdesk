@@ -12,6 +12,7 @@ export const FIXES = {
     deletion: { file: "dist/agents-CoSQ0Hk8.js", sha256: "762baf9cf961ba775e53c0e60abd2fbbe678993a5695ae00db716ed5599123e1" },
   },
 };
+// biome-ignore lint/suspicious/noTemplateCurlyInString: the exact OpenClaw source text this fix looks for
 const BEFORE = '\t\t} catch (error) {\n\t\t\tparams.log.warn(`session: SQLite startup maintenance failed for ${target.agentId}; continuing: ${String(error)}`);';
 const AFTER = BEFORE.replace("\t\t\tparams.log.warn", "\t\t\tdatabases.delete(databasePath);\n\t\t\tparams.log.warn");
 

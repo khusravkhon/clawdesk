@@ -31,6 +31,7 @@ import { MemoryNoteService } from "../library/memory-note-service.js";
 import { ReminderService } from "../schedules/reminder-service.js";
 import { SpaceService } from "../space/space-service.js";
 import { PANEL_VERSION } from "../version.js";
+import { SCHEDULE_GUARD_PLUGIN } from "../provision/agent-communication.js";
 import { telegramSendRequest } from "../telegram/telegram-service.js";
 
 /** The Gateway refusing the call itself, not its delivery: a wrong field, a missing one, no agent named. */
@@ -38,6 +39,8 @@ const SHAPE_REFUSED = /invalid .*params|unexpected property|must have required p
 
 const PROVIDER = "clawdesk-contract";
 const MODEL = "echo";
+/** A prompt with this mark makes the stub model call the message tool, as an agent did in a scheduled run (12.11.2026). */
+const GUARD_MARK = "CONTRACT-GUARD";
 const REPLY = `contract-ok-${randomUUID().slice(0, 8)}`;
 
 type Step = { name: string; ok: boolean; ms: number; error?: string };
@@ -58,9 +61,18 @@ async function step<T>(name: string, run: () => Promise<T>): Promise<T> {
   }
 }
 
-/** OpenAI-compatible chat completions that always answer REPLY (streamed or not). */
-function startStubModel(): Promise<{ server: http.Server; port: number; requests: unknown[] }> {
+type StubMessage = { role?: string; content?: unknown };
+type StubBody = { stream?: boolean; messages?: StubMessage[]; tools?: { function?: { name?: string } }[] };
+/** What the stub saw of the message tool: whether it was offered, and the tool results that came back. */
+type GuardSeen = { offered: boolean; results: string[] };
+
+/**
+ * OpenAI-compatible chat completions that answer REPLY (streamed or not). For a prompt with GUARD_MARK it first
+ * calls the message tool, the way an agent sent a reminder itself in a scheduled run.
+ */
+function startStubModel(): Promise<{ server: http.Server; port: number; requests: unknown[]; guard: GuardSeen }> {
   const requests: unknown[] = [];
+  const guard: GuardSeen = { offered: false, results: [] };
   const server = http.createServer((req, res) => {
     let raw = "";
     req.on("data", (chunk) => (raw += chunk));
@@ -74,11 +86,30 @@ function startStubModel(): Promise<{ server: http.Server; port: number; requests
         res.writeHead(404).end();
         return;
       }
-      const body = JSON.parse(raw || "{}") as { stream?: boolean };
+      const body = JSON.parse(raw || "{}") as StubBody;
       requests.push(body);
       const id = `chatcmpl-${randomUUID()}`;
       const created = Math.floor(Date.now() / 1000);
       const usage = { prompt_tokens: 10, completion_tokens: 3, total_tokens: 13 };
+      const messages = body.messages ?? [];
+      const marked = messages.some((m) => m.role === "user" && text(m.content).includes(GUARD_MARK));
+      const toolResults = messages.filter((m) => m.role === "tool").map((m) => text(m.content));
+      const offered = (body.tools ?? []).some((tool) => tool.function?.name === "message");
+      if (marked) { guard.offered ||= offered; guard.results.push(...toolResults); }
+      if (marked && offered && !toolResults.length) {
+        const call = { id: `call_${randomUUID().slice(0, 8)}`, type: "function", function: { name: "message", arguments: JSON.stringify({ action: "send", message: REPLY }) } };
+        if (!body.stream) {
+          res.writeHead(200, { "content-type": "application/json" });
+          res.end(JSON.stringify({ id, object: "chat.completion", created, model: MODEL, choices: [{ index: 0, message: { role: "assistant", content: null, tool_calls: [call] }, finish_reason: "tool_calls" }], usage }));
+          return;
+        }
+        res.writeHead(200, { "content-type": "text/event-stream", "cache-control": "no-cache" });
+        const send = (choices: unknown[], extra: object = {}) => res.write(`data: ${JSON.stringify({ id, object: "chat.completion.chunk", created, model: MODEL, choices, ...extra })}\n\n`);
+        send([{ index: 0, delta: { role: "assistant", tool_calls: [{ index: 0, ...call }] }, finish_reason: null }]);
+        send([{ index: 0, delta: {}, finish_reason: "tool_calls" }], { usage });
+        res.end("data: [DONE]\n\n");
+        return;
+      }
       if (!body.stream) {
         res.writeHead(200, { "content-type": "application/json" });
         res.end(JSON.stringify({ id, object: "chat.completion", created, model: MODEL, choices: [{ index: 0, message: { role: "assistant", content: REPLY }, finish_reason: "stop" }], usage }));
@@ -91,7 +122,7 @@ function startStubModel(): Promise<{ server: http.Server; port: number; requests
       res.end("data: [DONE]\n\n");
     });
   });
-  return new Promise((resolve) => server.listen(0, "127.0.0.1", () => resolve({ server, port: (server.address() as AddressInfo).port, requests })));
+  return new Promise((resolve) => server.listen(0, "127.0.0.1", () => resolve({ server, port: (server.address() as AddressInfo).port, requests, guard })));
 }
 
 const text = (value: unknown) => JSON.stringify(value);
@@ -203,6 +234,55 @@ async function main(): Promise<void> {
     await step("cron.remove", async () => {
       await gateway.request("cron.remove", { id: cronId });
       cronId = null;
+    });
+
+    // Live bug of 12.11.2026: an agent sent a reminder itself in a scheduled run and OpenClaw delivered its
+    // answer too, so every reminder arrived twice. The panel's schedule guard blocks the message tool there.
+    // Also the shapes the panel relies on: cron.run (Run now), cron.runs (history) and the "cron" event
+    // (the change stream, apps/bff/src/changes/change-bus.ts).
+    await step("scheduled run: cron.run, cron.runs, cron event; the agent does not send messages itself", async () => {
+      const plugins = await gateway.request<{ plugins?: { id: string }[] }>("plugins.list", {});
+      assert.ok(plugins.plugins?.some((p) => p.id === SCHEDULE_GUARD_PLUGIN), `${SCHEDULE_GUARD_PLUGIN} not loaded: the panel adds it at startup`);
+      const job = await gateway.request<{ id: string }>("cron.add", {
+        name: `${agentId}:contract-guard-${randomUUID().slice(0, 8)}`,
+        displayName: "Contract guard",
+        agentId,
+        enabled: true,
+        // Once a year, far from now: only cron.run starts it.
+        schedule: { kind: "cron", expr: "0 9 1 1 *", tz: "UTC" },
+        sessionTarget: "isolated",
+        wakeMode: "now",
+        payload: { kind: "agentTurn", message: `${GUARD_MARK} Remind me to drink water.` },
+        delivery: { mode: "none" },
+      });
+      cronId = job.id;
+      let cronEvents = 0;
+      const off = gateway.onEvent((event: EventFrame) => { if (event.event === "cron") cronEvents++; });
+      const calls = stub.requests.length;
+      try {
+        await gateway.request("cron.run", { id: job.id }, { timeoutMs: 60_000 });
+        type Entry = { jobId: string; action: string; status?: string; error?: string };
+        let finished: Entry | undefined;
+        for (const deadline = Date.now() + 120_000; !finished && Date.now() < deadline;) {
+          const runs = await gateway.request<{ entries?: Entry[] }>("cron.runs", { scope: "job", id: job.id, limit: 5, sortDir: "desc" });
+          assert.ok(Array.isArray(runs.entries), `no entries array: ${text(runs).slice(0, 300)}`);
+          finished = runs.entries.find((entry) => entry.jobId === job.id && entry.action === "finished");
+          if (!finished) await new Promise((resolve) => setTimeout(resolve, 1_000));
+        }
+        assert.ok(finished, "the scheduled run did not finish within 120 s");
+        assert.equal(finished.status, "ok", `scheduled run ended ${finished.status}: ${finished.error ?? ""}`);
+        assert.ok(stub.requests.length > calls, "the scheduled run never called the model");
+        assert.ok(cronEvents > 0, "no \"cron\" event during a scheduled run: the panel's change stream listens for it");
+        if (stub.guard.offered) {
+          assert.ok(stub.guard.results.some((result) => result.includes("scheduled run")), `the message tool was not blocked in a scheduled run (reminders would arrive twice): ${text(stub.guard.results).slice(0, 300)}`);
+        } else {
+          console.log("    the message tool was not offered in this run, so there was nothing to block");
+        }
+      } finally {
+        off();
+        await gateway.request("cron.remove", { id: job.id }).catch(() => undefined);
+        cronId = null;
+      }
     });
 
     await step("chat.send → final reply from the stub model + chat.history", async () => {

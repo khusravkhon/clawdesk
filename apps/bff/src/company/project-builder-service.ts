@@ -59,7 +59,7 @@ export class ProjectBuilderService {
     const blockers: string[] = missing.length ? ["brief_incomplete"] : [];
     if (brief.fields.openQuestions.trim()) blockers.push("open_questions");
     if (rules.some(r => !r.approvedAt || r.fields.openQuestions.trim())) blockers.push("rules_unapproved");
-    if (!snapshot.workspace || snapshot.workspace.state !== "ready") blockers.push("workspace_required");
+    if (snapshot.workspace?.state !== "ready") blockers.push("workspace_required");
     if (snapshot.workspace?.mode === "existing") blockers.push("existing_project");
     return { project, brief, rules, snapshot, questions: missing, blockers, workspace: workspace?.workspace ?? null };
   }
@@ -122,7 +122,7 @@ export class ProjectBuilderService {
     if (!plan) throw new ProjectBuilderError("builder_plan_missing");
     if (JSON.stringify(plan.snapshot) !== JSON.stringify(context.snapshot)) throw new ProjectBuilderError("builder_plan_stale");
     if (context.snapshot.workspace?.mode === "existing") throw new ProjectBuilderError("builder_existing_project");
-    if (!context.snapshot.workspace || context.snapshot.workspace.state !== "ready") throw new ProjectBuilderError("builder_workspace_required");
+    if (context.snapshot.workspace?.state !== "ready") throw new ProjectBuilderError("builder_workspace_required");
     if (context.blockers.length) throw new ProjectBuilderError("builder_incomplete");
     if (requireApproval && !plan.approvedAt) throw new ProjectBuilderError("builder_approval_required");
     return { plan, context };

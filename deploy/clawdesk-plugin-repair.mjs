@@ -112,6 +112,7 @@ export async function restoreNpm(item, { command = run, log = console.log } = {}
     // Keep any replaced incomplete tree for diagnosis; no user files are recursively removed here.
   } finally {
     const target = path.resolve(stage);
+    // biome-ignore lint/correctness/noUnsafeFinally: refusing to remove an unexpected path matters more than the original error
     if (path.dirname(target) !== path.resolve(item.root) || !path.basename(target).startsWith(".clawdesk-repair-")) throw new Error("Invalid plugin staging cleanup path");
     await fs.rm(target, { recursive: true, force: true });
   }

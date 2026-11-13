@@ -51,7 +51,7 @@ describe("change plan for an existing project", () => {
     replies.push(JSON.stringify({ ...JSON.parse(reply), changes: [{ area: "x", what: "Создать конфиг", files: ["config.yml"], risk: "low" }] }));
     await company.existingPlan.ask(projectId, { requestId: randomUUID(), revision: company.existingPlan.get(projectId).revision });
     await company.existingPlan.settled(projectId);
-    expect(company.existingPlan.get(projectId).plan?.changes[0]!.known).toEqual([false]);
+    expect(company.existingPlan.get(projectId).plan!.changes[0]!.known).toEqual([false]);
   });
 
   it("shows failures, refuses new folders and stale revisions, and reads an interrupted call as such", async () => {

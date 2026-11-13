@@ -7,7 +7,7 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
-import { dockerArgs, downloadVideo, errorCode, frameFiles, framesOfVideo, jobWorkDir, parseInfo, parseProgress, pickSubtitle, studyVideo, subtitleLanguage, videoProgress, VideoError } from "./clawdesk-video.mjs";
+import { dockerArgs, downloadVideo, errorCode, frameFiles, framesOfVideo, parseInfo, parseProgress, pickSubtitle, studyVideo, subtitleLanguage, videoProgress, VideoError } from "./clawdesk-video.mjs";
 
 const JOB = "11111111-1111-4111-8111-111111111111";
 const URL_OK = "https://www.youtube.com/watch?v=dQw4w9WgXcQ";

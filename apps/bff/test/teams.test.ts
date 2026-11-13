@@ -12,7 +12,7 @@ import type { BridgeClient } from "../src/gateway/bridge-client.js";
 import type { GatewayService } from "../src/gateway/gateway-service.js";
 import { registerTeamRoutes } from "../src/routes/teams.js";
 import { SpaceService } from "../src/space/space-service.js";
-import { TeamError, TeamService } from "../src/teams/team-service.js";
+import { type TeamError, TeamService } from "../src/teams/team-service.js";
 import type { TelegramService } from "../src/telegram/telegram-service.js";
 
 const TOKEN = "github_pat_" + "A".repeat(40);

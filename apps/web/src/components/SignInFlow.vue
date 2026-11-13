@@ -196,7 +196,7 @@ onBeforeUnmount(() => {
   height: 8px;
   margin-right: 8px;
   border-radius: 50%;
-  background: #18a058;
+  background: var(--accent-bright);
   animation: pulse 1.2s ease-in-out infinite;
 }
 @keyframes pulse {

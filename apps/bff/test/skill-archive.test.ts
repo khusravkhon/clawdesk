@@ -1,6 +1,6 @@
 import { strToU8, unzipSync, zipSync } from "fflate";
 import { describe, expect, it } from "vitest";
-import { ownSkillMd, parseSkillMd, readSkillArchive, slugify, SkillArchiveError, zipSkillMd } from "../src/skills/skill-archive.js";
+import { ownSkillMd, parseSkillMd, readSkillArchive, slugify, type SkillArchiveError, zipSkillMd } from "../src/skills/skill-archive.js";
 
 describe("skill archives", () => {
   it("makes folder names from Russian and Tajik names", () => {

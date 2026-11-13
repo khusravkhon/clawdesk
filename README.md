@@ -5,7 +5,7 @@ Open-source self-hosted панель для [OpenClaw](https://github.com/opencl
 диетолога, тренера, YouTube-помощника или команду проекта.
 
 > Статус: MVP в работе. Есть вход в панель по паролю владельца и установка на сервер с HTTPS;
-> на настоящем сервере установка ещё не прогонялась.
+> установка на Linux-сервер проверена вживую 07.11.2026 (подробности — в [docs/company-mode.md](docs/company-mode.md)).
 
 ## Как устроено
 
@@ -54,7 +54,7 @@ pnpm dev:bff                             # BFF на :8787
 pnpm dev:web                             # админка на :5173 (проксирует /api на BFF)
 ```
 
-Проверки: `pnpm typecheck`, `pnpm test`, `pnpm build`, `node scripts/openclaw-version.mjs check`, контрактный тест
+Проверки: `pnpm lint` (Biome), `pnpm typecheck`, `pnpm test` (сервер и интерфейс), `pnpm build`, `node scripts/openclaw-version.mjs check`, контрактный тест
 `bash deploy/scripts/contract.sh` (то же делает CI на каждый пуш в `dev`).
 
 Релиз: тег `v0.1.0` → GitHub Actions публикует образы `clawdesk-panel`, `clawdesk-gateway`, `clawdesk-sandbox` в ghcr.io.

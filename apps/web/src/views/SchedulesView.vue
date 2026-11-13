@@ -13,6 +13,7 @@ import { describeSchedule } from "../cron";
 import { formatRelative, intlLocale } from "../format";
 import { modelErrorHint } from "../model-errors";
 import { useSpaceStore } from "../stores/space";
+import { FALLBACK_REFRESH_MS, onChanges } from "../changes";
 
 const { t, locale } = useI18n();
 const message = useMessage();
@@ -146,14 +147,17 @@ function scheduledAt(s: ScheduleDto): string {
 }
 
 let timer: ReturnType<typeof setInterval> | undefined;
+let leaveChanges: (() => void) | undefined;
 onMounted(() => {
   void load();
-  timer = setInterval(refresh, 15_000);
+  leaveChanges = onChanges(["schedules", "agents"], refresh);
+  timer = setInterval(refresh, FALLBACK_REFRESH_MS);
   window.addEventListener("focus", refresh);
   document.addEventListener("visibilitychange", refresh);
 });
 onUnmounted(() => {
   clearInterval(timer);
+  leaveChanges?.();
   window.removeEventListener("focus", refresh);
   document.removeEventListener("visibilitychange", refresh);
 });

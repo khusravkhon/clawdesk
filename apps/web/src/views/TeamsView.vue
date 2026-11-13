@@ -190,7 +190,9 @@ onMounted(load);
 
       <n-skeleton v-if="!teams && !loadError" text :repeat="4" />
       <n-alert v-else-if="loadError" type="error">{{ loadError }}</n-alert>
-      <n-empty v-else-if="!teams!.length && !showCreate" :description="t('teams.empty')" />
+      <n-empty v-else-if="!teams!.length && !showCreate" :description="t('teams.empty')">
+        <template #extra><n-button size="small" round @click="showCreate = true">{{ t("teams.new") }}</n-button></template>
+      </n-empty>
 
       <!-- Teams List -->
       <div v-for="team in teams ?? []" :key="team.id" class="team-card">
