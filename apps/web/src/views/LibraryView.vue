@@ -140,7 +140,7 @@ watch(() => route.query.material, (id) => {
   </form>
   <n-alert v-if="failed" type="error">{{ t("library.browser.error") }} <n-button size="tiny" @click="load(!!items.length)">{{ t("chat.sendRecovery.check") }}</n-button></n-alert>
   <n-empty v-else-if="!busy && !items.length" class="empty" :description="t(query ? 'library.browser.noResults' : agent ? 'library.emptyLibrary' : 'library.emptyAll')">
-    <template v-if="!query" #extra><n-button size="small" round @click="$router.push('/chat')">{{ t("library.openChat") }}</n-button></template>
+    <template v-if="!query" #extra><n-button size="small" round @click="$router.push(agent ? { name: 'chat', params: { agentId: agent } } : '/chat')">{{ t("library.openChat") }}</n-button></template>
   </n-empty>
   <ul v-if="items.length" class="items">
     <li v-for="item in items" :key="item.id" class="item" :class="{ open: item.id === selectedId }">
