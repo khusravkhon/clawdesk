@@ -29,6 +29,7 @@ import { MemoryNoteService } from "./library/memory-note-service.js";
 import { ReminderService } from "./schedules/reminder-service.js";
 import { repairAgentFolders } from "./provision/agent-folders.js";
 import { liveAgentIds, repairAgentCommunication, repairScheduleGuard } from "./provision/agent-communication.js";
+import { repairPluginAllowlist } from "./provision/plugin-allowlist.js";
 import { WorkRequestsService } from "./company/work-requests-service.js";
 import { AccessService } from "./company/access-service.js";
 import { WorkItemsService } from "./company/work-items-service.js";
@@ -156,6 +157,8 @@ async function repairStartup(): Promise<void> {
     // GitHub teams made before OpenClaw refused binds into /workspace: members get copies in their workspaces.
     ["team repository copies", () => teams.repairWorkspaces()],
     ["company request tools", () => syncRequestTools({ gateway, db, companyMode: space.mode() === "company" })],
+    // After the panel's own plugins are loaded: OpenClaw then loads only the plugins on this list.
+    ["trusted plugin list", () => repairPluginAllowlist({ gateway })],
     ["default exec approval mode", repairDefaultApprovals],
     ["junior models", repairFollowerModels],
     ["memory provider", repairMemory],
