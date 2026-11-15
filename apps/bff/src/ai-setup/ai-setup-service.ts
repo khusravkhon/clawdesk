@@ -8,6 +8,7 @@ import type { Db } from "../db/client.js";
 import { and, eq, inArray } from "drizzle-orm";
 import { agents } from "../db/schema.js";
 import { assertRoomForBackup, choicesFor, followerIds, keepAsBackup, ModelChainError, readCatalog, readChain, syncFollowers, toOptions, validateChain, writeChain } from "./model-chain.js";
+import { allowInstalledPlugin } from "../provision/plugin-allowlist.js";
 
 type ActivateResult = { ok: boolean; status?: string; modelRef?: string; latencyMs?: number; error?: string };
 type InstallResult = { ok: true; plugin: { id: string; version?: string }; restartRequired?: boolean };
@@ -221,6 +222,8 @@ export class AiSetupService {
       );
     }
     this.logger.info({ pluginId, version: result.plugin.version, restartRequired: result.restartRequired }, "provider plugin installed");
+    // OpenClaw adds an install to plugins.allow itself; this keeps it so if a version does not.
+    await allowInstalledPlugin(this.gateway, result.plugin.id).catch((error: Error) => this.logger.warn({ err: error, pluginId }, "could not add the installed plugin to plugins.allow"));
 
     let restarted = false;
     if (result.restartRequired) {
