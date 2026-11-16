@@ -38,6 +38,7 @@ describe("project teams (screen 11)", () => {
     space.create(CreateSpaceRequest.parse({ mode: opts.mode ?? "company", name: "Acme", locale: "ru", timezone: "UTC" }));
     const calls: { method: string; params: Record<string, unknown> }[] = [];
     let n = 0;
+    const jobs: string[] = [];
     const gateway = {
       request: async (method: string, params: Record<string, unknown>) => {
         calls.push({ method, params });
@@ -47,8 +48,9 @@ describe("project teams (screen 11)", () => {
           return { agentId: params.name };
         }
         if (method === "config.get") return { hash: "h", config: gatewayConfig.current };
-        if (method === "cron.add") return { id: `job-${++n}` };
-        if (method === "cron.list") return { jobs: [] };
+        if (method === "cron.add") { jobs.push(`job-${++n}`); return { id: `job-${n}` }; }
+        if (method === "cron.remove") jobs.splice(jobs.indexOf(String(params.id)), 1);
+        if (method === "cron.list") return { jobs: jobs.map((id) => ({ id })) };
         if (method === "agents.delete") return {};
         return { ok: true };
       },

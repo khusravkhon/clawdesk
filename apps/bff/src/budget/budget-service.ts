@@ -6,6 +6,7 @@ import type { Db } from "../db/client.js";
 import { schedules, spaces } from "../db/schema.js";
 import { getSetting, putSetting } from "../db/settings.js";
 import type { GatewayService } from "../gateway/gateway-service.js";
+import { syncScheduleRows } from "../schedules/schedule-rows.js";
 
 // Spending limits. The owner sets what a day and a month may cost; once a limit is reached the
 // panel stops starting work by itself — scheduled runs are paused and a new video job is refused.
@@ -101,7 +102,13 @@ export class BudgetService {
    */
   async enforce(timeZone: string, now = Date.now()): Promise<BudgetDto> {
     const status = await this.status(timeZone, now);
-    const paused = this.#paused();
+    // Jobs an agent deleted from chat are forgotten: there is nothing left to pause or resume.
+    const existing = await syncScheduleRows(this.deps.db, this.deps.gateway);
+    let paused = this.#paused();
+    if (existing && paused.some((id) => !existing.has(id))) {
+      paused = paused.filter((id) => existing.has(id));
+      putSetting(this.deps.db, PAUSED_SETTING, paused);
+    }
     const limited = status.dailyUsd > 0 || status.monthlyUsd > 0;
     if (status.exceeded || (limited && (!status.usageAvailable || status.costIncomplete))) {
       // Only jobs the panel created have an id here; a row without one has nothing to pause.
