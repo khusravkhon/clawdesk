@@ -3,9 +3,11 @@ import {
   ConnectFigmaRequest,
   PollGitHubSignInRequest,
   ConnectNotionTokenRequest,
+  SaveNotionPatternRequest,
   StartGoogleLoginRequest,
   UploadGoogleClientRequest,
   type ApiErrorDto,
+  type NotionPatternDto,
   type SourcesDto,
   type StartGoogleLoginResultDto,
   type StartNotionOAuthResultDto,
@@ -13,6 +15,7 @@ import {
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { z } from "zod";
 import { BridgeError } from "../gateway/bridge-client.js";
+import { NotionPatternError, type NotionPatternService } from "../sources/notion-pattern.js";
 import { GOOGLE_CALLBACK_PATH, NOTION_CALLBACK_PATH, SourcesError, type SourcesService } from "../sources/sources-service.js";
 
 const RemoveGoogle = z.object({ email: z.string().email() });
@@ -25,7 +28,7 @@ export function panelOrigin(request: FastifyRequest): string {
   return `${proto}://${host}`;
 }
 
-export function registerSourceRoutes(app: FastifyInstance, deps: { sources: SourcesService }): void {
+export function registerSourceRoutes(app: FastifyInstance, deps: { sources: SourcesService; notionPattern?: NotionPatternService }): void {
   app.get("/api/sources", async (): Promise<SourcesDto> => deps.sources.status());
 
   app.post("/api/sources/notion/token", async (request, reply): Promise<SourcesDto | ApiErrorDto> => {
@@ -85,7 +88,27 @@ export function registerSourceRoutes(app: FastifyInstance, deps: { sources: Sour
     return withSourceErrors(reply, () => deps.sources.removeGoogle(email));
   });
 
-  app.post("/api/sources/notion/disconnect", async (): Promise<SourcesDto> => deps.sources.disconnectNotion());
+  app.post("/api/sources/notion/disconnect", async (): Promise<SourcesDto> => {
+    // Rules and scheduled runs that need Notion go first, while the agents still have it.
+    await deps.notionPattern?.clear();
+    return deps.sources.disconnectNotion();
+  });
+
+  // How the owner's data in Notion is organised; every agent works by the chosen pattern.
+  const patterns = deps.notionPattern;
+  if (patterns) {
+    app.get("/api/sources/notion/pattern", async (): Promise<NotionPatternDto> => patterns.get());
+    app.put("/api/sources/notion/pattern", async (request, reply): Promise<NotionPatternDto | ApiErrorDto> => {
+      const req = SaveNotionPatternRequest.parse(request.body);
+      try {
+        return await patterns.save(req);
+      } catch (error) {
+        if (!(error instanceof NotionPatternError)) throw error;
+        reply.status(error.statusCode);
+        return { error: error.code, message: error.message };
+      }
+    });
+  }
 
   // GitHub: the person types the code OpenClaw got from GitHub at github.com/login/device; the panel polls.
   app.post("/api/sources/github/start", async () => deps.sources.startGitHubSignIn());

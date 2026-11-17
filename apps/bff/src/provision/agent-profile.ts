@@ -16,7 +16,7 @@ export type ProfileDeps = { gateway: GatewayService; db: Db; logger: Logger };
 const FILE_NAMES = { soul: "SOUL.md", user: "USER.md", agents: "AGENTS.md" } as const satisfies Record<keyof AgentFiles, string>;
 
 /** Blocks create-agent appends to AGENTS.md (the agent's folder, or data from the main agent); a template gets them again. */
-const PANEL_BLOCKS = ["\n\n## Твоя папка (ClawDesk)", "\n\n## Данные от главного (ClawDesk)"];
+const PANEL_BLOCKS = ["\n\n## Твоя папка (ClawDesk)", "\n\n## Данные от главного (ClawDesk)", "\n\n<!-- clawdesk:notion:start"];
 
 export class AgentProfileError extends Error {
   constructor(

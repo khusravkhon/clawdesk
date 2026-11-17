@@ -8,6 +8,7 @@ import { useI18n } from "vue-i18n";
 import { useRoute, useRouter } from "vue-router";
 import { api, ApiError } from "../api/client";
 import GoogleWizard from "../components/GoogleWizard.vue";
+import NotionPattern from "../components/NotionPattern.vue";
 import PageHeader from "../components/ui/PageHeader.vue";
 import { formatRelative, intlLocale } from "../format";
 
@@ -247,6 +248,7 @@ onMounted(async () => {
             </template>
             {{ t("sources.notion.confirmDisconnect") }}
           </n-popconfirm>
+          <notion-pattern />
         </template>
         <template v-else>
           <n-button v-if="notion?.oauthAvailable" type="primary" block :loading="busy === 'oauth'" @click="signIn">
