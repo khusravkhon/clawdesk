@@ -609,7 +609,39 @@
       "integration": "Integration",
       "oauthHint": "The assistant sees the pages you chose at sign-in. Change them in Notion → Settings → Connections.",
       "tokenHint": "The assistant sees only pages you added the integration to (“⋯” → “Connections”).",
-      "confirmDisconnect": "Disconnect Notion? The assistant will no longer see your pages."
+      "confirmDisconnect": "Disconnect Notion? The assistant will no longer see your pages.",
+      "pattern": {
+        "title": "How your data in Notion is organised",
+        "about": "Pick a pattern and every agent works by it: the main agent keeps Notion in this structure, the others hand it their results.",
+        "second_brain": {
+          "name": "Second Brain",
+          "about": "Inbox, areas, projects, tasks, notes, sources, archive"
+        },
+        "tasks_notes": {
+          "name": "Tasks and notes",
+          "about": "Simple: tasks with due dates and notes, projects if you have them"
+        },
+        "custom": {
+          "name": "My own structure",
+          "about": "Describe in your own words how your Notion is set up"
+        },
+        "none": {
+          "name": "No pattern",
+          "about": "Agents use Notion as they see fit"
+        },
+        "notesLabel": "Notes (optional)",
+        "notesPlaceholder": "For example: finances are in the “Income and expenses” database; the YouTube area is called “Social media”",
+        "customLabel": "How your Notion is set up",
+        "customPlaceholder": "Which databases and pages you have, what goes where, statuses and relations",
+        "customTooShort": "Describe the structure in more detail — at least a couple of sentences.",
+        "digest": "Every morning send today's and urgent tasks",
+        "weekly": "Sundays at 18:00 — a weekly review",
+        "agents": "Junior agents that hand their results to the main agent: {n}. Digests come to Telegram when it is connected.",
+        "save": "Save",
+        "saved": "Pattern saved",
+        "savedMapping": "Pattern saved. The main agent will look through your Notion and tell you what it found.",
+        "off": "Pattern turned off"
+      }
     },
     "folder": {
       "title": "Folder on this computer",

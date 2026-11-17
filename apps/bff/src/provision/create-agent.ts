@@ -9,6 +9,7 @@ import type { GatewayService } from "../gateway/gateway-service.js";
 import { readChain } from "../ai-setup/model-chain.js";
 import { findTemplate } from "./agent-profile.js";
 import { runSaga } from "./saga.js";
+import { juniorBlockFor, setNotionBlock } from "../sources/notion-pattern.js";
 import { agentCommunicationPatch, communicationReplacePaths, liveAgentIds, mainPluginPatch, personalAgents, personalAgentTools, type CommunicationConfig } from "./agent-communication.js";
 
 // "Create a junior agent" = one chain of Gateway RPCs plus our metadata rows.
@@ -125,6 +126,9 @@ export async function createJuniorAgent(deps: CreateAgentDeps, req: CreateAgentR
       {
         name: "agents.files.set",
         run: async () => {
+          // The owner's Notion pattern: results go to the main agent to be filed in Notion.
+          const notion = req.canAskMain ? juniorBlockFor(db) : null;
+          if (notion) files["AGENTS.md"] = setNotionBlock(files["AGENTS.md"], notion);
           for (const name of WORKSPACE_FILES) await gateway.request("agents.files.set", { agentId, name, content: files[name] });
         },
       },

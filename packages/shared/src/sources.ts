@@ -165,3 +165,32 @@ export const CompleteGoogleLoginRequest = z.object({
     .regex(/^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?\/.*[?&]code=/, "paste the whole address from the browser, it starts with http://localhost"),
 });
 export type CompleteGoogleLoginRequest = z.infer<typeof CompleteGoogleLoginRequest>;
+
+// How the owner's data in Notion is organised. Once chosen, every agent works by it: the main agent keeps
+// Notion in that structure, juniors hand it their results to file. "custom" is the owner's own description.
+export const NotionPattern = z.enum(["second_brain", "tasks_notes", "custom"]);
+export type NotionPattern = z.infer<typeof NotionPattern>;
+
+export const NotionPatternDto = z.object({
+  /** null: no pattern, agents use Notion as they see fit. */
+  pattern: NotionPattern.nullable(),
+  /** The owner's description of their structure ("custom"), or extra notes for a built-in pattern. */
+  notes: z.string(),
+  /** Hour (0–23, panel time zone) of the daily digest of today's and overdue tasks; null: no digest. */
+  digestHour: z.number().int().min(0).max(23).nullable(),
+  /** A weekly review on Sunday evening: what is in the inbox, stuck projects, tasks without a date. */
+  weeklyReview: z.boolean(),
+  /** Junior agents that file their results through the main agent (they may ask it). */
+  agents: z.number().int().min(0),
+});
+export type NotionPatternDto = z.infer<typeof NotionPatternDto>;
+
+export const SaveNotionPatternRequest = z
+  .object({
+    pattern: NotionPattern.nullable(),
+    notes: z.string().trim().max(4000).default(""),
+    digestHour: z.number().int().min(0).max(23).nullable().default(null),
+    weeklyReview: z.boolean().default(false),
+  })
+  .refine((req) => req.pattern !== "custom" || req.notes.length >= 20, { message: "describe your structure (at least 20 characters)", path: ["notes"] });
+export type SaveNotionPatternRequest = z.infer<typeof SaveNotionPatternRequest>;

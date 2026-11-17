@@ -9,6 +9,7 @@ import type { GatewayService } from "../gateway/gateway-service.js";
 import { BridgeError, type BridgeClient } from "../gateway/bridge-client.js";
 import { cloudAudioPatch, telegramMediaPatch, type MediaConfig } from "./media-config.js";
 import { telegramReplacePaths } from "./config-replace-paths.js";
+import { syncScheduleRows } from "../schedules/schedule-rows.js";
 
 // Telegram screen: named bots routed to agents. The token is checked with Telegram's
 // getMe, stored write-only in the Gateway secret store, and referenced from
@@ -259,6 +260,7 @@ export class TelegramService {
 
   /** Points panel schedules that are not delivered anywhere yet at the owner's chat. */
   async routeSchedules(ownerId: string): Promise<number> {
+    await syncScheduleRows(this.db, this.gateway);
     const rows = this.db.select().from(schedules).where(isNull(schedules.deliverTo)).all();
     let routed = 0;
     for (const row of rows) {
@@ -410,6 +412,7 @@ export class TelegramService {
   async #routeAgentSchedules(chatId: string, topics: { agentId: string; topicId: string }[], previous: string[]): Promise<void> {
     const owner = this.#owner();
     const affected = new Set([...topics.map((t) => t.agentId), ...previous]);
+    await syncScheduleRows(this.db, this.gateway);
     for (const row of this.db.select().from(schedules).all()) {
       if (!row.openclawCronId || !affected.has(row.agentId)) continue;
       const topic = topics.find((t) => t.agentId === row.agentId);

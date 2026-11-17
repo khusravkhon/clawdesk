@@ -73,6 +73,7 @@ import { UsageService } from "./dashboard/usage-service.js";
 import { registerTelegramRoutes } from "./routes/telegram.js";
 import { registerTemplateRoutes } from "./routes/templates.js";
 import type { SourcesService } from "./sources/sources-service.js";
+import type { NotionPatternService } from "./sources/notion-pattern.js";
 import type { TelegramService } from "./telegram/telegram-service.js";
 
 export type AppDeps = {
@@ -85,6 +86,8 @@ export type AppDeps = {
   telegram: TelegramService;
   freeModels: FreeModelsService;
   sources: SourcesService;
+  /** How the owner's Notion is organised; absent in tests that do not need it. */
+  notionPattern?: NotionPatternService;
   skills: SkillsService;
   mcp: McpService;
   approvals: ApprovalsService;

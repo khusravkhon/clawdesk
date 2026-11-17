@@ -18,6 +18,7 @@ import { BridgeClient } from "./gateway/bridge-client.js";
 import { McpService } from "./skills/mcp-service.js";
 import { SkillsService } from "./skills/skills-service.js";
 import { SourcesService } from "./sources/sources-service.js";
+import { NotionPatternService } from "./sources/notion-pattern.js";
 import { TelegramService } from "./telegram/telegram-service.js";
 import { FreeModelsService } from "./free-models/free-models-service.js";
 import { ChatService } from "./chat/chat-service.js";
@@ -78,6 +79,14 @@ const budget = new BudgetService({ gateway, db, logger: logger.child({ component
 const notes = new MemoryNoteService({ gateway, db, logger: logger.child({ component: "memory-notes" }) });
 const video = new VideoService({ db, bridge, chat: new ChatService(gateway, library), logger: logger.child({ component: "video" }), videoDir: config.videoDir, library, waitUntilReady: () => gateway.waitUntilConnected(120_000) });
 video.recover();
+const notionPattern = new NotionPatternService({
+  gateway, db, logger: logger.child({ component: "notion-pattern" }),
+  connected: async () => (await sources.status()).notion.connected,
+  timeZone: () => space.mode() === "personal" ? space.get()?.timezone ?? Intl.DateTimeFormat().resolvedOptions().timeZone : Intl.DateTimeFormat().resolvedOptions().timeZone,
+  delivery: () => telegram.ownerDelivery(),
+  tellMain: async (message, idempotencyKey) => { await gateway.request("chat.send", { sessionKey: mainSessionKey("main"), agentId: "main", message, idempotencyKey }); },
+  guard: async () => { if (space.mode() === "personal") await budget.guard(space.get()?.timezone ?? "UTC"); },
+});
 const reminders = new ReminderService({ db, gateway, telegram, mode: () => space.mode(), timeZone: () => space.get()?.timezone });
 reminders.recover();
 // Stage 5: what company agents can reach; grants are applied and checked where they are enforced.
@@ -123,7 +132,7 @@ const requests = new WorkRequestsService({
   send: async (agentId, message, idempotencyKey) => { await gateway.request("chat.send", { sessionKey: mainSessionKey(agentId), agentId, message, idempotencyKey }); },
 });
 
-const app = await buildApp({ logger, gateway, db, aiSetup, signIn, telegram, freeModels, sources, skills, mcp, approvals, assistant, auth, backups, bridge, space, teams, audit, video, videoDir: config.videoDir, library, budget, notes, reminders, requests, access, workItems, charters, activity, onActivity, sandboxEnabled: config.sandboxEnabled, webDist: config.webDist, trustProxy: config.trustProxy });
+const app = await buildApp({ logger, gateway, db, aiSetup, signIn, telegram, freeModels, sources, notionPattern, skills, mcp, approvals, assistant, auth, backups, bridge, space, teams, audit, video, videoDir: config.videoDir, library, budget, notes, reminders, requests, access, workItems, charters, activity, onActivity, sandboxEnabled: config.sandboxEnabled, webDist: config.webDist, trustProxy: config.trustProxy });
 
 gateway.start();
 await app.listen({ host: config.host, port: config.port });
@@ -164,6 +173,8 @@ async function repairStartup(): Promise<void> {
     ["memory provider", repairMemory],
     // New rules of the panel's block (skills in one place, no config changes on its own) reach the assistant.
     ["main assistant instructions", () => assistant.refreshInstructions()],
+    // The Notion pattern's rules follow this version's text in every agent (an edited block is put back).
+    ["Notion pattern rules", () => notionPattern.refresh()],
     // Free models: OpenClaw learns the real window of FreeLLMAPI's "auto" (a fixed 32k left agents no room).
     ["free models context window", () => freeModels.status()],
     ["pending memory notes", () => notes.retryPending()],

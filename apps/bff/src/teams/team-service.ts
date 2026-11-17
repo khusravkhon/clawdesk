@@ -7,6 +7,7 @@ import { agents, agentSourceGrants, channelBindings, dataSources, schedules, tea
 import type { BridgeClient } from "../gateway/bridge-client.js";
 import type { GatewayService } from "../gateway/gateway-service.js";
 import { getConfig, patchConfig } from "../gateway/config-patch.js";
+import { syncScheduleRows } from "../schedules/schedule-rows.js";
 import { createJuniorAgent, deleteJuniorAgent, slugBase, uniqueSlug } from "../provision/create-agent.js";
 import type { SpaceService } from "../space/space-service.js";
 import type { TelegramService } from "../telegram/telegram-service.js";
@@ -268,6 +269,7 @@ export class TeamService {
       }
       tx.update(teams).set({ telegramGroupId: chatId }).where(eq(teams.id, teamId)).run();
     });
+    await syncScheduleRows(db, gateway);
     for (const t of topics) {
       // Scheduled reports (the PM's daily status) go to the agent's topic.
       for (const s of db.select().from(schedules).where(eq(schedules.agentId, t.agentId)).all()) {
