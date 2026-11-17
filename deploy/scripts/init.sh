@@ -101,7 +101,7 @@ fi
 
 [[ $DEV == 0 ]] && guard_detect
 if [[ $GUARD == 1 ]]; then
-  step "Backing up before the update"
+  step "Preparing the update"
   guard_backup
   guard_snapshot
   trap guard_on_exit EXIT

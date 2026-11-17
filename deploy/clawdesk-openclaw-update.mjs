@@ -6,7 +6,7 @@
 //
 // The Gateway cannot replace itself, so the update runs in a one-off helper container (this same image,
 // started through the Docker socket like the factory reset):
-//   1. the bridge makes a "before-update" backup — if it fails nothing is changed;
+//   1. only when the owner asked for one, the bridge makes a "before-update" backup — if it fails nothing is changed;
 //   2. the helper builds the Gateway image for the new OpenClaw from the build files this image carries
 //      (/usr/local/share/clawdesk/gateway-build, the same code that built this image);
 //   3. it stops the Gateway and the containers in its network (panel, FreeLLMAPI) and creates them again from
@@ -233,7 +233,7 @@ export async function updateInfo({ statusFile = STATUS_FILE, versionFile = VERSI
 
 /**
  * Starts the update to `version` and returns at once. `identify` finds this Gateway's container
- * (clawdesk-backup.mjs: resetGateway), `backup` makes the "before-update" archive.
+ * (clawdesk-backup.mjs: resetGateway), `backup` (optional: only when the owner asked) makes the "before-update" archive.
  */
 export async function startUpdate(version, { identify, backup, docker = run, statusFile = STATUS_FILE, ...files }) {
   const info = await updateInfo({ statusFile, ...files });
@@ -250,13 +250,13 @@ export async function startUpdate(version, { identify, backup, docker = run, sta
 
   const helper = `${HELPER_PREFIX}${project}`;
   const write = (next) => writeStatus(next, statusFile);
-  let status = await write({ version, from: info.running, state: "backup", helper, startedAt: new Date().toISOString() });
+  let status = await write({ version, from: info.running, state: backup ? "backup" : "building", helper, startedAt: new Date().toISOString() });
   preparing = true;
   const job = (async () => {
     try {
-      const archive = await backup();
-      status = await write({ ...status, backup: archive.name });
-      const args = { version, from: info.running, gateway: self.Id, project, openclawImage: process.env.OPENCLAW_IMAGE || "ghcr.io/openclaw/openclaw", backup: archive.name, startedAt: status.startedAt, helper };
+      const archive = backup ? await backup() : null;
+      if (archive) status = await write({ ...status, backup: archive.name });
+      const args = { version, from: info.running, gateway: self.Id, project, openclawImage: process.env.OPENCLAW_IMAGE || "ghcr.io/openclaw/openclaw", backup: archive?.name, startedAt: status.startedAt, helper };
       const res = await docker(DOCKER, [
         "run", "-d", "--rm", "--name", helper, "--user", "0", "--entrypoint", "node",
         "-v", `${socket}:${SOCKET}`,
@@ -271,7 +271,7 @@ export async function startUpdate(version, { identify, backup, docker = run, sta
       // From here on the helper carries the status; "backup" with nobody making it would read as cut short.
       if ((await readStatus(statusFile))?.state === "backup") status = await write({ ...status, state: "building" });
     } catch (error) {
-      status = await write({ ...status, state: "failed", reason: status.backup ? "helper_failed" : "backup_failed", message: String(error.message ?? error).slice(0, 1200), finishedAt: new Date().toISOString() });
+      status = await write({ ...status, state: "failed", reason: status.backup || !backup ? "helper_failed" : "backup_failed", message: String(error.message ?? error).slice(0, 1200), finishedAt: new Date().toISOString() });
     } finally {
       preparing = false;
     }
