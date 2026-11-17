@@ -1,7 +1,8 @@
 # shellcheck shell=bash
 # Update safety for init.sh (sourced, not run). When init.sh runs over an install that is already up —
 # install.sh re-run on a server, the desktop app's "Update" for this computer — it:
-#   1. makes a backup with the running (old) version, kind "before-update" (System → Backups);
+#   1. only with CLAWDESK_UPDATE_BACKUP=1: makes a backup with the running (old) version, kind "before-update"
+#      (System → Backups). By default there is none: the owner makes backups in the panel when they want one;
 #   2. keeps the images that run now under clawdesk-rollback/<service>:<project> and the .env they ran with;
 #   3. after the new version starts, waits for the Gateway health check and for the panel to reach it;
 #   4. if that fails (or any step of the update fails), puts the previous images and .env back and starts
@@ -9,7 +10,8 @@
 #      the log names the backup to restore with deploy/scripts/restore.sh.
 # Expects init.sh's COMPOSE array, env_get and step, and to run in deploy/.
 #
-#   CLAWDESK_UPDATE_SKIP_BACKUP=1        update even if the backup cannot be made (not recommended)
+#   CLAWDESK_UPDATE_BACKUP=1             make a backup before the update
+#   CLAWDESK_UPDATE_SKIP_BACKUP=1        with it: update even if that backup cannot be made
 #   CLAWDESK_UPDATE_HEALTH_TIMEOUT=360   seconds the new version gets to become healthy
 
 GUARD=0
@@ -33,6 +35,10 @@ guard_detect() {
 # Backup with the running version. Very old images have no backup module: then the update goes on without one.
 guard_backup() {
   local script out code
+  if [[ "${CLAWDESK_UPDATE_BACKUP:-}" != 1 ]]; then
+    echo "no backup before the update (make one in System → Backups, or run with CLAWDESK_UPDATE_BACKUP=1)"
+    return 0
+  fi
   script='let m;
 try { m = await import("/usr/local/lib/clawdesk-backup.mjs"); } catch { process.exit(3); }
 let r;

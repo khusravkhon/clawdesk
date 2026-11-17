@@ -1068,7 +1068,7 @@
       "upToDate": "This is the newest verified version.",
       "offer": "Verified OpenClaw {v} is available.",
       "newLine": "This is a new OpenClaw line ({from} → {to}). It may store data in a new way: going back to the previous line takes restoring a backup.",
-      "steps": "A backup comes first. Then a new Gateway is built and the Gateway and the panel restart: 5–20 minutes, agents do not answer meanwhile. If the new version fails its checks, the previous one comes back.",
+      "steps": "No backup is made on its own: if you want one, make it first in Backups on this page. Then a new Gateway is built and the Gateway and the panel restart: 5–20 minutes, agents do not answer meanwhile. If the new version fails its checks, the previous one comes back.",
       "update": "Update OpenClaw to {v}",
       "confirmTitle": "Update OpenClaw?",
       "confirmText": "OpenClaw {from} → {to}. The panel and the agents are unavailable for a few minutes.",

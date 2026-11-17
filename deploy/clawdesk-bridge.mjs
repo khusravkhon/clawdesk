@@ -721,7 +721,7 @@ async function handle(req) {
   if (url.pathname === "/owner-files/copies") return ownerFileCall(() => ownerFiles.copies(body.agentId));
   if (url.pathname === "/openclaw/update") {
     try {
-      const result = await startOpenClawUpdate(body.version, { identify: () => resetGateway(), backup: () => createBackup("before-update") });
+      const result = await startOpenClawUpdate(body.version, { identify: () => resetGateway(), backup: body.backup === true ? () => createBackup("before-update") : undefined });
       log("openclaw update started", { version: result.version });
       return { status: 200, body: { started: true, version: result.version } };
     } catch (error) {

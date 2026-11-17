@@ -222,6 +222,17 @@ test("no backup, no update", async (t) => {
   assert.equal(runs.length, 0);
 });
 
+test("without the owner asking for a backup the update starts without one", async (t) => {
+  const f = await files(t);
+  const runs = [];
+  const started = await startUpdate("2026.11.2", { ...f, identify: async () => self, docker: async (_c, a) => { runs.push(a); return { code: 0, out: "id", err: "" }; } });
+  await started.done;
+  const status = await readStatus(f.statusFile);
+  assert.equal(status.state, "building");
+  assert.equal(status.backup, undefined);
+  assert.equal(JSON.parse(runs.at(-1).at(-1)).backup, undefined);
+});
+
 // deploy/scripts/openclaw-choice.sh, as init.sh uses it.
 const choose = async (t, installed, def, supported) => {
   const dir = await tmp(t);
