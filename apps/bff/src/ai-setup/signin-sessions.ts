@@ -121,6 +121,16 @@ export class SignInSessionManager {
     }
   }
 
+  /** Claude Code in the Gateway is signed in to a Claude plan (its models need no provider key). */
+  async claudePlanSignedIn(): Promise<boolean> {
+    if (!this.claude) return false;
+    try {
+      return (await this.claude.claudeStatus()).loggedIn;
+    } catch {
+      return false;
+    }
+  }
+
   async start(agentId: string, authChoice: string, asBackup = false): Promise<SignInStateDto> {
     this.#sweep();
     const backupOf = asBackup ? await readChain(this.gateway, agentId) : null;

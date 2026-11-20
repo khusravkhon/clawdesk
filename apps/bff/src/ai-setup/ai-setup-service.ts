@@ -38,6 +38,8 @@ export class AiSetupService {
     private readonly db: Db,
     /** True when the Gateway carries Claude Code, so a Claude plan can be signed in. */
     private readonly claudePlanAvailable: () => Promise<boolean> = async () => false,
+    /** True when Claude Code in the Gateway is signed in to a Claude plan. */
+    private readonly claudePlanSignedIn: () => Promise<boolean> = async () => false,
   ) {}
 
   /** Juniors with the main agent's AI follow its model chain; never fails the caller. */
@@ -76,6 +78,8 @@ export class AiSetupService {
     const res = await this.gateway.request<{ providers?: { provider?: string; id?: string; status?: string }[] }>("models.authStatus", { agentId });
     // Declared providers without a usable credential report status "missing".
     const providers = (res.providers ?? []).filter((p) => p.status !== "missing").map((p) => p.provider ?? p.id ?? "unknown");
+    // A Claude plan runs Anthropic models on Claude Code's own login, so OpenClaw reports anthropic as "missing".
+    if (!providers.length && (await readChain(this.gateway, agentId))[0]?.startsWith("anthropic/") && (await this.claudePlanSignedIn())) providers.push("anthropic");
     return { agentId, connected: providers.length > 0, providers };
   }
 
