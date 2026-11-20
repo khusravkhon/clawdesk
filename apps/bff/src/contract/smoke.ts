@@ -11,7 +11,7 @@
 // provider or key is needed. Everything it creates is removed again.
 
 import assert from "node:assert/strict";
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import fs from "node:fs";
 import http from "node:http";
 import type { AddressInfo } from "node:net";
@@ -31,11 +31,14 @@ import { MemoryNoteService } from "../library/memory-note-service.js";
 import { ReminderService } from "../schedules/reminder-service.js";
 import { SpaceService } from "../space/space-service.js";
 import { PANEL_VERSION } from "../version.js";
-import { SCHEDULE_GUARD_PLUGIN } from "../provision/agent-communication.js";
+import { ASK_MAIN_PLUGIN, communicationReplacePaths, mainPluginPatch, SCHEDULE_GUARD_PLUGIN } from "../provision/agent-communication.js";
+import { REQUESTS_PLUGIN, requestsPluginPatch } from "../company/work-requests-config.js";
+import { ownSkillMd, zipSkillMd } from "../skills/skill-archive.js";
 import { telegramSendRequest } from "../telegram/telegram-service.js";
+import { PANEL_METHODS } from "./panel-methods.js";
 
-/** The Gateway refusing the call itself, not its delivery: a wrong field, a missing one, no agent named. */
-const SHAPE_REFUSED = /invalid .*params|unexpected property|must have required property|no explicit owner|pass agentid/i;
+/** The Gateway refusing the call itself, not its delivery: a wrong field, a missing one, no agent named, no such method. */
+const SHAPE_REFUSED = /invalid .*params|unexpected property|must have required property|no explicit owner|pass agentid|unknown method/i;
 
 const PROVIDER = "clawdesk-contract";
 const MODEL = "echo";
@@ -143,6 +146,16 @@ async function main(): Promise<void> {
   const stub = await startStubModel();
   let agentId: string | null = null;
   let cronId: string | null = null;
+  let pluginsPatched = false;
+  /**
+   * The panel's own params where a real result is not possible here (no Telegram, no provider login, no GitHub
+   * sign-in): a delivery or "not found" error is fine, a refusal of the call itself is not.
+   */
+  const shapeAccepted = async (method: string, params: Record<string, unknown>, timeoutMs = 30_000) => {
+    const error = await gateway.request(method, params, { timeoutMs }).then(() => null, (failure: Error) => failure.message);
+    console.log(`    ${method}: ${error ?? "accepted"}`);
+    assert.ok(error === null || !SHAPE_REFUSED.test(error), `${method} refused the panel's call: ${error}`);
+  };
 
   try {
     await step("connect (silent loopback pairing, operator scopes)", async () => {
@@ -154,6 +167,81 @@ async function main(): Promise<void> {
       for (const scope of PANEL_OPERATOR_SCOPES) assert.ok(hello.auth.scopes.includes(scope), `scope ${scope} not granted: ${text(hello.auth.scopes)}`);
       console.log(`  OpenClaw ${hello.server.version}, protocol ${hello.protocol}`);
       if (expected) assert.equal(hello.server.version, expected, "the Gateway runs another OpenClaw than deploy/openclaw.version");
+    });
+
+    await step(`hello.features.methods offers all ${PANEL_METHODS.length} RPCs the panel calls`, async () => {
+      const offered = new Set(gateway.hello!.features.methods);
+      // Some methods work without being advertised (sessions.usage on 2026.8.35): those only fail when the call is unknown.
+      const unlisted = PANEL_METHODS.filter((method) => !offered.has(method));
+      const missing: string[] = [];
+      for (const method of unlisted) {
+        const error = await gateway.request(method, {}, { timeoutMs: 30_000 }).then(() => null, (failure: Error) => failure.message);
+        if (error && /unknown method/i.test(error)) missing.push(method);
+      }
+      if (unlisted.length) console.log(`    not advertised but answering: ${unlisted.filter((m) => !missing.includes(m)).join(", ") || "none"}`);
+      assert.deepEqual(missing, [], `the Gateway no longer offers: ${missing.join(", ")}`);
+    });
+
+    await step("read-only RPCs, the panel's params and the fields it reads", async () => {
+      const today = new Date().toISOString().slice(0, 10);
+      const [execQueue, pluginQueue, history, audit, channels, models, auth, sessions, usage, skills, detect] = await Promise.all([
+        gateway.request<unknown>("exec.approval.list", {}),
+        gateway.request<unknown>("plugin.approval.list", {}),
+        gateway.request<{ items?: unknown }>("approval.history", { limit: 20 }),
+        gateway.request<{ events?: unknown }>("audit.list", { limit: 50 }),
+        gateway.request<unknown>("channels.status", {}),
+        gateway.request<{ models?: unknown }>("models.list", { view: "all" }),
+        gateway.request<{ providers?: unknown }>("models.authStatus", { agentId: "main" }),
+        gateway.request<{ sessions?: unknown }>("sessions.list", { limit: 500 }),
+        gateway.request<{ aggregates?: { daily?: unknown } }>("sessions.usage", { agentScope: "all", startDate: today, endDate: today, mode: "specific", timeZone: "UTC", limit: 500 }),
+        gateway.request<{ skills?: unknown }>("skills.status", { agentId: "main" }, { timeoutMs: 30_000 }),
+        gateway.request<unknown>("openclaw.setup.detect", { agentId: "main" }, { timeoutMs: 60_000 }),
+      ]);
+      assert.ok(Array.isArray(execQueue), `exec.approval.list is not an array: ${text(execQueue).slice(0, 200)}`);
+      assert.ok(Array.isArray(pluginQueue), `plugin.approval.list is not an array: ${text(pluginQueue).slice(0, 200)}`);
+      assert.ok(Array.isArray(history.items ?? []), "approval.history items is not an array");
+      assert.ok(Array.isArray(audit.events), `audit.list has no events array: ${text(audit).slice(0, 200)}`);
+      assert.equal(typeof channels, "object");
+      assert.ok(Array.isArray(models.models) && models.models.length > 0, "models.list has no models");
+      assert.ok(Array.isArray(auth.providers ?? []), "models.authStatus providers is not an array");
+      assert.ok(Array.isArray(sessions.sessions), "sessions.list has no sessions array");
+      assert.ok(Array.isArray(usage.aggregates?.daily), `sessions.usage has no daily totals: ${text(usage).slice(0, 200)}`);
+      assert.ok(Array.isArray(skills.skills), "skills.status has no skills array");
+      assert.equal(typeof detect, "object");
+      await shapeAccepted("channels.pairing.list", { channel: "telegram" });
+      await shapeAccepted("tools.github.status", { agentId: "main", selectedScope: "agent" });
+    });
+
+    await step("exec.approvals.get + set (the same file back, as the approvals page writes)", async () => {
+      const snap = await gateway.request<{ hash?: string; file?: unknown }>("exec.approvals.get", {});
+      assert.equal(typeof snap.hash, "string", "exec.approvals.get has no hash (set needs baseHash)");
+      assert.equal(typeof snap.file, "object");
+      await gateway.request("exec.approvals.set", { file: snap.file, baseHash: snap.hash });
+    });
+
+    await step("secrets.store.set + secrets.store.delete", async () => {
+      const name = "CLAWDESK_CONTRACT_SECRET";
+      await gateway.request("secrets.store.set", { name, value: randomUUID(), kind: "secret", allowedHosts: ["127.0.0.1"] });
+      await gateway.request("secrets.store.delete", { name });
+    });
+
+    await step("wizard.start + wizard.cancel (model setup)", async () => {
+      const started = await gateway.request<{ sessionId?: string }>("wizard.start", { mode: "local", flow: "setup" });
+      assert.equal(typeof started.sessionId, "string", `wizard.start has no sessionId: ${text(started).slice(0, 200)}`);
+      await gateway.request("wizard.cancel", { sessionId: started.sessionId });
+    });
+
+    // No provider login, GitHub sign-in or ClawHub package here: only that each call's shape is still accepted.
+    await step("setup, install and sign-in RPCs accept the panel's params", async () => {
+      const version = gateway.hello!.server.version;
+      await shapeAccepted("openclaw.setup.verify", { agentId: "main" }, 90_000);
+      await shapeAccepted("models.authLogout", { provider: "google", agentId: "main" });
+      await shapeAccepted("tools.github.configure", { scope: "agent", agentId: "main", mode: "inherit" });
+      await shapeAccepted("tools.github.authorize.poll", { requestId: `github-device-${randomUUID().replaceAll("-", "")}` });
+      await shapeAccepted("skills.search", { query: "clawdesk-contract", limit: 20 });
+      await shapeAccepted("skills.install", { agentId: "main", source: "clawhub", slug: "clawdesk-contract-missing", timeoutMs: 30_000 }, 45_000);
+      await shapeAccepted("plugins.install", { source: "clawhub", packageName: "@clawdesk/contract-missing", version }, 60_000);
+      await shapeAccepted("channels.pairing.approve", { channel: "telegram", accountId: "default", requestId: randomUUID(), notify: true, bootstrapCommandOwner: true });
     });
 
     await step("agents.list", async () => {
@@ -231,6 +319,15 @@ async function main(): Promise<void> {
       return job.id;
     });
 
+    await step("cron.update (resume, pause, as the budget does)", async () => {
+      const enabled = async () => (await gateway.request<{ jobs: { id: string; enabled?: boolean }[] }>("cron.list", { includeDisabled: true, limit: 100, offset: 0, includeDeliveryPreviews: false }))
+        .jobs.find((job) => job.id === cronId)?.enabled;
+      await gateway.request("cron.update", { id: cronId, patch: { enabled: true } });
+      assert.equal(await enabled(), true, "cron.update did not resume the job");
+      await gateway.request("cron.update", { id: cronId, patch: { enabled: false } });
+      assert.equal(await enabled(), false, "cron.update did not pause the job");
+    });
+
     await step("cron.remove", async () => {
       await gateway.request("cron.remove", { id: cronId });
       cronId = null;
@@ -306,6 +403,37 @@ async function main(): Promise<void> {
       const history = await gateway.request<{ messages?: { role: string; content: unknown }[] }>("chat.history", { sessionKey, agentId, limit: 10 });
       assert.ok(Array.isArray(history.messages), "no messages array");
       assert.ok(history.messages.some((m) => m.role === "assistant" && text(m.content).includes(REPLY)), `stub reply not in history: ${text(history.messages).slice(0, 400)}`);
+      // Stop on a finished turn: the panel's Stop button may arrive late, and that must not fail.
+      await gateway.request("chat.abort", { sessionKey, agentId });
+    });
+
+    await step("own skill: skills.upload.begin/chunk/commit + skills.install (upload)", async () => {
+      await patchConfig(gateway, (config) => ((config as { skills?: { install?: { allowUploadedArchives?: boolean } } }).skills?.install?.allowUploadedArchives === true ? null : { skills: { install: { allowUploadedArchives: true } } }), { note: "ClawDesk contract test" });
+      const slug = `contract-${randomUUID().slice(0, 6)}`;
+      const archive = zipSkillMd(ownSkillMd({ slug, name: "Contract skill", description: "Contract test skill", instructions: "Say hello." }));
+      const sha256 = createHash("sha256").update(archive).digest("hex");
+      const { uploadId } = await gateway.request<{ uploadId: string }>("skills.upload.begin", { kind: "skill-archive", slug, sizeBytes: archive.length, sha256, force: true });
+      assert.equal(typeof uploadId, "string");
+      await gateway.request("skills.upload.chunk", { uploadId, offset: 0, dataBase64: archive.toString("base64") });
+      await gateway.request("skills.upload.commit", { uploadId, sha256 });
+      await gateway.request("skills.install", { agentId, source: "upload", uploadId, slug, force: true, sha256, timeoutMs: 60_000 }, { timeoutMs: 75_000 });
+      const status = await gateway.request<{ skills?: { name?: string; baseDir?: string }[] }>("skills.status", { agentId }, { timeoutMs: 30_000 });
+      assert.ok(status.skills?.some((skill) => skill.name === slug || skill.baseDir?.endsWith(`/${slug}`)), `uploaded skill not in skills.status: ${text(status.skills?.map((s) => s.name)).slice(0, 300)}`);
+    });
+
+    // The panel adds these plugins by path when an owner turns the feature on; a release that stops loading
+    // them silently takes away asking the main agent and company requests.
+    await step(`plugins load: ${ASK_MAIN_PLUGIN}, ${REQUESTS_PLUGIN} (the panel's config patches)`, async () => {
+      const id = agentId!;
+      pluginsPatched = true;
+      await patchConfig(gateway, (config) => mainPluginPatch(config as never, [{ id, canAskMain: true }], new Set([id])), { replacePaths: communicationReplacePaths, note: "ClawDesk contract test" });
+      await patchConfig(gateway, (config) => requestsPluginPatch(config as never, [id], true), { replacePaths: communicationReplacePaths, note: "ClawDesk contract test" });
+      const { plugins } = await gateway.request<{ plugins?: { id: string; state?: string }[] }>("plugins.list", {});
+      for (const pluginId of [ASK_MAIN_PLUGIN, REQUESTS_PLUGIN, SCHEDULE_GUARD_PLUGIN]) {
+        const plugin = plugins?.find((p) => p.id === pluginId);
+        assert.ok(plugin, `${pluginId} not loaded`);
+        console.log(`    ${pluginId}: ${plugin.state ?? "listed"}`);
+      }
     });
 
     await step("personal space, named chat with Office attachment, materials, memory and restart", async () => {
@@ -380,6 +508,15 @@ async function main(): Promise<void> {
       }
     });
 
+    await step("gateway.restart.request + reconnect (as after a provider install)", async () => {
+      const generation = gateway.generation;
+      // The socket may close before the reply arrives; the reconnect is the real check.
+      await gateway.request("gateway.restart.request", { reason: "clawdesk: contract test" }, { timeoutMs: 10_000 }).catch(() => undefined);
+      await gateway.waitForReconnect(generation);
+      const list = await gateway.request<{ agents: { id: string }[] }>("agents.list", {});
+      assert.ok(list.agents.some((a) => a.id === agentId), "the test agent is gone after a restart");
+    });
+
     await step("agents.delete", async () => {
       const result = await gateway.request<{ failed?: { path: string; reason: string }[] }>("agents.delete", { agentId, deleteFiles: true });
       assert.deepEqual(result.failed ?? [], [], "deleted agent left files in the Gateway state directory");
@@ -393,6 +530,7 @@ async function main(): Promise<void> {
       if (cronId) await gateway.request("cron.remove", { id: cronId }).catch(() => undefined);
       if (agentId) await gateway.request("agents.delete", { agentId, deleteFiles: true }).catch(() => undefined);
       await patchConfig(gateway, (config) => ((config as { models?: { providers?: Record<string, unknown> } }).models?.providers?.[PROVIDER] ? { models: { providers: { [PROVIDER]: null } } } : null)).catch(() => undefined);
+      if (pluginsPatched) await patchConfig(gateway, { plugins: { entries: { [ASK_MAIN_PLUGIN]: { enabled: false }, [REQUESTS_PLUGIN]: { enabled: false } } } }).catch(() => undefined);
     }
     await gateway.stop();
     stub.server.close();

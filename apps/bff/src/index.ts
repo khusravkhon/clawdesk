@@ -50,7 +50,7 @@ const { db, close: closeDb } = openDb(config.dbPath);
 const gateway = createGatewayService(config, logger, { retryPairing: true });
 const bridge = new BridgeClient(config.bridgeUrl, config.gateway.sharedToken);
 const signIn: SignInSessionManager = new SignInSessionManager(gateway, logger.child({ component: "signin" }), (): Promise<void> => aiSetup.syncFollowers(), bridge);
-const aiSetup: AiSetupService = new AiSetupService(gateway, logger.child({ component: "ai-setup" }), db, (): Promise<boolean> => signIn.claudePlanAvailable());
+const aiSetup: AiSetupService = new AiSetupService(gateway, logger.child({ component: "ai-setup" }), db, (): Promise<boolean> => signIn.claudePlanAvailable(), (): Promise<boolean> => signIn.claudePlanSignedIn());
 const telegram = new TelegramService(gateway, db, logger.child({ component: "telegram" }), undefined, bridge, async (provider) => {
   if (provider !== "groq") return;
   const result = await gateway.request<{ plugins: { id: string; installed?: boolean }[] }>("plugins.list", {});
