@@ -101,5 +101,19 @@ for i in $(seq 1 60); do
   sleep 5
 done
 
+step "OpenClaw compatibility fixes are in the built Gateway (deploy/clawdesk-startup-migration-fix.mjs)"
+"${COMPOSE[@]}" exec -T gateway node --input-type=module -e '
+import fs from "node:fs";
+import { FIXES } from "/usr/local/lib/clawdesk-startup-migration-fix.mjs";
+const version = JSON.parse(fs.readFileSync("/app/package.json", "utf8")).version;
+const fix = FIXES[version];
+const marks = { migration: "databases.delete(databasePath)", deletion: "allowedRoots" };
+for (const [name, { file }] of Object.entries(fix ?? {})) {
+  if (!fs.readFileSync(`/app/${file}`, "utf8").includes(marks[name])) { console.error(`${name} fix missing in ${file}`); process.exit(1); }
+  console.log(`${name} fix applied: ${file}`);
+}
+if (!fix) console.log(`OpenClaw ${version} needs no fixes`);
+'
+
 step "Contract smoke test"
 "${COMPOSE[@]}" exec -T -e OPENCLAW_EXPECTED_VERSION="$VERSION" panel node dist/contract/smoke.js
