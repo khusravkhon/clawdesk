@@ -384,6 +384,8 @@ const subtitle = computed(() => t("dash.subtitle", { days: range.value.replace("
 }
 .one-one {
   grid-template-columns: repeat(2, minmax(0, 1fr));
+  /* Each card is as tall as its own content, not as the card next to it. */
+  align-items: start;
 }
 .chart-wrap {
   position: relative;
@@ -407,16 +409,19 @@ const subtitle = computed(() => t("dash.subtitle", { days: range.value.replace("
   margin: 0;
   padding: 0;
 }
+.agents {
+  border-radius: 16px;
+  overflow: hidden;
+}
 .agent {
   display: flex;
   align-items: center;
   gap: 12px;
-  padding: 10px 0;
+  padding: 12px 14px;
   border-top: 1px solid var(--border);
 }
 .agent:first-child {
   border-top: 0;
-  padding-top: 0;
 }
 .avatar {
   width: 36px;

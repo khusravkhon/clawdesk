@@ -341,17 +341,24 @@ async function sync(agentId: string): Promise<void> {
     <n-card class="block" :title="t('today.agentSchedules')">
       <p class="muted">{{ t('today.agentSchedulesNote') }}</p>
       <p v-if="stale('schedules')">{{ t('today.unknown') }} · {{ date(data.schedules.checkedAt) }}</p>
-      <p v-for="schedule in schedules" :key="schedule.id" class="wrap">{{ schedule.label }} · {{ schedule.agentId }} · {{ date(schedule.nextRunAt) }}</p>
-      <router-link to="/schedules" class="pill-link">{{ t('today.manageSchedules') }}</router-link>
+      <ul class="jobs">
+        <li v-for="schedule in schedules" :key="schedule.id" class="job">
+          <span class="wrap">{{ schedule.label }}</span>
+          <span class="muted">{{ schedule.agentId }} · {{ date(schedule.nextRunAt) }}</span>
+        </li>
+      </ul>
+      <div class="links"><router-link to="/schedules" class="pill-link">{{ t('today.manageSchedules') }}</router-link></div>
     </n-card>
   </template>
   <n-alert v-else-if="!loading" type="warning">{{ t('today.noSnapshot') }} <n-button size="small" @click="load(true)">{{ t('today.refresh') }}</n-button></n-alert>
 </template>
 
 <style scoped>
-.grid { display: grid; grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr); gap: 16px; align-items: start; }
+.grid { display: grid; grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr); gap: 16px; align-items: start; margin-bottom: 20px; }
 .stack { display: grid; gap: 16px; min-width: 0; }
 .block { margin-bottom: 20px; }
+.jobs { list-style: none; margin: 12px 0 4px; padding: 0; display: grid; gap: 8px; }
+.job { display: flex; justify-content: space-between; align-items: baseline; flex-wrap: wrap; gap: 4px 16px; padding: 12px 16px; border-radius: 14px; background: var(--surface-2); }
 .quick { display: flex; flex-wrap: wrap; gap: 8px; }
 .pill-link.white { background: var(--surface); box-shadow: var(--pop-shadow); }
 .next { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px 20px; padding: 18px 22px; border-radius: var(--radius-card); background: var(--accent-gradient); color: var(--on-accent); box-shadow: 0 14px 30px -18px rgba(62, 209, 95, 0.9); }

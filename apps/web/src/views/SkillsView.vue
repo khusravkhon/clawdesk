@@ -309,13 +309,15 @@ onMounted(() => {
     </n-tabs>
 
     <!-- ClawHub search -->
-    <n-modal v-model:show="hub.open" preset="card" :title="t('ext.findClawHub')" class="modal" :mask-closable="busy !== 'hub-add'">
+    <n-modal v-model:show="hub.open" preset="card" :title="t('ext.findClawHub')" style="width: min(760px, calc(100vw - 32px))" :mask-closable="busy !== 'hub-add'">
       <template v-if="!hub.picked">
         <div class="search">
           <n-input v-model:value="hub.query" :placeholder="t('ext.searchPlaceholder')" clearable @keyup.enter="searchHub" />
           <n-button type="primary" :loading="hub.searching" @click="searchHub">{{ t("ext.search") }}</n-button>
         </div>
         <p v-if="hub.searched && !hub.results.length" class="muted">{{ t("ext.nothingFound") }}</p>
+        <!-- The search stays on top; only the results scroll. -->
+        <div v-if="hub.results.length" class="results">
         <div v-for="r in hub.results" :key="r.installRef" class="result">
           <div class="grow">
             <div class="name">
@@ -326,6 +328,7 @@ onMounted(() => {
             <p class="mono muted">{{ r.installRef }}</p>
           </div>
           <n-button size="small" :disabled="skills?.some((s) => s.installRef === r.installRef)" @click="hub.picked = r">{{ t("ext.add") }}</n-button>
+        </div>
         </div>
       </template>
       <template v-else>
@@ -515,7 +518,16 @@ onMounted(() => {
 .search {
   display: flex;
   gap: 8px;
-  margin-bottom: 8px;
+  margin-bottom: 12px;
+}
+.results {
+  max-height: min(60vh, 560px);
+  overflow-y: auto;
+  margin: 0 -8px;
+  padding: 0 8px;
+}
+.result:last-child {
+  border-bottom: 0;
 }
 .hidden {
   display: none;

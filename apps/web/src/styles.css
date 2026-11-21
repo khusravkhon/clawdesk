@@ -231,6 +231,18 @@ summary:focus-visible,
 
 /* --- Naive UI, shaped to the panel's look ---------------------------------------------------------------- */
 
+/* Dialogs: a centred card with room inside. A dialog that sets its own width (style="width: …") keeps it. */
+.n-modal.n-card {
+  width: min(640px, calc(100vw - 32px));
+  border-radius: 20px;
+}
+.n-modal.n-card > .n-card-header {
+  padding: 22px 28px 6px;
+}
+.n-modal.n-card > .n-card__content {
+  padding: 12px 28px 26px;
+}
+
 .n-card {
   box-shadow: var(--card-shadow);
   transition:

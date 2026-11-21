@@ -1314,6 +1314,9 @@
   },
   "telegramTopics": {
     "title": "Group topics",
+    "addAgent": "Add an agent",
+    "noTopics": "No agent answers in a topic of this bot yet. Add an agent and paste the topic's link.",
+    "removeRow": "Remove {name}",
     "lead": "The bot replies as the agent assigned to each topic.",
     "step1": "Create a Telegram group with topics enabled.",
     "step2": "Add the selected bot as a group administrator.",

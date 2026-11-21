@@ -203,6 +203,7 @@ onMounted(load);
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(min(100%, 300px), 1fr));
   gap: 14px;
+  align-items: start;
 }
 .agent {
   display: flex;
