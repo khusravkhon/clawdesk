@@ -92,4 +92,27 @@ describe("Claude plan sign-in", () => {
     const { gateway } = fakeGateway();
     await expect(new SignInSessionManager(gateway, pino({ level: "silent" })).start("main", "claude-plan")).rejects.toThrow(/Claude Code/);
   });
+
+  it("a stuck activation (busy lock) restarts the Gateway once and then signs in", async () => {
+    const calls: string[] = [];
+    let busy = true;
+    let generation = 0;
+    const gateway = {
+      get generation() { return generation; },
+      waitForReconnect: async () => undefined,
+      request: vi.fn(async (method: string) => {
+        calls.push(method);
+        if (method === "gateway.restart.request") { busy = false; generation++; return {}; }
+        if (method === "openclaw.setup.activate") {
+          if (busy) throw Object.assign(new Error("OpenClaw setup is already in progress; try again when it finishes."), { details: { code: "SETUP_ADMISSION_BUSY" } });
+          return { ok: true, status: "ok", modelRef: "claude-cli/claude-opus-5" };
+        }
+        return {};
+      }),
+    } as unknown as GatewayService;
+    const manager = new SignInSessionManager(gateway, pino({ level: "silent" }), async () => {}, fakeClaude(true));
+    const state = await manager.start("main", "claude-plan");
+    await until(() => manager.get(state.sessionId).status === "done");
+    expect(calls.filter((m) => m === "openclaw.setup.activate" || m === "gateway.restart.request")).toEqual(["openclaw.setup.activate", "gateway.restart.request", "openclaw.setup.activate"]);
+  });
 });

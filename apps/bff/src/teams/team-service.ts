@@ -35,7 +35,7 @@ const LEGACY_BINDS = [`:${REPO}:`, `:${DOCS}:`];
 export class TeamError extends Error {
   constructor(
     readonly code: "wrong_mode" | "repo_not_found" | "token_rejected" | "no_push_permission" | "github_unreachable" | "no_team" | "telegram_links" | "no_bridge"
-      | "project_executors" | "telegram_group_linked" | "team_busy",
+      | "project_executors" | "team_busy",
     message: string,
   ) {
     super(message);
@@ -287,13 +287,20 @@ export class TeamService {
 
   async #remove(teamId: string): Promise<void> {
     const team = this.#team(teamId);
-    if (team.telegramGroupId) throw new TeamError("telegram_group_linked", "a team linked to a Telegram group cannot be removed");
     // Only project executors are provisioned without either a repository or a creation request.
     // They retain that identity when detached from a project.
     if (team.repoUrl === null && team.requestId === null) {
       throw new TeamError("project_executors", "a project executor team cannot be removed");
     }
     const { db } = this.deps;
+    // The group goes first: if unlinking fails, nothing is deleted yet and the owner can retry.
+    if (team.telegramGroupId) {
+      await this.deps.telegram.unlinkGroup(team.telegramGroupId);
+      db.transaction((tx) => {
+        tx.delete(channelBindings).where(and(eq(channelBindings.channel, "telegram"), eq(channelBindings.peerKind, "group"), eq(channelBindings.peerId, team.telegramGroupId!))).run();
+        tx.update(teams).set({ telegramGroupId: null }).where(eq(teams.id, teamId)).run();
+      });
+    }
     for (const member of db.select().from(agents).where(eq(agents.teamId, teamId)).all()) await deleteJuniorAgent(this.deps, member.id);
     await this.deps.bridge.teamRemove(teamId);
     db.delete(dataSources).where(inArray(dataSources.id, [`team-docs:${teamId}`, `github:${teamId}`])).run();

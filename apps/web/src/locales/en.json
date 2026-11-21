@@ -1139,7 +1139,7 @@
     "created": "Team created",
     "empty": "No teams yet. Create the first one for your repository.",
     "remove": "Delete the team",
-    "removeConfirm": "Delete the team? Its agents and the server's copy of the repository are removed; nothing changes on GitHub, the docs folder stays.",
+    "removeConfirm": "Delete the team? Its agents and the server's copy of the repository are removed; nothing changes on GitHub, the docs folder stays. The Telegram group is unlinked; the group itself stays in Telegram.",
     "removed": "Team deleted",
     "docs": "Project docs: folder “{folder}” in the shared ClawDesk folder",
     "branch": "Branch",

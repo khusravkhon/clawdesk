@@ -26,7 +26,7 @@ type TelegramConfig = { enabled?: boolean; botToken?: unknown; accounts?: Record
 type TelegramRoot = { channels?: { telegram?: TelegramConfig }; bindings?: RouteBinding[]; commands?: { ownerAllowFrom?: string[] } };
 type RouteBinding = { type?: string; agentId: string; match?: { channel?: string; accountId?: string; peer?: unknown } };
 type PairingList = {
-  requests: { requestId: string; channel: string; accountId: string; senderId: string; senderLabel: string; createdAt: string; expiresAt: string }[];
+  requests: { requestId: string; channel: string; accountId: string; senderId: string; metadata?: { username?: string; firstName?: string; lastName?: string }; createdAt: string; expiresAt: string }[];
 };
 
 export class TelegramError extends Error {
@@ -125,7 +125,8 @@ export class TelegramService {
       connected,
       running,
       bot: connected ? this.#bot(accountId) : null,
-      owner: owner ? { id: owner.peerId!, label: this.#getSetting<string>(this.#key(OWNER_LABEL_SETTING, accountId)) } : null,
+      // Installs approved before the name came from metadata stored OpenClaw's "telegramUserId": show the id instead.
+      owner: owner ? { id: owner.peerId!, label: [this.#getSetting<string>(this.#key(OWNER_LABEL_SETTING, accountId))].find((l) => l && l !== "telegramUserId") ?? null } : null,
       approvals: connected && tg?.execApprovals?.enabled === true,
       lastError,
     };
@@ -229,7 +230,7 @@ export class TelegramService {
     const res = await this.gateway.request<PairingList>("channels.pairing.list", { channel: "telegram" });
     return res.requests
       .filter((r) => r.channel === "telegram" && r.accountId === accountId)
-      .map(({ requestId, accountId, senderId, senderLabel, createdAt, expiresAt }) => ({ requestId, accountId, senderId, senderLabel, createdAt, expiresAt }));
+      .map(({ requestId, accountId, senderId, metadata, createdAt, expiresAt }) => ({ requestId, accountId, senderId, senderLabel: senderLabel(senderId, metadata), createdAt, expiresAt }));
   }
 
   /** Approves the owner, remembers their chat, and routes existing panel schedules to it. */
@@ -607,6 +608,15 @@ export function telegramDelivery(ownerId: string) {
  * The Gateway call for a message to a Telegram chat or topic, with or without buttons. The contract test
  * (src/contract/smoke.ts) sends exactly these against each OpenClaw version before the panel moves to it.
  */
+/**
+ * OpenClaw's own senderLabel is the id's kind ("telegramUserId"), not the person: the name comes from the
+ * pairing request's metadata (@username, else first and last name), and the numeric id when there is none.
+ */
+export function senderLabel(senderId: string, metadata?: { username?: string; firstName?: string; lastName?: string }): string {
+  if (metadata?.username) return `@${metadata.username}`;
+  return [metadata?.firstName, metadata?.lastName].filter(Boolean).join(" ") || senderId;
+}
+
 export function telegramSendRequest(accountId: string, agentId: string, target: { to: string; threadId?: string; message: string }, buttons: { label: string; data: string; style?: "success" | "danger" | "primary" }[], idempotencyKey: string): { method: "send" | "message.action"; params: Record<string, unknown> } {
   // With several agents OpenClaw 2026.8.35 refuses a send that names none ("session key main has no explicit owner").
   if (!buttons.length) return { method: "send", params: { channel: "telegram", accountId, agentId, ...target, idempotencyKey } };

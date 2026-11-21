@@ -22,6 +22,11 @@ it("a signed-in Claude plan counts as a connected AI for an Anthropic model", as
   expect(await service("anthropic/claude-opus-5", true).status("main")).toMatchObject({ connected: true, providers: ["anthropic"] });
 });
 
+it("the model the plan's activation sets (claude-cli/…) counts too, so a reload keeps the owner in the panel", async () => {
+  expect(await service("claude-cli/claude-opus-5", true).status("main")).toMatchObject({ connected: true, providers: ["anthropic"] });
+  expect((await service("claude-cli/claude-opus-5", false).status("main")).connected).toBe(false);
+});
+
 it("no Claude login, or a model of another provider, is still not connected", async () => {
   expect((await service("anthropic/claude-opus-5", false).status("main")).connected).toBe(false);
   expect((await service("openai/gpt-5", true).status("main")).connected).toBe(false);

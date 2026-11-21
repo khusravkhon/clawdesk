@@ -11,6 +11,9 @@ export const FIXES = {
     migration: { file: "dist/startup-migration-DkIFHb-U.js", sha256: "dad962a2880e9f7f8d883a72a0807c8b36c5a2a68e3ce491bd2ce2e7ec96518f" },
     deletion: { file: "dist/agents-CoSQ0Hk8.js", sha256: "762baf9cf961ba775e53c0e60abd2fbbe678993a5695ae00db716ed5599123e1" },
   },
+  // Both fixed upstream: startup skips held (deletion-fenced) agent databases before maintenance
+  // (readAgentDatabaseAdmissionRefusal), and agent deletion allows the source folders as trash roots.
+  "2026.11.6": null,
 };
 // biome-ignore lint/suspicious/noTemplateCurlyInString: the exact OpenClaw source text this fix looks for
 const BEFORE = '\t\t} catch (error) {\n\t\t\tparams.log.warn(`session: SQLite startup maintenance failed for ${target.agentId}; continuing: ${String(error)}`);';

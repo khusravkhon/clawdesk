@@ -256,7 +256,7 @@ export class SignInSessionManager {
       if (session.cancelled) return;
       session.state = { ...session.state, url: null, paste: null };
       // Sets the agent's model on the Claude CLI runtime and makes one test call through it.
-      const res = await this.gateway.request<ActivateResult>("openclaw.setup.activate", { agentId, kind: "claude-cli" }, { timeoutMs: 180_000 });
+      const res = await this.#activateClaudePlan(agentId);
       this.logger.info({ sessionId, agentId, ok: res.ok, status: res.status }, "Claude plan activation");
       if (session.cancelled) return;
       if (!res.ok) {
@@ -271,6 +271,25 @@ export class SignInSessionManager {
       if (session.cancelled) return;
       this.logger.warn({ sessionId, err: error }, "Claude plan sign-in failed");
       this.#finish(session, { status: "error", error: (error as Error).message });
+    }
+  }
+
+  /**
+   * OpenClaw 2026.8.35 can leave an activation hanging (seen after "config reload superseded"): it never
+   * answers and holds the setup lock, so every retry got "setup is already in progress" until the Gateway
+   * restarted. A timeout or a busy answer restarts the Gateway once, which frees the lock, and tries again.
+   */
+  async #activateClaudePlan(agentId: string): Promise<ActivateResult> {
+    const activate = () => this.gateway.request<ActivateResult>("openclaw.setup.activate", { agentId, kind: "claude-cli" }, { timeoutMs: 180_000 });
+    try {
+      return await activate();
+    } catch (error) {
+      if (!isSetupBusy(error) && !/gateway request timeout/i.test(String((error as Error).message))) throw error;
+      this.logger.warn({ agentId, err: error }, "Claude plan activation stuck; restarting the Gateway to free the setup lock");
+      const generation = this.gateway.generation;
+      await this.gateway.request("gateway.restart.request", { reason: "clawdesk: setup stuck" }).catch(() => undefined);
+      await this.gateway.waitForReconnect(generation);
+      return await activate();
     }
   }
 
