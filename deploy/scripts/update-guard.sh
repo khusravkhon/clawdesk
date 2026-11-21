@@ -77,6 +77,11 @@ guard_snapshot() {
     project="$(docker inspect -f '{{index .Config.Labels "com.docker.compose.project"}}' "$container")"
     image="$(docker inspect -f '{{.Image}}' "$container")"
     ref="$(docker inspect -f '{{.Config.Image}}' "$container")"
+    # A running container whose image was pruned: nothing to go back to, the update itself still works.
+    if ! docker image inspect "$image" >/dev/null 2>&1; then
+      echo "no rollback for $service: its current image was removed from Docker"
+      continue
+    fi
     docker tag "$image" "clawdesk-rollback/$service:$project"
     printf '%s %s\n' "clawdesk-rollback/$service:$project" "$ref" >> "$GUARD_STATE"
   done
