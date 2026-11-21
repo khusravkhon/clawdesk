@@ -75,6 +75,8 @@ export type SourcesDeps = {
   fetchImpl?: typeof fetch;
   /** ClawDesk bridge in the Gateway container; absent or unreachable disables Notion sign-in. */
   bridge?: BridgeClient;
+  /** The ClawDesk Google app; stored in gog when the owner has no client of their own. */
+  googleClient?: { clientId: string; clientSecret: string };
 };
 
 export class SourcesService {
@@ -305,16 +307,23 @@ export class SourcesService {
   }
 
   async #google(): Promise<GoogleSourceDto> {
-    const empty: GoogleSourceDto = { available: false, clientConfigured: false, clientId: null, accounts: [], error: null };
+    const empty: GoogleSourceDto = { available: false, clientConfigured: false, clientId: null, builtInClient: false, accounts: [], error: null };
     const bridge = this.deps.bridge;
     if (!bridge || !(await bridge.available())) return empty;
     try {
-      const st = await bridge.googleStatus();
+      let st = await bridge.googleStatus();
       if (!st.installed) return empty;
+      const builtIn = this.deps.googleClient;
+      if (!st.clients.length && builtIn) {
+        await bridge.googleCredentials(JSON.stringify({ installed: { client_id: builtIn.clientId, client_secret: builtIn.clientSecret, auth_uri: "https://accounts.google.com/o/oauth2/auth", token_uri: "https://oauth2.googleapis.com/token", redirect_uris: ["http://localhost"] } }));
+        st = await bridge.googleStatus();
+      }
+      const clientId = st.clients.find((c) => c.default)?.client_id ?? st.clients[0]?.client_id ?? null;
       return {
         available: true,
         clientConfigured: st.clients.length > 0,
-        clientId: st.clients.find((c) => c.default)?.client_id ?? st.clients[0]?.client_id ?? null,
+        clientId,
+        builtInClient: !!builtIn && clientId === builtIn.clientId,
         accounts: st.accounts.filter((a) => a.email).map((a) => ({ email: a.email!, services: a.services ?? [] })),
         error: null,
       };

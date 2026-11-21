@@ -59,6 +59,8 @@ export const GoogleSourceDto = z.object({
   /** An OAuth client (the person's own Google Cloud project) is stored. */
   clientConfigured: z.boolean(),
   clientId: z.string().nullable(),
+  /** The stored client is the ClawDesk Google app: no Google Cloud steps for the owner. */
+  builtInClient: z.boolean(),
   accounts: z.array(z.object({ email: z.string(), services: z.array(z.string()) })),
   error: z.string().nullable(),
 });

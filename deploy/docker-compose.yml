@@ -141,6 +141,9 @@ services:
       WEB_DIST: /app/web
       LOG_LEVEL: ${PANEL_LOG_LEVEL:-info}
       CLAWDESK_SANDBOX: ${CLAWDESK_SANDBOX:-on}
+      # The ClawDesk Google app (docs/google-app.md): set, owners sign in to Google without their own Google Cloud app.
+      CLAWDESK_GOOGLE_CLIENT_ID: ${CLAWDESK_GOOGLE_CLIENT_ID:-}
+      CLAWDESK_GOOGLE_CLIENT_SECRET: ${CLAWDESK_GOOGLE_CLIENT_SECRET:-}
       FREELLMAPI_URL: http://127.0.0.1:3001
       FILES_DIR: /files
       FILES_HOST_PATH: ${CLAWDESK_FILES_DIR:-./files}

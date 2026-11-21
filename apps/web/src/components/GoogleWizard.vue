@@ -1,6 +1,6 @@
 <script setup lang="ts">
-// Google source, step by step: the person's own Google Cloud project and OAuth client (free, ~10 min),
-// then sign-in. Shown inside the Google card of the sources screen.
+// Google source: sign-in with the ClawDesk Google app when the install has one; otherwise (or on request)
+// the person's own Google Cloud project and OAuth client (free, ~10 min) first. Shown inside the Google card of the sources screen.
 import type { GoogleService, GoogleSourceDto, SourcesDto } from "@clawdesk/shared";
 import { Check, ExternalLink, LogIn, Upload } from "@lucide/vue";
 import { NA, NButton, NCheckbox, NCheckboxGroup, NInput, NSwitch, useMessage } from "naive-ui";
@@ -31,6 +31,9 @@ const starting = ref(false);
 const pasteMode = ref(false);
 const pasted = ref("");
 const completing = ref(false);
+/** Show the Google Cloud steps although the ClawDesk app is there (an owner who wants their own app). */
+const ownApp = ref(false);
+const cloudSteps = computed(() => !props.google.builtInClient || ownApp.value);
 
 const errText = (e: unknown) => (e instanceof ApiError ? e.body.message : String(e));
 const emailOk = computed(() => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.value.trim()));
@@ -88,6 +91,7 @@ async function completePasted(): Promise<void> {
 
 <template>
   <ol class="wizard">
+    <template v-if="cloudSteps">
     <li :class="{ done: google.clientConfigured }">
       <div class="step-title">{{ t("sources.google.s1") }}</div>
       <p>
@@ -122,7 +126,7 @@ async function completePasted(): Promise<void> {
         {{ t("sources.google.s4text") }}
         <n-a :href="`${CONSOLE}/auth/clients/create`" target="_blank" rel="noopener noreferrer">{{ t("sources.google.createClient") }} <external-link :size="12" /></n-a>
       </p>
-      <template v-if="!google.clientConfigured">
+      <template v-if="!google.clientConfigured || google.builtInClient">
         <label class="file">
           <upload :size="14" />
           <span>{{ t("sources.google.chooseFile") }}</span>
@@ -133,6 +137,7 @@ async function completePasted(): Promise<void> {
       </template>
       <p v-else class="ok"><check :size="14" /> {{ t("sources.google.clientReady") }}</p>
     </li>
+    </template>
     <li :class="{ disabled: !google.clientConfigured }">
       <div class="step-title">{{ t("sources.google.s5") }}</div>
       <template v-if="google.clientConfigured">
@@ -155,12 +160,17 @@ async function completePasted(): Promise<void> {
           <n-input v-model:value="pasted" placeholder="http://localhost:…/?state=…&code=…" />
           <n-button size="small" type="primary" :disabled="!pasted.startsWith('http://')" :loading="completing" @click="completePasted">{{ t("sources.google.finish") }}</n-button>
         </div>
+        <n-button v-if="google.builtInClient" text size="small" class="own-app" @click="ownApp = !ownApp">{{ ownApp ? t("sources.google.useClawdeskApp") : t("sources.google.useOwnApp") }}</n-button>
       </template>
     </li>
   </ol>
 </template>
 
 <style scoped>
+.own-app {
+  display: block;
+  margin-top: 10px;
+}
 .wizard {
   margin: 0;
   padding: 0;
