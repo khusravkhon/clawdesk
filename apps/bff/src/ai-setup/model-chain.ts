@@ -111,8 +111,16 @@ export async function readCatalog(gateway: GatewayService): Promise<CatalogModel
   return withClaudePlanModels(res.models ?? []);
 }
 
-// OpenClaw lists only Opus for a Claude plan, yet the same plan runs Sonnet (checked live on 2026.8.35).
-const CLAUDE_PLAN_EXTRA: CatalogModel[] = [{ id: "claude-sonnet-5", name: "Claude Sonnet 5", provider: "claude-cli" }];
+// OpenClaw lists only Opus 5 for a Claude plan, yet the same plan runs these (each checked live on 2026.8.35, 21.11.2026).
+const CLAUDE_PLAN_EXTRA: CatalogModel[] = [
+  ["claude-fable-5-2", "Claude Fable 5.2"],
+  ["claude-fable-5", "Claude Fable 5"],
+  ["claude-opus-5-5", "Claude Opus 5.5"],
+  ["claude-sonnet-5-5", "Claude Sonnet 5.5"],
+  ["claude-sonnet-5", "Claude Sonnet 5"],
+  ["claude-haiku-5-5", "Claude Haiku 5.5"],
+  ["claude-haiku-4-5", "Claude Haiku 4.5"],
+].map(([id, name]) => ({ id: id!, name, provider: "claude-cli" }));
 
 export function withClaudePlanModels(models: CatalogModel[]): CatalogModel[] {
   const plan = models.find((m) => m.provider === "claude-cli");

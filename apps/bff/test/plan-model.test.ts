@@ -13,7 +13,10 @@ import { createJuniorAgent } from "../src/provision/create-agent.js";
 
 it("a Claude plan also offers Sonnet, which OpenClaw does not list", () => {
   const opus = { id: "claude-opus-5", provider: "claude-cli", available: true };
-  expect(withClaudePlanModels([opus]).map((m) => `${m.provider}/${m.id}:${m.available}`)).toEqual(["claude-cli/claude-opus-5:true", "claude-cli/claude-sonnet-5:true"]);
+  const plan = withClaudePlanModels([opus]);
+  expect(plan.map((m) => m.id)).toEqual(expect.arrayContaining(["claude-opus-5", "claude-sonnet-5", "claude-haiku-5-5", "claude-fable-5-2"]));
+  expect(plan.every((m) => m.provider === "claude-cli" && m.available)).toBe(true);
+  expect(new Set(plan.map((m) => m.id)).size).toBe(plan.length);
   expect(withClaudePlanModels([{ id: "gemini-flash-latest", provider: "google", available: true }])).toHaveLength(1);
 });
 
