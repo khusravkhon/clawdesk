@@ -1315,6 +1315,7 @@
   "telegramTopics": {
     "title": "Group topics",
     "lead": "The bot replies as the agent assigned to each topic.",
+    "otherBot": "Already answers in a topic through another bot: {where}",
     "step1": "Create a Telegram group with topics enabled.",
     "step2": "Add the selected bot as a group administrator.",
     "step3": "Copy each topic link and paste it next to its agent.",

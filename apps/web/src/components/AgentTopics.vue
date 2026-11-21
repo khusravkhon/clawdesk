@@ -9,11 +9,14 @@ import { api, ApiError } from "../api/client";
 
 const { t } = useI18n();
 const message = useMessage();
-const props = withDefaults(defineProps<{ accountId?: string }>(), { accountId: "default" });
+/** bots: every connected bot, so a topic another bot answers is shown next to the agent here too. */
+const props = withDefaults(defineProps<{ accountId?: string; bots?: { accountId: string; label: string }[] }>(), { accountId: "default", bots: () => [] });
 
 const agents = ref<AgentListItemDto[]>([]);
 const current = ref<AgentTopicsDto | null>(null);
 const links = reactive<Record<string, string>>({});
+/** agentId → the other bots that answer it in a topic ("@bot · link"). */
+const elsewhere = ref<Record<string, string[]>>({});
 const loading = ref(false);
 const saving = ref(false);
 const error = ref<string | null>(null);
@@ -43,9 +46,20 @@ function fill(dto: AgentTopicsDto): void {
 async function load(): Promise<void> {
   loading.value = true;
   try {
-    const [list, topics] = await Promise.all([api.agents(), api.telegram.topics(props.accountId)]);
+    const others = props.bots.filter((b) => b.accountId !== props.accountId);
+    const [list, topics, ...otherTopics] = await Promise.all([
+      api.agents(),
+      api.telegram.topics(props.accountId),
+      // Another bot's topics are a hint only: one that fails to load just shows nothing.
+      ...others.map((b) => api.telegram.topics(b.accountId).catch(() => null)),
+    ]);
     agents.value = list.agents;
     fill(topics);
+    const found: Record<string, string[]> = {};
+    otherTopics.forEach((dto, i) => {
+      for (const x of dto?.topics ?? []) (found[x.agentId] ??= []).push(`${others[i]!.label} · ${x.link}`);
+    });
+    elsewhere.value = found;
   } catch (e) {
     error.value = errText(e);
   } finally {
@@ -93,7 +107,10 @@ onMounted(load);
 
     <div v-for="a in candidates" :key="a.id" class="row">
       <span class="name">{{ a.emoji ?? (a.role === 'main' ? '🧭' : '🤖') }} {{ a.name }}</span>
-      <n-input v-model:value="links[a.id]" size="small" clearable :placeholder="EXAMPLE_LINK" :status="linkStatus(a.id)" />
+      <div class="field">
+        <n-input v-model:value="links[a.id]" size="small" clearable :placeholder="EXAMPLE_LINK" :status="linkStatus(a.id)" />
+        <span v-for="where in elsewhere[a.id] ?? []" :key="where" class="elsewhere">{{ t("telegramTopics.otherBot", { where }) }}</span>
+      </div>
     </div>
     <p v-if="!candidates.length" class="hint">{{ t("telegramTopics.noAgents") }}</p>
     <n-alert v-if="invalid.length" type="error" :show-icon="false" class="block">{{ t("telegramTopics.invalid", { names: invalid.join(", ") }) }}</n-alert>
@@ -133,6 +150,16 @@ onMounted(load);
   gap: 10px;
   align-items: center;
   margin-bottom: 8px;
+}
+.field {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+.elsewhere {
+  font-size: 12px;
+  color: var(--text-2);
+  overflow-wrap: anywhere;
 }
 .name {
   font-size: 13.5px;
