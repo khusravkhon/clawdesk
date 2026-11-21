@@ -361,6 +361,8 @@ onMounted(async () => {
           <p class="hint">{{ t("sources.google.connectedHint") }}</p>
         </template>
         <n-alert v-else-if="!google?.available" type="info" :bordered="false">{{ t("sources.google.noGog") }}</n-alert>
+        <!-- The ClawDesk Google app: sign-in right away, no Google Cloud steps to hide. -->
+        <google-wizard v-else-if="google.builtInClient" :google="google" @updated="(d) => (data = d)" />
         <template v-else>
           <div class="google-callout">
             <div class="google-callout-icon">
