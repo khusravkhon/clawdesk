@@ -128,6 +128,12 @@ onMounted(load);
   gap: 8px;
   margin-bottom: 14px;
 }
+/* One row per skill or MCP server: a rounded tile, not a bare glass strip. */
+.item {
+  padding: 10px 14px;
+  border-radius: 12px;
+  background: var(--surface-2);
+}
 .group-title {
   font-size: 12px;
   font-weight: 600;

@@ -189,7 +189,14 @@ onMounted(() => {
 
 <style scoped>
 .block {
-  margin-bottom: 16px;
+  margin-bottom: 24px;
+}
+#memory-notes > label {
+  display: grid;
+  gap: 6px;
+  margin-bottom: 14px;
+  font-size: 13px;
+  color: var(--text-2);
 }
 .hero {
   display: flex;
@@ -219,6 +226,7 @@ onMounted(() => {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 16px;
+  align-items: start;
 }
 .card {
   background: var(--surface);
