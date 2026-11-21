@@ -210,7 +210,17 @@ async function googleStatus() {
   if (!(await gogInstalled())) return { status: 200, body: { installed: false, clients: [], accounts: [] } };
   const [clients, accounts] = await Promise.all([runGog(["auth", "credentials", "list", "--json"]), runGog(["auth", "list", "--json"])]);
   if (clients.code !== 0 || accounts.code !== 0) return { status: 502, body: { error: "gog_failed", message: tail(clients.err || accounts.err) } };
-  return { status: 200, body: { installed: true, clients: parseJson(clients.out)?.clients ?? [], accounts: parseJson(accounts.out)?.accounts ?? [] } };
+  // gog lists a client without its id; the id is in the client's file (the secret is in the keyring).
+  const list = await Promise.all((parseJson(clients.out)?.clients ?? []).map(async (c) => {
+    if (c.client_id || typeof c.path !== "string") return c;
+    try {
+      const id = JSON.parse(await fs.readFile(c.path, "utf8")).client_id;
+      return typeof id === "string" ? { ...c, client_id: id } : c;
+    } catch {
+      return c;
+    }
+  }));
+  return { status: 200, body: { installed: true, clients: list, accounts: parseJson(accounts.out)?.accounts ?? [] } };
 }
 
 let gogPresent = null;
