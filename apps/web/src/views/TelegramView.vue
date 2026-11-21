@@ -307,7 +307,7 @@ onBeforeUnmount(() => { disposed = true; clearInterval(pollTimer); });
         </n-card>
         <!-- 4. a topic per agent in a group -->
         <n-card v-if="status && step === 3" :title="t('telegramTopics.title')" class="mt">
-          <AgentTopics :key="accountId" :account-id="accountId" :bots="botOptions.map((o) => ({ accountId: o.value, label: o.label }))" />
+          <AgentTopics :key="accountId" :account-id="accountId" />
         </n-card>
       </n-spin>
     </n-space>
