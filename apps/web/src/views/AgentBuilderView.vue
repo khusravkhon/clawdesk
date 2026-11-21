@@ -14,6 +14,7 @@ import {
   NPopconfirm,
   NRadio,
   NRadioGroup,
+  NSelect,
   NSpace,
   NSpin,
   NStep,
@@ -67,6 +68,9 @@ const schedules = ref<ScheduleRow[]>([]);
 const aiMode = ref<"inherit" | "own" | "free">("inherit");
 const freeReady = ref(false);
 const mainModel = ref<string | null>(null);
+/** Other models the main agent's AI offers (e.g. Sonnet on its Claude plan); null keeps the main model. */
+const planModels = ref<{ label: string; value: string }[]>([]);
+const pickedModel = ref<string | null>(null);
 const mainConnected = ref(false);
 const sandboxEnabled = ref(true);
 const telegramReady = ref(false);
@@ -89,6 +93,14 @@ async function load(): Promise<void> {
     sandboxEnabled.value = agents.sandboxEnabled;
     mainConnected.value = ai.connected;
     if (!ai.connected) aiMode.value = "own";
+    else {
+      const chain = await api.ai.models("main").catch(() => null);
+      const main = chain?.chain[0];
+      if (main) {
+        planModels.value = [main, ...chain.choices.filter((m) => m.provider === main.provider && m.ready)].map((m) => ({ label: m.label, value: m.ref }));
+        pickedModel.value = main.ref;
+      }
+    }
     freeReady.value = (await api.freeModels.status().catch(() => null))?.ready ?? false;
     filesHostPath.value = (await api.sources.status().catch(() => null))?.folder.hostPath ?? null;
     const tg = await api.telegram.status().catch(() => null);
@@ -178,6 +190,7 @@ async function create(): Promise<void> {
       values: { ...values },
       canAskMain: canAskMain.value,
       ai: aiMode.value,
+      model: aiMode.value === "inherit" ? pickedModel.value : null,
       schedules: payload,
       timezone: timezone.value,
       deliverToTelegram: telegramReady.value && deliverToTelegram.value,
@@ -366,6 +379,10 @@ onMounted(load);
                 {{ t("builder.aiInherit") }}
                 <n-text depth="3"> — {{ mainConnected ? (mainModel ?? "") : t("builder.mainNotConnected") }}</n-text>
               </n-radio>
+              <div v-if="aiMode === 'inherit' && planModels.length > 1" class="plan-model">
+                <n-text depth="3">{{ t("builder.aiModel") }}</n-text>
+                <n-select v-model:value="pickedModel" :options="planModels" size="small" />
+              </div>
               <n-radio value="own">{{ t("builder.aiOwn") }}</n-radio>
               <!-- Free models: personal-mode juniors only (never the main agent or company teams). -->
               <n-radio v-if="template?.mode === 'personal'" value="free" :disabled="!freeReady">
@@ -408,6 +425,12 @@ onMounted(load);
 </template>
 
 <style scoped>
+.plan-model {
+  display: grid;
+  gap: 4px;
+  max-width: 320px;
+  margin-left: 24px;
+}
 .tpl-wrap {
   position: relative;
   height: 100%;

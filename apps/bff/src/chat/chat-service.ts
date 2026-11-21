@@ -41,6 +41,8 @@ export function toChatMessages(raw: RawChatMessage[]): ChatMessageDto[] {
     const at = m.timestamp ?? null;
     if (m.role === "user") {
       const text = textOf(m);
+      // OpenClaw's own turns (e.g. resuming after a Gateway restart) arrive as user messages marked "[System]".
+      if (text.startsWith("[System]")) return;
       const attachments = attachmentsOf(partsOf(m));
       if (text || attachments.length) out.push({ id, role: "user", text, tools: [], attachments, at, status: "ok" });
       pendingTools = [];

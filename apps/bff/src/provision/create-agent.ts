@@ -1,12 +1,13 @@
 import { FREE_MODEL_REF, type CreateAgentRequest, type CreateAgentResultDto } from "@clawdesk/shared";
 import { renderTemplateFiles, WORKSPACE_FILES, type LoadedTemplate } from "@clawdesk/templates";
 import { eq } from "drizzle-orm";
+import path from "node:path";
 import type { Logger } from "pino";
 import type { Db } from "../db/client.js";
 import { agents, agentSourceGrants, dataSources, schedules } from "../db/schema.js";
 import { patchConfig } from "../gateway/config-patch.js";
 import type { GatewayService } from "../gateway/gateway-service.js";
-import { readChain } from "../ai-setup/model-chain.js";
+import { baseRef, readCatalog, readChain } from "../ai-setup/model-chain.js";
 import { findTemplate } from "./agent-profile.js";
 import { runSaga } from "./saga.js";
 import { juniorBlockFor, setNotionBlock } from "../sources/notion-pattern.js";
@@ -67,8 +68,17 @@ export async function createJuniorAgent(deps: CreateAgentDeps, req: CreateAgentR
   if (req.ai === "free" && template.mode !== "personal") throw new CreateAgentError("invalid_values", "free models are only available for personal assistants");
   // "Same as main" takes the main agent's whole chain, backups included (kept in sync by syncFollowers).
   const mainChain = req.ai === "inherit" ? await readChain(gateway, "main") : [];
-  const model = req.ai === "inherit" ? (mainChain[0] ?? null) : req.ai === "free" ? FREE_MODEL_REF : null;
-  const modelSetting = req.ai === "inherit" && mainChain.length ? { primary: mainChain[0], fallbacks: mainChain.slice(1) } : model;
+  // Another model of the main agent's provider: its credentials, its own chain (it no longer follows the main one).
+  const picked = req.ai === "inherit" && req.model && mainChain.length && req.model !== baseRef(mainChain[0]!) ? req.model : null;
+  if (picked) {
+    const provider = baseRef(mainChain[0]!).split("/")[0];
+    if (!(await readCatalog(gateway)).some((m) => `${m.provider}/${m.id}` === picked && m.provider === provider)) {
+      throw new CreateAgentError("invalid_values", `unknown model for the main agent's AI: ${picked}`);
+    }
+  }
+  const chain = picked ? [picked, ...mainChain.filter((ref) => baseRef(ref) !== picked)] : mainChain;
+  const model = req.ai === "inherit" ? (chain[0] ?? null) : req.ai === "free" ? FREE_MODEL_REF : null;
+  const modelSetting = req.ai === "inherit" && chain.length ? { primary: chain[0], fallbacks: chain.slice(1) } : model;
   const sandboxApplied = deps.sandboxEnabled && template.sandbox;
   const cronJobIds: string[] = [];
   let createdAgentId: string | undefined;
@@ -86,10 +96,11 @@ export async function createJuniorAgent(deps: CreateAgentDeps, req: CreateAgentR
         // OpenClaw ids are ASCII; the Cyrillic display name is set right after.
         run: async () => {
           let res: { agentId: string } | undefined;
+          const home = await mainWorkspace(gateway);
           // A just-deleted agent keeps its id while OpenClaw finishes cleanup; take the next free one.
           for (let attempt = 0; !res; attempt++) {
             try {
-              res = await gateway.request<{ agentId: string }>("agents.create", { name: agentId, ...(template.emoji ? { emoji: template.emoji } : {}) });
+              res = await gateway.request<{ agentId: string }>("agents.create", { name: agentId, ...(home ? { workspace: juniorWorkspace(home, agentId) } : {}), ...(template.emoji ? { emoji: template.emoji } : {}) });
             } catch (error) {
               if (attempt >= 4 || !/deletion cleanup is still pending/i.test((error as Error).message)) throw error;
               taken.add(agentId);
@@ -209,7 +220,8 @@ export async function createJuniorAgent(deps: CreateAgentDeps, req: CreateAgentR
                 displayName,
                 avatar: template.emoji ?? null,
                 purpose,
-                model,
+                // Null: its own models, so syncFollowers leaves them alone.
+                model: picked ? null : model,
                 canAskMain: req.canAskMain,
                 sandbox: sandboxApplied,
                 status: "ready",
@@ -248,6 +260,35 @@ export async function createJuniorAgent(deps: CreateAgentDeps, req: CreateAgentR
   return { agentId, displayName, model, cronJobIds, sandboxApplied };
 }
 
+async function mainWorkspace(gateway: GatewayService): Promise<string | undefined> {
+  const { config } = await gateway.request<{ config?: { agents?: { defaults?: { workspace?: string } } } }>("config.get", {});
+  return config?.agents?.defaults?.workspace?.trim() || undefined;
+}
+
+/**
+ * By default OpenClaw puts a junior's workspace inside the main one (<main>/<id>), and agents.delete never
+ * removes a folder that overlaps another agent's: so it gets a sibling folder, like OpenClaw's own default.
+ */
+export function juniorWorkspace(mainWorkspace: string, agentId: string): string {
+  return path.posix.join(path.posix.dirname(mainWorkspace.replace(/\/+$/, "")), `workspace-${agentId}`);
+}
+
+/**
+ * agents.delete. Right after a Gateway restart OpenClaw 2026.11 answers UNAVAILABLE "Agent configuration was
+ * saved but its application to the active Gateway was not confirmed": the deletion is saved and applied with
+ * the next reload. It counts as done once agents.list no longer has the agent.
+ */
+export async function deleteAgentInGateway(gateway: GatewayService, agentId: string): Promise<{ failed?: { path: string; reason: string }[]; purgeFailed?: boolean }> {
+  try {
+    return await gateway.request("agents.delete", { agentId, deleteFiles: true });
+  } catch (error) {
+    if (!/configuration was saved but its application/i.test(String((error as Error).message))) throw error;
+    const list = await gateway.request<{ agents: { id: string }[] }>("agents.list", {});
+    if (list.agents.some((a) => a.id === agentId)) throw error;
+    return {};
+  }
+}
+
 /** Removes a junior agent: its cron jobs, the OpenClaw agent (config + files) and our rows. */
 export async function deleteJuniorAgent(deps: Pick<CreateAgentDeps, "gateway" | "db" | "logger">, agentId: string): Promise<void> {
   if (agentId === "main") throw new CreateAgentError("invalid_values", "the main agent cannot be deleted");
@@ -260,7 +301,7 @@ export async function deleteJuniorAgent(deps: Pick<CreateAgentDeps, "gateway" | 
       await deps.gateway.request("cron.remove", { id: job.id });
     }
   }
-  const deleted = await deps.gateway.request<{ failed?: { path: string; reason: string }[]; purgeFailed?: boolean }>("agents.delete", { agentId, deleteFiles: true });
+  const deleted = await deleteAgentInGateway(deps.gateway, agentId);
   if (deleted.failed?.length || deleted.purgeFailed) {
     // Leftover files keep the id fenced and can stop the next Gateway start.
     deps.logger.warn({ agentId, failed: deleted.failed, purgeFailed: deleted.purgeFailed }, "OpenClaw could not remove all files of the deleted agent");

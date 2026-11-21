@@ -78,8 +78,10 @@ export class AiSetupService {
     const res = await this.gateway.request<{ providers?: { provider?: string; id?: string; status?: string }[] }>("models.authStatus", { agentId });
     // Declared providers without a usable credential report status "missing".
     const providers = (res.providers ?? []).filter((p) => p.status !== "missing").map((p) => p.provider ?? p.id ?? "unknown");
-    // A Claude plan runs Anthropic models on Claude Code's own login, so OpenClaw reports anthropic as "missing".
-    if (!providers.length && (await readChain(this.gateway, agentId))[0]?.startsWith("anthropic/") && (await this.claudePlanSignedIn())) providers.push("anthropic");
+    // A Claude plan runs on Claude Code's own login, so OpenClaw reports anthropic as "missing". The plan's
+    // activation sets "claude-cli/…"; an Anthropic model on the same login is "anthropic/…".
+    const primary = (await readChain(this.gateway, agentId))[0] ?? "";
+    if (!providers.length && /^(anthropic|claude-cli)\//.test(primary) && (await this.claudePlanSignedIn())) providers.push("anthropic");
     return { agentId, connected: providers.length > 0, providers };
   }
 

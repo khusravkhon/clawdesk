@@ -22,6 +22,7 @@ import { strToU8, zipSync } from "fflate";
 import { ChatService } from "../chat/chat-service.js";
 import { openDb } from "../db/client.js";
 import { patchConfig } from "../gateway/config-patch.js";
+import { deleteAgentInGateway } from "../provision/create-agent.js";
 import { loadOrCreateDeviceIdentity } from "../gateway/device-identity.js";
 import { GatewayService, PANEL_OPERATOR_SCOPES } from "../gateway/gateway-service.js";
 import { DeviceTokenStore } from "../gateway/token-store.js";
@@ -182,6 +183,14 @@ async function main(): Promise<void> {
       assert.deepEqual(missing, [], `the Gateway no longer offers: ${missing.join(", ")}`);
     });
 
+    // OpenClaw 2026.11 loads the model catalog after start: the first models.list can be empty for a few seconds.
+    const modelsWhenLoaded = async () => {
+      for (let attempt = 0; ; attempt++) {
+        const res = await gateway.request<{ models?: unknown }>("models.list", { view: "all" });
+        if ((Array.isArray(res.models) && res.models.length) || attempt >= 15) return res;
+        await new Promise((resolve) => setTimeout(resolve, 2_000));
+      }
+    };
     await step("read-only RPCs, the panel's params and the fields it reads", async () => {
       const today = new Date().toISOString().slice(0, 10);
       const [execQueue, pluginQueue, history, audit, channels, models, auth, sessions, usage, skills, detect] = await Promise.all([
@@ -190,7 +199,7 @@ async function main(): Promise<void> {
         gateway.request<{ items?: unknown }>("approval.history", { limit: 20 }),
         gateway.request<{ events?: unknown }>("audit.list", { limit: 50 }),
         gateway.request<unknown>("channels.status", {}),
-        gateway.request<{ models?: unknown }>("models.list", { view: "all" }),
+        modelsWhenLoaded(),
         gateway.request<{ providers?: unknown }>("models.authStatus", { agentId: "main" }),
         gateway.request<{ sessions?: unknown }>("sessions.list", { limit: 500 }),
         gateway.request<{ aggregates?: { daily?: unknown } }>("sessions.usage", { agentScope: "all", startDate: today, endDate: today, mode: "specific", timeZone: "UTC", limit: 500 }),
@@ -518,7 +527,7 @@ async function main(): Promise<void> {
     });
 
     await step("agents.delete", async () => {
-      const result = await gateway.request<{ failed?: { path: string; reason: string }[] }>("agents.delete", { agentId, deleteFiles: true });
+      const result = await deleteAgentInGateway(gateway, agentId!);
       assert.deepEqual(result.failed ?? [], [], "deleted agent left files in the Gateway state directory");
       const list = await gateway.request<{ agents: { id: string }[] }>("agents.list", {});
       assert.ok(!list.agents.some((a) => a.id === agentId), "deleted agent still listed");

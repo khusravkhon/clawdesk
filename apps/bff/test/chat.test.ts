@@ -23,6 +23,14 @@ describe("toChatMessages", () => {
     ]);
   });
 
+  it("hides OpenClaw's own [System] turns instead of showing them as the owner's message", () => {
+    const out = toChatMessages([
+      { role: "user", content: "[System] Your previous turn was interrupted by a gateway restart.", timestamp: 1 },
+      { role: "user", content: "привет", timestamp: 2 },
+    ]);
+    expect(out.map((m) => [m.role, m.text])).toEqual([["user", "привет"]]);
+  });
+
   it("turns OpenClaw's failure placeholder into one error bubble, however often it retried", () => {
     const failed = { role: "assistant", stopReason: "error", content: [{ type: "text", text: "The agent run failed before producing a reply." }] };
     const out = toChatMessages([{ role: "user", content: "Привет", timestamp: 1 }, { ...failed, timestamp: 2 }, { ...failed, timestamp: 3 }, { ...failed, timestamp: 4 }]);

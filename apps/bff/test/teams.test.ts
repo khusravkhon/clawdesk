@@ -76,10 +76,11 @@ describe("project teams (screen 11)", () => {
       },
     } as unknown as BridgeClient;
     const linked: unknown[] = [];
-    const telegram = { linkGroup: async (chatId: string, topics: unknown) => linked.push({ chatId, topics }), unlinkGroup: async () => undefined } as unknown as TelegramService;
+    const unlinked: string[] = [];
+    const telegram = { linkGroup: async (chatId: string, topics: unknown) => linked.push({ chatId, topics }), unlinkGroup: async (chatId: string) => unlinked.push(chatId) } as unknown as TelegramService;
     const fetchImpl = (async () => new Response(JSON.stringify({ permissions: { push: opts.push ?? true } }), { status: opts.github ?? 200 })) as typeof fetch;
     const service = new TeamService({ gateway, db, logger: pino({ level: "silent" }), bridge, space, telegram, sandboxEnabled: true, fetchImpl });
-    return { service, calls, bridgeCalls, linked, gatewayConfig };
+    return { service, calls, bridgeCalls, linked, unlinked, gatewayConfig };
   }
 
   const request = (roles = ["pm", "developer", "reviewer"]) =>
@@ -164,8 +165,8 @@ describe("project teams (screen 11)", () => {
     await expect(service.linkTelegram("shop-app", [{ role: "pm", link: "https://t.me/c/1/2" }, { role: "developer", link: "https://t.me/c/22345678/3" }])).rejects.toThrow();
   });
 
-  it("returns 409 before removing project executor teams or Telegram-linked teams", async () => {
-    const { service, calls, bridgeCalls } = setup();
+  it("returns 409 before removing project executor teams, and unlinks the Telegram group of a team it removes", async () => {
+    const { service, calls, bridgeCalls, unlinked } = setup();
     const app = Fastify();
     registerTeamRoutes(app, { teams: service });
     try {
@@ -181,18 +182,25 @@ describe("project teams (screen 11)", () => {
       bridgeCalls.length = 0;
 
       const remove = (id: string) => app.inject({ method: "DELETE", url: `/api/teams/${id}` });
-      for (const [id, error] of [["executors", "project_executors"], ["shop-app", "telegram_group_linked"]] as const) {
-        const response = await remove(id);
-        expect(response.statusCode).toBe(409);
-        expect(response.json()).toMatchObject({ error });
-      }
+      const response = await remove("executors");
+      expect(response.statusCode).toBe(409);
+      expect(response.json()).toMatchObject({ error: "project_executors" });
       db.update(teamsTable).set({ projectId: null }).where(eq(teamsTable.id, "executors")).run();
       expect((await remove("executors")).statusCode).toBe(409);
       expect(calls).toEqual([]);
       expect(bridgeCalls).toEqual([]);
+      expect(unlinked).toEqual([]);
       expect(db.select().from(teamsTable).all()).toHaveLength(3);
       expect(db.select().from(agents).where(eq(agents.id, "project-qa")).get()?.teamId).toBe("executors");
       expect(db.select().from(channelBindings).all()).toHaveLength(1);
+
+      const groupId = db.select().from(teamsTable).where(eq(teamsTable.id, "shop-app")).get()!.telegramGroupId!;
+      expect((await remove("shop-app")).statusCode).toBe(200);
+      expect(unlinked).toEqual([groupId]);
+      expect(db.select().from(channelBindings).all()).toEqual([]);
+      expect(db.select().from(agents).where(eq(agents.teamId, "shop-app")).all()).toEqual([]);
+      expect(db.select().from(teamsTable).where(eq(teamsTable.id, "shop-app")).get()).toBeUndefined();
+      bridgeCalls.length = 0;
 
       expect((await remove("manual")).statusCode).toBe(200);
       expect(bridgeCalls).toEqual(["remove:manual"]);

@@ -19,7 +19,7 @@ const repo = reactive<Record<string, TeamRepoStatusDto | null>>({});
 const busy = reactive<Record<string, string | null>>({});
 const pr = reactive<Record<string, PullRequestDto | null>>({});
 
-const KNOWN = new Set(["token_rejected", "repo_not_found", "no_push_permission", "github_unreachable", "nothing_to_push", "no_owner", "telegram_links", "git_failed", "project_executors", "telegram_group_linked"]);
+const KNOWN = new Set(["token_rejected", "repo_not_found", "no_push_permission", "github_unreachable", "nothing_to_push", "no_owner", "telegram_links", "git_failed", "project_executors"]);
 const errText = (e: unknown) => (e instanceof ApiError ? (KNOWN.has(e.body.error) ? t(`teams.errors.${e.body.error}`, { detail: e.body.message }) : e.body.message) : String(e));
 const ROLES: TeamRole[] = ["pm", "developer", "reviewer"];
 const TOKEN_PAGE = "https://github.com/settings/personal-access-tokens/new";

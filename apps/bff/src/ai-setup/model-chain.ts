@@ -108,7 +108,26 @@ export async function writeChain(gateway: GatewayService, agentId: string, chain
 
 export async function readCatalog(gateway: GatewayService): Promise<CatalogModel[]> {
   const res = await gateway.request<{ models?: CatalogModel[] }>("models.list", { view: "all" });
-  return res.models ?? [];
+  return withClaudePlanModels(res.models ?? []);
+}
+
+// OpenClaw 2026.8.35's Claude plan catalog lacks the newest models, yet the plan runs them (each checked live, 21.11.2026).
+// Models OpenClaw already lists keep its own entry.
+const CLAUDE_PLAN_EXTRA: CatalogModel[] = [
+  ["claude-fable-5-2", "Fable 5.2"],
+  ["claude-fable-5", "Fable 5"],
+  ["claude-opus-5-5", "Opus 5.5"],
+  ["claude-sonnet-5-5", "Sonnet 5.5"],
+  ["claude-sonnet-5", "Sonnet 5"],
+  ["claude-haiku-5-5", "Haiku 5.5"],
+  ["claude-haiku-4-5", "Haiku 4.5"],
+].map(([id, name]) => ({ id: id!, name: `Claude ${name} (Claude CLI)`, provider: "claude-cli" }));
+
+export function withClaudePlanModels(models: CatalogModel[]): CatalogModel[] {
+  const plan = models.find((m) => m.provider === "claude-cli");
+  if (!plan) return models;
+  const extra = CLAUDE_PLAN_EXTRA.filter((e) => !models.some((m) => m.provider === e.provider && m.id === e.id));
+  return [...models, ...extra.map((e) => ({ ...e, available: plan.available }))];
 }
 
 /**
