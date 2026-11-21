@@ -66,6 +66,8 @@ export const CreateAgentRequest = z.object({
    * creation; free: pooled free models (personal mode only, never the main agent).
    */
   ai: z.enum(["inherit", "own", "free"]),
+  /** With "inherit": another model of the main agent's provider (e.g. Sonnet on its Claude plan). Null: the main model. */
+  model: z.string().max(200).nullable().default(null),
   schedules: z.array(ScheduleInput).max(10),
   /** IANA timezone for schedules, from the person's browser. */
   timezone: z.string().min(1).max(64),

@@ -373,6 +373,7 @@
     "noSchedules": "This template has no default schedules.",
     "addSchedule": "Add schedule",
     "aiInherit": "Same as the main assistant (backup models included)",
+    "aiModel": "Model (same subscription or key)",
     "aiOwn": "Own access: key or subscription (connect after creating)",
     "mainNotConnected": "the main assistant has no AI yet",
     "create": "Create agent",

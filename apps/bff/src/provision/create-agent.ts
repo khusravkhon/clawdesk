@@ -7,7 +7,7 @@ import type { Db } from "../db/client.js";
 import { agents, agentSourceGrants, dataSources, schedules } from "../db/schema.js";
 import { patchConfig } from "../gateway/config-patch.js";
 import type { GatewayService } from "../gateway/gateway-service.js";
-import { readChain } from "../ai-setup/model-chain.js";
+import { baseRef, readCatalog, readChain } from "../ai-setup/model-chain.js";
 import { findTemplate } from "./agent-profile.js";
 import { runSaga } from "./saga.js";
 import { juniorBlockFor, setNotionBlock } from "../sources/notion-pattern.js";
@@ -68,8 +68,17 @@ export async function createJuniorAgent(deps: CreateAgentDeps, req: CreateAgentR
   if (req.ai === "free" && template.mode !== "personal") throw new CreateAgentError("invalid_values", "free models are only available for personal assistants");
   // "Same as main" takes the main agent's whole chain, backups included (kept in sync by syncFollowers).
   const mainChain = req.ai === "inherit" ? await readChain(gateway, "main") : [];
-  const model = req.ai === "inherit" ? (mainChain[0] ?? null) : req.ai === "free" ? FREE_MODEL_REF : null;
-  const modelSetting = req.ai === "inherit" && mainChain.length ? { primary: mainChain[0], fallbacks: mainChain.slice(1) } : model;
+  // Another model of the main agent's provider: its credentials, its own chain (it no longer follows the main one).
+  const picked = req.ai === "inherit" && req.model && mainChain.length && req.model !== baseRef(mainChain[0]!) ? req.model : null;
+  if (picked) {
+    const provider = baseRef(mainChain[0]!).split("/")[0];
+    if (!(await readCatalog(gateway)).some((m) => `${m.provider}/${m.id}` === picked && m.provider === provider)) {
+      throw new CreateAgentError("invalid_values", `unknown model for the main agent's AI: ${picked}`);
+    }
+  }
+  const chain = picked ? [picked, ...mainChain.filter((ref) => baseRef(ref) !== picked)] : mainChain;
+  const model = req.ai === "inherit" ? (chain[0] ?? null) : req.ai === "free" ? FREE_MODEL_REF : null;
+  const modelSetting = req.ai === "inherit" && chain.length ? { primary: chain[0], fallbacks: chain.slice(1) } : model;
   const sandboxApplied = deps.sandboxEnabled && template.sandbox;
   const cronJobIds: string[] = [];
   let createdAgentId: string | undefined;
@@ -211,7 +220,8 @@ export async function createJuniorAgent(deps: CreateAgentDeps, req: CreateAgentR
                 displayName,
                 avatar: template.emoji ?? null,
                 purpose,
-                model,
+                // Null: its own models, so syncFollowers leaves them alone.
+                model: picked ? null : model,
                 canAskMain: req.canAskMain,
                 sandbox: sandboxApplied,
                 status: "ready",
