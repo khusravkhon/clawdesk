@@ -480,6 +480,8 @@ onMounted(load);
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(min(100%, 340px), 1fr));
   gap: 16px;
+  /* A department card is as tall as its own content. */
+  align-items: start;
   margin-bottom: 20px;
 }
 
