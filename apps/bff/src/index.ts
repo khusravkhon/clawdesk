@@ -62,7 +62,7 @@ const freeModels = new FreeModelsService(gateway, logger.child({ component: "fre
   accountSecret: config.gateway.sharedToken,
   bridge,
 });
-const sources = new SourcesService({ gateway, db, logger: logger.child({ component: "sources" }), files: config.files, bridge });
+const sources = new SourcesService({ gateway, db, logger: logger.child({ component: "sources" }), files: config.files, bridge, googleClient: config.googleClient });
 const skills = new SkillsService({ gateway, db, bridge, logger: logger.child({ component: "skills" }) });
 const mcp = new McpService({ gateway, db, bridge, logger: logger.child({ component: "mcp" }) });
 const space = new SpaceService({ db, logger: logger.child({ component: "space" }) });

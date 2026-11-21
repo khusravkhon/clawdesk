@@ -25,6 +25,12 @@ const Env = z.object({
   FILES_DIR: z.string().optional(),
   /** The same folder as the person sees it on their computer, shown in the UI. */
   FILES_HOST_PATH: z.string().optional(),
+  /**
+   * The ClawDesk Google app ("Desktop app" OAuth client; Google does not treat its secret as confidential).
+   * Set: owners sign in to Google in one click instead of creating their own Google Cloud app.
+   */
+  CLAWDESK_GOOGLE_CLIENT_ID: z.string().optional(),
+  CLAWDESK_GOOGLE_CLIENT_SECRET: z.string().optional(),
   /** ClawDesk bridge in the Gateway container (deploy/clawdesk-bridge.mjs); shares the Gateway's loopback. */
   CLAWDESK_BRIDGE_URL: z.string().url().default("http://127.0.0.1:18790"),
   /**
@@ -49,6 +55,8 @@ export type AppConfig = {
   sandboxEnabled: boolean;
   freeModels: { baseUrl: string | undefined; setupCode: string | undefined };
   files: { dir: string | undefined; hostPath: string | undefined };
+  /** The ClawDesk Google app; undefined: owners create their own Google Cloud app. */
+  googleClient?: { clientId: string; clientSecret: string };
   bridgeUrl: string;
   trustProxy: string | false;
   backupDir: string | undefined;
@@ -71,6 +79,7 @@ export function loadConfig(source: NodeJS.ProcessEnv = process.env): AppConfig {
     sandboxEnabled: env.CLAWDESK_SANDBOX === "on",
     freeModels: { baseUrl: env.FREELLMAPI_URL?.replace(/\/$/, ""), setupCode: env.FREELLMAPI_SETUP_CODE || undefined },
     files: { dir: env.FILES_DIR ? path.resolve(env.FILES_DIR) : undefined, hostPath: env.FILES_HOST_PATH || env.FILES_DIR || undefined },
+    googleClient: env.CLAWDESK_GOOGLE_CLIENT_ID && env.CLAWDESK_GOOGLE_CLIENT_SECRET ? { clientId: env.CLAWDESK_GOOGLE_CLIENT_ID, clientSecret: env.CLAWDESK_GOOGLE_CLIENT_SECRET } : undefined,
     bridgeUrl: env.CLAWDESK_BRIDGE_URL.replace(/\/$/, ""),
     trustProxy: env.TRUST_PROXY.trim() || false,
     backupDir: env.BACKUP_DIR ? path.resolve(env.BACKUP_DIR) : undefined,

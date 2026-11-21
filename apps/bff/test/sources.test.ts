@@ -139,6 +139,27 @@ describe("sources", () => {
     expect((state.config.skills as Json).entries).toMatchObject({ gog: { enabled: true, env: { GOG_ACCOUNT: "me@gmail.com" } } });
   });
 
+  it("stores the ClawDesk Google app when the owner has none, and keeps an owner's own app", async () => {
+    const { gateway } = fakeGateway();
+    let clients: { client_id: string; default: boolean }[] = [];
+    const stored: string[] = [];
+    const bridge = {
+      available: async () => true,
+      googleStatus: async () => ({ installed: true, clients, accounts: [] }),
+      googleCredentials: async (json: string) => {
+        stored.push(json);
+        clients = [{ client_id: JSON.parse(json).installed.client_id, default: true }];
+        return { ok: true };
+      },
+    } as unknown as BridgeClient;
+    const s = new SourcesService({ gateway, db, logger: pino({ level: "silent" }), files: { dir: undefined, hostPath: undefined }, bridge, googleClient: { clientId: "clawdesk.apps.googleusercontent.com", clientSecret: "x" } });
+    expect((await s.status()).google).toMatchObject({ clientConfigured: true, builtInClient: true, clientId: "clawdesk.apps.googleusercontent.com" });
+    expect(stored).toHaveLength(1);
+    clients = [{ client_id: "own.apps.googleusercontent.com", default: true }];
+    expect((await s.status()).google).toMatchObject({ clientConfigured: true, builtInClient: false });
+    expect(stored).toHaveLength(1);
+  });
+
   it("refuses sign-in when the bridge is missing", async () => {
     const { gateway } = fakeGateway();
     await expect(service(gateway, notionApi(200)).startNotionOAuth("http://x")).rejects.toMatchObject({ code: "oauth_unavailable" });
