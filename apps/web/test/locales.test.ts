@@ -14,6 +14,12 @@ describe("translations", () => {
     expect(keys(tg).sort()).toEqual(base);
   });
 
+  it("no text has a bare @ (vue-i18n reads it as a linked message and the page breaks; write {'@'})", () => {
+    const value = (tree: object, key: string) => key.split(".").reduce<unknown>((node, part) => (node as Record<string, unknown>)[part], tree);
+    const bare = (tree: object) => keys(tree).filter((key) => String(value(tree, key)).replaceAll("{'@'}", "").includes("@"));
+    expect([...bare(ru), ...bare(en), ...bare(tg)]).toEqual([]);
+  });
+
   it("a text left empty on purpose is empty in every language", () => {
     const value = (tree: object, key: string) => key.split(".").reduce<unknown>((node, part) => (node as Record<string, unknown>)[part], tree);
     const emptyIn = (tree: object) => keys(tree).filter((key) => value(tree, key) === "");
