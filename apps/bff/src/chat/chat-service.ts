@@ -251,7 +251,7 @@ export class ChatService {
     for (const document of documents) {
       if (!this.texts || document.text.length <= MAX_INLINE_CHARS) continue;
       // Without the copy the message says so itself and the agent falls back to the attached file.
-      document.fullPath = await this.texts.libraryText(agentId, document.read.fileName, document.text).then((res) => res.path, () => undefined);
+      document.fullPath = await this.texts.libraryText(agentId, document.read.fileName.slice(0, 300), document.text.trim()).then((res) => res.path, () => undefined);
     }
     const block = documentsBlock(documents);
     const reads = documents.map((document) => document.read);

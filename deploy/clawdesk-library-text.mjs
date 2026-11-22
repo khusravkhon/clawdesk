@@ -7,8 +7,7 @@ import { withDirectoryWithin } from "./clawdesk-file-sync.mjs";
 // The full text the panel read out of a long attachment, as a file in the agent's workspace (folder "library").
 // The chat message carries only the beginning and this path, so the text is not paid for on every later turn;
 // the agent reads the parts it needs with its own file tool.
-// shortcut: copies are never deleted (also not when the owner removes the material from the panel's library);
-// add removal when the folder's size or that expectation becomes a problem.
+// When the owner removes the material from the panel's library, the panel removes this copy too.
 
 export const TEXT_DIR = "library";
 export const TEXT_LIMIT = 200_000;
@@ -16,8 +15,13 @@ const fail = (code, status = 409) => { throw new ProjectFolderError(code, status
 
 /** "Договор 2026.docx" + text → "Договор 2026.docx.1a2b3c4d.md": readable, and the same text lands in the same file. */
 export function textFileName(name, text) {
+  return hashedFileName(name, createHash("sha256").update(text).digest("hex").slice(0, 8));
+}
+
+/** The same name from the text's hash alone (its first 8 hex characters): what a removal knows. */
+export function hashedFileName(name, hash) {
   const safe = String(name).replace(/[^\p{L}\p{N} ._()+,'-]/gu, "_").replace(/^[ .]+/, "").slice(0, 80).trim() || "файл";
-  return `${safe}.${createHash("sha256").update(text).digest("hex").slice(0, 8)}.md`;
+  return `${safe}.${hash}.md`;
 }
 
 export class LibraryTexts {
@@ -44,5 +48,18 @@ export class LibraryTexts {
       if (error.code === "ELOOP" || error.code === "ENOTDIR" || error.message === "unsafe file path") fail("work_layout");
       throw error;
     }
+  }
+
+  /** Deletes the copy of the text with this hash (nothing to do when there is none). */
+  async remove(agentId, name, hash) {
+    if (typeof name !== "string" || !name || name.length > 300 || typeof hash !== "string" || !/^[a-f0-9]{8}$/.test(hash)) fail("invalid_library_text", 400);
+    const workspace = await agentWorkspace(this.stateDir, this.configPath, agentId);
+    try {
+      await withDirectoryWithin(this.stateDir, `${workspace}/${TEXT_DIR}`, (dir) => fs.rm(`${dir}/${hashedFileName(name, hash)}`, { force: true }));
+    } catch (error) {
+      if (error.code === "ELOOP" || error.code === "ENOTDIR" || error.message === "unsafe file path") fail("work_layout");
+      if (error.code !== "ENOENT") throw error;
+    }
+    return { removed: true };
   }
 }

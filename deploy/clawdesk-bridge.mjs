@@ -46,6 +46,7 @@
 //   GET  /library/inbound?after=<ms>        → { files: [{ id, name, mimeType, size, modifiedAt, agentIds }], more } documents sent to the bot
 //   POST /library/inbound/read { id }       → { id, mimeType, base64 } one of them (see clawdesk-library-inbound.mjs)
 //   POST /library/text { agentId, name, text } → { path } a long attachment's full text in the agent's workspace (see clawdesk-library-text.mjs)
+//   POST /library/text/remove { agentId, name, hash } → { removed } that copy, when the owner removes the material
 //   POST /openclaw/update    { version }    backup, then a helper container moves the Gateway to that verified OpenClaw
 
 import { spawn } from "node:child_process";
@@ -644,6 +645,10 @@ async function handle(req) {
   if (req.method === "POST" && url.pathname === "/library/text") {
     const body = await readJson(req, 1024 * 1024);
     return ownerFileCall(() => libraryTexts.write(body.agentId, body.name, body.text));
+  }
+  if (req.method === "POST" && url.pathname === "/library/text/remove") {
+    const body = await readJson(req);
+    return ownerFileCall(() => libraryTexts.remove(body.agentId, body.name, body.hash));
   }
   if (req.method === "POST" && url.pathname === "/library/inbound/read") {
     const body = await readJson(req);

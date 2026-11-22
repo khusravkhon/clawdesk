@@ -26,5 +26,14 @@ test("the text becomes a read-only file in the agent's library folder; a repeat 
   assert.equal((await fs.stat(file)).mode & 0o777, 0o444);
   assert.deepEqual(await texts.write("analyst", "ТЗ.docx", "Продавать книги."), first);
   await assert.rejects(texts.write("analyst", "ТЗ.docx", ""), { code: "invalid_library_text" });
+  // Removal by the text's hash deletes exactly that copy, and repeats safely.
+  const hash = /\.([a-f0-9]{8})\.md$/.exec(first.path)[1];
+  await texts.remove("analyst", "ТЗ.docx", "00000000");
+  await fs.stat(file);
+  await texts.remove("analyst", "ТЗ.docx", hash);
+  await assert.rejects(fs.stat(file), { code: "ENOENT" });
+  assert.deepEqual(await texts.remove("analyst", "ТЗ.docx", hash), { removed: true });
+  assert.deepEqual(await texts.remove("main", "ТЗ.docx", hash), { removed: true });
+  await assert.rejects(texts.remove("analyst", "ТЗ.docx", "../x"), { code: "invalid_library_text" });
   await assert.rejects(texts.write("../x", "ТЗ.docx", "a"), { status: 400 });
 });
