@@ -1,6 +1,6 @@
 import crypto from "node:crypto";
 import path from "node:path";
-import type { AddClawHubSkillRequest, ClawHubSearchDto, OwnSkillContentDto, OwnSkillRequest, SkillDto, SkillsDto, UploadSkillRequest } from "@clawdesk/shared";
+import type { AddClawHubSkillRequest, ClawHubSearchDto, OwnSkillContentDto, OwnSkillRequest, SharedSkillDto, SkillDto, SkillsDto, UploadSkillRequest } from "@clawdesk/shared";
 import { eq } from "drizzle-orm";
 import type { Logger } from "pino";
 import type { Db } from "../db/client.js";
@@ -24,7 +24,7 @@ import { ownSkillMd, parseSkillMd, readSkillArchive, SkillArchiveError, slugify,
 // which makes OpenClaw reload the list — for status and for the agents' next turn alike.
 
 type SkillRow = typeof skills.$inferSelect;
-type StatusSkill = { name?: string; baseDir?: string; source?: string };
+type StatusSkill = { name?: string; description?: string; baseDir?: string; source?: string; bundled?: boolean; disabled?: boolean; blockedByAgentFilter?: boolean };
 type SkillsStatus = { workspaceDir?: string; skills?: StatusSkill[] };
 type SearchResult = { installRef?: string; slug?: string; displayName?: string; summary?: string; trustState?: string };
 
@@ -49,8 +49,9 @@ export class SkillsService {
 
   async list(): Promise<SkillsDto> {
     const rows = this.deps.db.select().from(skills).all();
-    const installed = await this.#installed();
-    return { skills: rows.map((row) => this.#dto(row, installed)) };
+    const statuses = await this.#statuses();
+    const installed = this.#workspaceSkills(statuses);
+    return { skills: rows.map((row) => this.#dto(row, installed)), shared: this.#shared(statuses, new Set(rows.map((row) => row.slug))) };
   }
 
   async search(query: string): Promise<ClawHubSearchDto> {
@@ -205,12 +206,19 @@ export class SkillsService {
     return [...installed].filter(([, slugs]) => slugs.has(row.slug)).map(([agentId]) => agentId);
   }
 
+  async #statuses(): Promise<(readonly [string, SkillsStatus])[]> {
+    const agentIds = [...(await liveAgentIds(this.deps.gateway))];
+    return Promise.all(agentIds.map(async (agentId) => [agentId, await this.deps.gateway.request<SkillsStatus>("skills.status", { agentId }, { timeoutMs: 30_000 })] as const));
+  }
+
   /** agentId → (slug → skill folder) for every skill in each agent's own workspace. */
   async #installed(): Promise<Map<string, Map<string, string>>> {
-    const agentIds = [...(await liveAgentIds(this.deps.gateway))];
-    const entries = await Promise.all(
-      agentIds.map(async (agentId) => {
-        const status = await this.deps.gateway.request<SkillsStatus>("skills.status", { agentId }, { timeoutMs: 30_000 });
+    return this.#workspaceSkills(await this.#statuses());
+  }
+
+  #workspaceSkills(statuses: (readonly [string, SkillsStatus])[]): Map<string, Map<string, string>> {
+    return new Map(
+      statuses.map(([agentId, status]) => {
         const root = status.workspaceDir ? path.posix.join(status.workspaceDir, "skills") : null;
         const slugs = new Map<string, string>();
         for (const skill of status.skills ?? []) {
@@ -219,7 +227,22 @@ export class SkillsService {
         return [agentId, slugs] as const;
       }),
     );
-    return new Map(entries);
+  }
+
+  /** Skills put there outside the panel: the shared folder, an agent's workspace, etc. OpenClaw's own (bundled, plugins') are left out. */
+  #shared(statuses: (readonly [string, SkillsStatus])[], panelSlugs: Set<string>): SharedSkillDto[] {
+    const bySlug = new Map<string, SharedSkillDto>();
+    for (const [agentId, status] of statuses) {
+      for (const skill of status.skills ?? []) {
+        if (skill.bundled || skill.source === "openclaw-bundled" || skill.source === "openclaw-extra" || !skill.baseDir) continue;
+        const slug = path.posix.basename(skill.baseDir);
+        if (panelSlugs.has(slug)) continue;
+        const entry = bySlug.get(slug) ?? { slug, name: skill.name ?? slug, description: skill.description ?? null, agents: [] };
+        if (!skill.disabled && !skill.blockedByAgentFilter) entry.agents.push(agentId);
+        bySlug.set(slug, entry);
+      }
+    }
+    return [...bySlug.values()].sort((a, b) => a.name.localeCompare(b.name));
   }
 
   async #installAll(row: Omit<SkillRow, "createdAt">, agentIds: string[]): Promise<void> {

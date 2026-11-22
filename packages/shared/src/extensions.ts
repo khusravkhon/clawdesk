@@ -29,7 +29,17 @@ export const SkillDto = z.object({
 });
 export type SkillDto = z.infer<typeof SkillDto>;
 
-export const SkillsDto = z.object({ skills: z.array(SkillDto) });
+/** A skill OpenClaw sees that was not added in the panel (e.g. Agent Reach in the shared skills folder): shown, not managed. */
+export const SharedSkillDto = z.object({
+  slug: z.string(),
+  name: z.string(),
+  description: z.string().nullable(),
+  /** Agents that see it now. */
+  agents: z.array(z.string()),
+});
+export type SharedSkillDto = z.infer<typeof SharedSkillDto>;
+
+export const SkillsDto = z.object({ skills: z.array(SkillDto), shared: z.array(SharedSkillDto) });
 export type SkillsDto = z.infer<typeof SkillsDto>;
 
 export const ClawHubSkillDto = z.object({
