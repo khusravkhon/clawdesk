@@ -11,6 +11,11 @@ import { MAX_PDF_PAGES, pdfText } from "./pdf-text.js";
 export const MAX_FILE_CHARS = 40_000;
 /** Characters from all files of one message together. */
 export const MAX_MESSAGE_CHARS = 120_000;
+/**
+ * Characters of one file put into the message itself. The message stays in the session and is paid
+ * for on every later turn, so a longer file gives its beginning; the whole text is kept in the library.
+ */
+export const MAX_INLINE_CHARS = 12_000;
 
 /** Formats that are plain text; everything here is decoded, never parsed. */
 const PLAIN = new Set(["text/plain", "text/markdown", "text/csv", "text/tab-separated-values", "application/json"]);
@@ -22,7 +27,8 @@ const OFFICE = new Map<string, "docx" | "xlsx" | "pptx">([
   ["application/vnd.openxmlformats-officedocument.presentationml.presentation", "pptx"],
 ]);
 
-export type ExtractedDocument = { text: string; read: ChatAttachmentReadDto };
+/** `fullPath`: where the whole text lies in the agent's workspace, when the panel put it there (a long file). */
+export type ExtractedDocument = { text: string; read: ChatAttachmentReadDto; fullPath?: string };
 
 const truncate = (text: string): { text: string; truncated: boolean } =>
   text.length > MAX_FILE_CHARS ? { text: text.slice(0, MAX_FILE_CHARS), truncated: true } : { text, truncated: false };
@@ -123,7 +129,13 @@ export function documentsBlock(documents: ExtractedDocument[]): string {
       encoding && encoding !== "utf-8" ? `кодировка: ${encoding}` : null,
       state === "partial" ? "прочитано частично" : null,
     ].filter(Boolean);
-    return [`### Файл: ${fileName}${facts.length ? ` (${facts.join("; ")})` : ""}`, "", document.text].join("\n");
+    const cut = document.text.length > MAX_INLINE_CHARS;
+    const shown = cut ? document.text.slice(0, MAX_INLINE_CHARS) : document.text;
+    // The agent must know it sees a part, or it will answer about the whole file from its beginning.
+    const rest = !cut ? "" : document.fullPath
+      ? `\n\n[Показано начало: ${MAX_INLINE_CHARS} из ${document.text.length} символов. Весь прочитанный текст лежит в твоей рабочей папке: ${document.fullPath} — читай оттуда нужные части, прежде чем отвечать о файле целиком.]`
+      : `\n\n[Показано начало: ${MAX_INLINE_CHARS} из ${document.text.length} символов. Сам файл приложен к сообщению: прочитай его своими инструментами. Если не можешь — скажи владельцу, что видишь только начало, и попроси нужную часть.]`;
+    return [`### Файл: ${fileName}${facts.length ? ` (${facts.join("; ")})` : ""}`, "", `${shown}${rest}`].join("\n");
   });
   return [header, ...blocks].join("\n\n");
 }

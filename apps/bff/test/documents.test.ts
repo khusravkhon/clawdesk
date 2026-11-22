@@ -1,7 +1,7 @@
 import { Worker } from "node:worker_threads";
 import { zipSync, strToU8 } from "fflate";
 import { describe, expect, it, vi } from "vitest";
-import { documentsBlock, extractDocument, extractDocuments, MAX_FILE_CHARS, MAX_MESSAGE_CHARS } from "../src/documents/extract.js";
+import { documentsBlock, extractDocument, extractDocuments, MAX_FILE_CHARS, MAX_INLINE_CHARS, MAX_MESSAGE_CHARS } from "../src/documents/extract.js";
 import { docxText, xlsxText, pptxText, DocumentEncryptedError, DocumentUnreadableError } from "../src/documents/ooxml.js";
 import { OfficeWorkerPool } from "../src/documents/office-worker-pool.js";
 import { attribute, decodeXmlText, scanXml, XmlRefusedError } from "../src/documents/xml-text.js";
@@ -187,5 +187,14 @@ describe("reading attached documents (screen 9)", () => {
     // A file with no text contributes no block of its own.
     expect(block).not.toContain("scan.pdf");
     expect(documentsBlock([])).toBe("");
+  });
+
+  it("puts only the beginning of a long file into the message and says so", () => {
+    const read = { fileName: "long.txt", state: "read" as const, chars: 0, pages: null, readPages: null, sheets: null, slides: null, encoding: null };
+    const short = documentsBlock([{ text: "я".repeat(MAX_INLINE_CHARS), read }]);
+    expect(short).not.toContain("Показано начало");
+    const long = documentsBlock([{ text: `${"я".repeat(MAX_INLINE_CHARS)}хвост`, read }]);
+    expect(long).toContain(`Показано начало: ${MAX_INLINE_CHARS} из ${MAX_INLINE_CHARS + 5} символов`);
+    expect(long).not.toContain("хвост");
   });
 });

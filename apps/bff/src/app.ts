@@ -178,7 +178,7 @@ export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
   const reminders = deps.reminders ?? new ReminderService({ db: deps.db, gateway: deps.gateway, telegram: deps.telegram, mode: () => deps.space.mode(), timeZone: personalTimeZone });
   registerReminderRoutes(app, { reminders });
   const library = deps.library ?? new LibraryService(deps.db);
-  const chat = new ChatService(deps.gateway, library, deps.db);
+  const chat = new ChatService(deps.gateway, library, deps.db, deps.bridge);
   registerChatRoutes(app, { chat, personal: () => deps.space.mode() === "personal" });
 
   const notes = deps.notes ?? new MemoryNoteService({ db: deps.db, gateway: deps.gateway, logger: deps.logger.child({ component: "memory-notes" }) });

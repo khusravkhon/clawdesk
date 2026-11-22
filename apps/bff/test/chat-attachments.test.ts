@@ -186,4 +186,20 @@ describe("panel attachments (screen 9)", () => {
     expect(toGatewayAttachments([file(30, "text/csv", "budget.csv")])[0]!.type).toBe("file");
     expect(toGatewayAttachments([file(30, "image/jpeg", "photo.jpg")])[0]!.type).toBe("image");
   });
+
+  it("puts a long file's full text into the agent's folder and gives the message its beginning and the path", async () => {
+    const send = async (libraryText: () => Promise<{ path: string }>) => {
+      const calls: { method: string; params: Record<string, unknown> }[] = [];
+      const gateway = { hello: null, request: async (method: string, params: Record<string, unknown>) => { calls.push({ method, params }); return { runId: "run-1" }; } } as unknown as GatewayService;
+      await new ChatService(gateway, undefined, undefined, { libraryText }).send("main", "прочитай", [file(13_000, "text/plain", "long.txt")]);
+      return String(calls.find((call) => call.method === "chat.send")!.params.message);
+    };
+    const stored = await send(async () => ({ path: "library/long.txt.1a2b3c4d.md" }));
+    expect(stored).toContain("Показано начало: 12000 из 13000 символов");
+    expect(stored).toContain("library/long.txt.1a2b3c4d.md");
+    expect(stored.length).toBeLessThan(13_000);
+    // The bridge is down: the message still goes, and tells the agent to use the attached file.
+    const fallback = await send(async () => { throw new Error("bridge down"); });
+    expect(fallback).toContain("Сам файл приложен к сообщению");
+  });
 });
