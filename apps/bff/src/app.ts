@@ -178,11 +178,11 @@ export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
   const reminders = deps.reminders ?? new ReminderService({ db: deps.db, gateway: deps.gateway, telegram: deps.telegram, mode: () => deps.space.mode(), timeZone: personalTimeZone });
   registerReminderRoutes(app, { reminders });
   const library = deps.library ?? new LibraryService(deps.db);
-  const chat = new ChatService(deps.gateway, library, deps.db);
+  const chat = new ChatService(deps.gateway, library, deps.db, deps.bridge);
   registerChatRoutes(app, { chat, personal: () => deps.space.mode() === "personal" });
 
   const notes = deps.notes ?? new MemoryNoteService({ db: deps.db, gateway: deps.gateway, logger: deps.logger.child({ component: "memory-notes" }) });
-  registerLibraryRoutes(app, { library, notes, budget });
+  registerLibraryRoutes(app, { library, notes, budget, bridge: deps.bridge });
   registerTodayRoutes(app, { ...deps, notes, reminders, chat, library, budget });
   registerVideoRoutes(app, { video: deps.video ?? new VideoService({ db: deps.db, bridge: deps.bridge, chat, logger: deps.logger.child({ component: "video" }), videoDir: deps.videoDir, library }), budget });
   registerDashboardRoutes(app, { dashboard: new DashboardService(deps), timeZone: personalTimeZone });

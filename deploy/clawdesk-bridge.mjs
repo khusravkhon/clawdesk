@@ -45,6 +45,8 @@
 //   POST /owner-files/copy | /owner-files/remove { agentId, file }   POST /owner-files/copies { agentId } → { copies: [{ file, sha }] }
 //   GET  /library/inbound?after=<ms>        → { files: [{ id, name, mimeType, size, modifiedAt, agentIds }], more } documents sent to the bot
 //   POST /library/inbound/read { id }       → { id, mimeType, base64 } one of them (see clawdesk-library-inbound.mjs)
+//   POST /library/text { agentId, name, text } → { path } a long attachment's full text in the agent's workspace (see clawdesk-library-text.mjs)
+//   POST /library/text/remove { agentId, name, hash } → { removed } that copy, when the owner removes the material
 //   POST /openclaw/update    { version }    backup, then a helper container moves the Gateway to that verified OpenClaw
 
 import { spawn } from "node:child_process";
@@ -73,6 +75,7 @@ import { ProjectWork } from "./clawdesk-project-work.mjs";
 import { GoogleDocCopies } from "./clawdesk-google-docs.mjs";
 import { OwnerFiles } from "./clawdesk-owner-files.mjs";
 import { listInboundDocuments, readInboundDocument } from "./clawdesk-library-inbound.mjs";
+import { LibraryTexts } from "./clawdesk-library-text.mjs";
 import { ProjectTransfer } from "./clawdesk-project-transfer.mjs";
 import { capabilities } from "./clawdesk-capabilities.mjs";
 import { sharedFolderSource } from "./clawdesk-shared-folder.mjs";
@@ -284,6 +287,7 @@ const projectFolders = new ProjectFolders({ stateDir: process.env.OPENCLAW_STATE
 const projectWork = new ProjectWork({ stateDir: process.env.OPENCLAW_STATE_DIR || "/var/lib/clawdesk/openclaw", configPath: process.env.OPENCLAW_CONFIG_PATH || "/var/lib/clawdesk/openclaw/openclaw.json" });
 const projectTransfer = new ProjectTransfer({ folders: projectFolders });
 const ownerFiles = new OwnerFiles({ stateDir: process.env.OPENCLAW_STATE_DIR || "/var/lib/clawdesk/openclaw", configPath: process.env.OPENCLAW_CONFIG_PATH || "/var/lib/clawdesk/openclaw/openclaw.json" });
+const libraryTexts = new LibraryTexts({ stateDir: process.env.OPENCLAW_STATE_DIR || "/var/lib/clawdesk/openclaw", configPath: process.env.OPENCLAW_CONFIG_PATH || "/var/lib/clawdesk/openclaw/openclaw.json" });
 const googleDocs = new GoogleDocCopies({ stateDir: process.env.OPENCLAW_STATE_DIR || "/var/lib/clawdesk/openclaw", configPath: process.env.OPENCLAW_CONFIG_PATH || "/var/lib/clawdesk/openclaw/openclaw.json", gog: (args) => runGog(args, { timeoutMs: 90_000 }) });
 const projectGitHub = new ProjectGitHub({ folders: projectFolders, stateDir: process.env.OPENCLAW_STATE_DIR || "/var/lib/clawdesk/openclaw" });
 const projectBuilder = new ProjectBuilder({ folders: projectFolders, stateDir: process.env.OPENCLAW_STATE_DIR || "/var/lib/clawdesk/openclaw" });
@@ -637,6 +641,14 @@ async function handle(req) {
     const after = Number(url.searchParams.get("after") ?? 0);
     if (!Number.isSafeInteger(after) || after < 0) return { status: 400, body: { error: "invalid_request", message: "invalid_request" } };
     return ownerFileCall(() => listInboundDocuments(ownerFiles.stateDir, { after }));
+  }
+  if (req.method === "POST" && url.pathname === "/library/text") {
+    const body = await readJson(req, 1024 * 1024);
+    return ownerFileCall(() => libraryTexts.write(body.agentId, body.name, body.text));
+  }
+  if (req.method === "POST" && url.pathname === "/library/text/remove") {
+    const body = await readJson(req);
+    return ownerFileCall(() => libraryTexts.remove(body.agentId, body.name, body.hash));
   }
   if (req.method === "POST" && url.pathname === "/library/inbound/read") {
     const body = await readJson(req);

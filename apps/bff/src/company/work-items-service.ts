@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import type { CreateWorkItemRequest, WorkItemActionRequest, WorkItemDto, WorkItemEventDto, WorkItemsDto } from "@clawdesk/shared";
-import { and, asc, desc, eq, inArray, isNull, lt } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, isNotNull, isNull, lt } from "drizzle-orm";
 import type { Db } from "../db/client.js";
 import { agents, workItemEvents, workItems, workRequests, agentCharterVersions, teams } from "../db/schema.js";
 
@@ -274,7 +274,7 @@ export class WorkItemsService {
     const { send, db } = this.deps;
     if (!send) return 0;
     let sent = 0;
-    for (const event of db.select().from(workItemEvents).where(and(isNull(workItemEvents.deliveredAt), lt(workItemEvents.attempts, MAX_ATTEMPTS))).orderBy(asc(workItemEvents.id)).limit(50).all().filter((item) => item.notifyAgentId)) {
+    for (const event of db.select().from(workItemEvents).where(and(isNull(workItemEvents.deliveredAt), lt(workItemEvents.attempts, MAX_ATTEMPTS), isNotNull(workItemEvents.notifyAgentId))).orderBy(asc(workItemEvents.id)).limit(50).all()) {
       try {
         // Only on the first attempt: a retry later could stop the turn of the next task.
         if (event.kind === "cancelled" && event.attempts === 0) await this.deps.abort?.(event.notifyAgentId!).catch(() => undefined);

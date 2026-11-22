@@ -1,6 +1,6 @@
 import { createHash, randomUUID } from "node:crypto";
 import type { LibraryCursor, LibraryHitDto, LibraryItemKind, LibraryMaterialDto, LibraryPageDto, LibraryProcessing, LibrarySearchDto } from "@clawdesk/shared";
-import { and, desc, eq, getTableColumns, lt, or, sql } from "drizzle-orm";
+import { and, desc, eq, getTableColumns, lt, ne, or, sql } from "drizzle-orm";
 import type { Db } from "../db/client.js";
 import { libraryContents, libraryItems } from "../db/schema.js";
 
@@ -109,6 +109,19 @@ export class LibraryService {
       if (hits.length > MAX_HITS) { partial = true; break; }
     }
     return { query: query.trim(), agentId: agentId ?? null, hits: hits.slice(0, MAX_HITS), searched, partial };
+  }
+
+  /**
+   * The copy of this document's text in the agent's workspace that removing the material leaves without
+   * an owner: null when the agent has the same text as another material, or the material has no text.
+   */
+  agentCopy(id: string): { agentId: string; name: string; hash: string; chars: number } | null {
+    const row = this.db.select({ agentId: libraryItems.agentId, name: libraryItems.title, kind: libraryItems.kind, chars: libraryItems.chars, contentId: libraryItems.contentId, hash: libraryContents.hash })
+      .from(libraryItems).innerJoin(libraryContents, eq(libraryItems.contentId, libraryContents.id)).where(eq(libraryItems.id, id)).get();
+    if (!row?.hash || row.kind !== "document") return null;
+    const shared = this.db.select({ id: libraryItems.id }).from(libraryItems)
+      .where(and(eq(libraryItems.agentId, row.agentId), eq(libraryItems.contentId, row.contentId!), ne(libraryItems.id, id))).get();
+    return shared ? null : { agentId: row.agentId, name: row.name, hash: row.hash.slice(0, 8), chars: row.chars };
   }
 
   /** Removes one material: the owner's library is theirs to prune. */

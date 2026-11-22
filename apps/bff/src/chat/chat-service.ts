@@ -5,7 +5,7 @@ import { GatewayClientRequestError } from "@openclaw/gateway-client";
 import { and, desc, eq, max, ne } from "drizzle-orm";
 import type { Db } from "../db/client.js";
 import { chatConversations, chatSends } from "../db/schema.js";
-import { documentsBlock, extractDocuments } from "../documents/extract.js";
+import { documentsBlock, extractDocuments, MAX_INLINE_CHARS } from "../documents/extract.js";
 import { GatewayUnavailableError, type GatewayService } from "../gateway/gateway-service.js";
 import type { NewLibraryItem } from "../library/library-service.js";
 import { attachmentLimits, attachmentOnlyMessage, attachmentsOf, checkAttachments, toGatewayAttachments } from "./chat-attachments.js";
@@ -133,6 +133,8 @@ export class ChatService {
     /** Keeps what the panel read out of a file, so the owner can find it again later. */
     private readonly library?: { add(item: NewLibraryItem): string | null },
     private readonly db?: Db,
+    /** Puts a long file's full text into the agent's workspace, so the message carries only its beginning. */
+    private readonly texts?: { libraryText(agentId: string, name: string, text: string): Promise<{ path: string }> },
   ) {}
 
   #sessionKey(agentId: string, conversationId?: string): string {
@@ -246,6 +248,11 @@ export class ChatService {
     const documents = attachments.length
       ? await extractDocuments(attachments.map((file) => ({ fileName: file.fileName, mimeType: file.mimeType, bytes: Buffer.from(file.content, "base64") })))
       : [];
+    for (const document of documents) {
+      if (!this.texts || document.text.length <= MAX_INLINE_CHARS) continue;
+      // Without the copy the message says so itself and the agent falls back to the attached file.
+      document.fullPath = await this.texts.libraryText(agentId, document.read.fileName.slice(0, 300), document.text.trim()).then((res) => res.path, () => undefined);
+    }
     const block = documentsBlock(documents);
     const reads = documents.map((document) => document.read);
     const saveDocuments = () => {

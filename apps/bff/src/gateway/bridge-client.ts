@@ -292,6 +292,14 @@ export class BridgeClient {
   googleDocCopy(agentId: string, docId: string, account: string): Promise<{ docId: string; title: string; revision: string | null; copiedAt: number; sha: string; path: string }> {
     return this.#call("POST", "/google/doc/copy", { agentId, docId, account }, 120_000);
   }
+  /** The full text of a long attachment as a file in the agent's workspace; `path` is relative to that workspace. */
+  libraryText(agentId: string, name: string, text: string): Promise<{ path: string }> {
+    return this.#call("POST", "/library/text", { agentId, name, text }, 30_000);
+  }
+  /** `hash`: the first 8 hex characters of the text's SHA-256, as in the copy's file name. */
+  libraryTextRemove(agentId: string, name: string, hash: string): Promise<{ removed: true }> {
+    return this.#call("POST", "/library/text/remove", { agentId, name, hash });
+  }
   googleDocRemove(agentId: string, docId: string): Promise<{ removed: true }> {
     return this.#call("POST", "/google/doc/remove", { agentId, docId });
   }

@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -45,6 +46,26 @@ describe("indexed owner library", () => {
       for (let i = 0; i < 2; i++) expect((await app.inject({ method: "DELETE", url: detail })).statusCode).toBe(204);
       expect((await app.inject(detail)).statusCode).toBe(404);
       expect(h.library.search("маркер", "other").hits).toHaveLength(1);
+    } finally { await app.close(); h.cleanup(); }
+  });
+
+  it("removes a long document's copy from the agent's folder with its last material, and only then", async () => {
+    const h = harness();
+    const app = Fastify();
+    const removed: string[][] = [];
+    registerLibraryRoutes(app, { library: h.library, bridge: { libraryTextRemove: async (...args: string[]) => { removed.push(args); return { removed: true as const }; } } } as Parameters<typeof registerLibraryRoutes>[1]);
+    try {
+      const long = "я".repeat(13_000);
+      const first = h.library.add(item(long, "main", "long.txt"));
+      const second = h.library.add(item(long, "main", "long.txt"));
+      const short = h.library.add(item("коротко", "main", "short.txt"));
+      const hash = createHash("sha256").update(long).digest("hex").slice(0, 8);
+      // The same text is still another material of this agent: the copy stays.
+      await app.inject({ method: "DELETE", url: `/api/library/${first}` });
+      await app.inject({ method: "DELETE", url: `/api/library/${short}` });
+      expect(removed).toEqual([]);
+      await app.inject({ method: "DELETE", url: `/api/library/${second}` });
+      expect(removed).toEqual([["main", "long.txt", hash]]);
     } finally { await app.close(); h.cleanup(); }
   });
 

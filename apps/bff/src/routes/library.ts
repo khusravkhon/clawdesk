@@ -2,6 +2,8 @@ import { LibraryItemKind, SaveBudgetRequest, SaveMemoryNoteRequest, type BudgetD
 import type { FastifyInstance, FastifyReply } from "fastify";
 import { z } from "zod";
 import type { BudgetService } from "../budget/budget-service.js";
+import { MAX_INLINE_CHARS } from "../documents/extract.js";
+import type { BridgeClient } from "../gateway/bridge-client.js";
 import type { LibraryService } from "../library/library-service.js";
 import { MemoryNoteError, type MemoryNoteService } from "../library/memory-note-service.js";
 
@@ -32,7 +34,7 @@ const PageQuery = SearchQuery.extend({
 }).refine(({ beforeAt, beforeId }) => (beforeAt === undefined) === (beforeId === undefined), "a cursor requires both fields");
 const NoteParams = z.object({ agentId: AgentId, id: z.string().uuid() });
 
-export function registerLibraryRoutes(app: FastifyInstance, deps: { library: LibraryService; notes: MemoryNoteService; budget: BudgetService }): void {
+export function registerLibraryRoutes(app: FastifyInstance, deps: { library: LibraryService; notes: MemoryNoteService; budget: BudgetService; bridge?: Pick<BridgeClient, "libraryTextRemove"> }): void {
   const zone = (tz: string | undefined) => tz ?? Intl.DateTimeFormat().resolvedOptions().timeZone;
   app.get("/api/library", async (request) => {
     const { agentId, kind, q, beforeAt, beforeId } = PageQuery.parse(request.query);
@@ -53,7 +55,11 @@ export function registerLibraryRoutes(app: FastifyInstance, deps: { library: Lib
 
   app.delete<{ Params: { id: string } }>("/api/library/:id", async (request, reply) => {
     const { id } = z.object({ id: MaterialId }).parse(request.params);
+    const copy = deps.library.agentCopy(id);
     deps.library.remove(id);
+    // A long document's text also lies in the agent's folder (see chat-service); it goes with the material.
+    // The material is gone either way: a copy the bridge could not delete now is the remaining limit.
+    if (copy && copy.chars > MAX_INLINE_CHARS) await deps.bridge?.libraryTextRemove(copy.agentId, copy.name, copy.hash).catch(() => undefined);
     return reply.status(204).send();
   });
 
