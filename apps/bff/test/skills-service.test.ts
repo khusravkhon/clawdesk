@@ -17,6 +17,8 @@ function fakeWorld(agents = ["main", "finance", "social"]) {
   const calls: { method: string; params: Record<string, unknown> }[] = [];
   let config: Record<string, unknown> = {};
   const ws = (agentId: string) => `/state/workspace-${agentId}`;
+  /** Skills put in OpenClaw's shared folder by something other than the panel (Agent Reach, say). */
+  const shared: { name: string; description?: string; baseDir: string; source: string; blockedFor?: string }[] = [];
   const gateway = {
     request: async (method: string, params: Record<string, unknown> = {}) => {
       calls.push({ method, params });
@@ -25,7 +27,7 @@ function fakeWorld(agents = ["main", "finance", "social"]) {
           return { agents: agents.map((id) => ({ id })) };
         case "skills.status": {
           const agentId = params.agentId as string;
-          return { workspaceDir: ws(agentId), skills: [...workspaces.get(agentId)!].map((slug) => ({ name: slug, baseDir: `${ws(agentId)}/skills/${slug}` })).concat([{ name: "weather", baseDir: "/app/skills/weather" }]) };
+          return { workspaceDir: ws(agentId), skills: [...[...workspaces.get(agentId)!].map((slug) => ({ name: slug, baseDir: `${ws(agentId)}/skills/${slug}` })), { name: "weather", baseDir: "/app/skills/weather", source: "openclaw-bundled", bundled: true }, ...shared.map((x) => ({ ...x, blockedByAgentFilter: x.blockedFor === agentId }))] };
         }
         case "skills.install": {
           if (params.source === "upload") {
@@ -70,7 +72,7 @@ function fakeWorld(agents = ["main", "finance", "social"]) {
       return { removed: true };
     },
   } as unknown as BridgeClient;
-  return { gateway, bridge, workspaces, uploads, calls, removed, config: () => config };
+  return { gateway, bridge, workspaces, uploads, calls, removed, shared, config: () => config };
 }
 
 describe("SkillsService", () => {
@@ -94,6 +96,17 @@ describe("SkillsService", () => {
       { installRef: "@ana/budget", slug: "budget", name: "Budget", summary: "Tracks spend", notScanned: false },
       { installRef: "skills-sh:a/b/c", slug: "c", name: "C", summary: null, notScanned: true },
     ]);
+  });
+
+  it("lists skills put there outside the panel, read-only, with the agents that see them", async () => {
+    const world = fakeWorld();
+    world.shared.push(
+      { name: "agent-reach", description: "Read the internet", baseDir: "/state/skills/agent-reach", source: "openclaw-managed", blockedFor: "social" },
+      { name: "canvas", baseDir: "/state/plugin-skills/canvas", source: "openclaw-extra" },
+    );
+    const service = new SkillsService({ ...world, db, logger: pino({ level: "silent" }) });
+    await service.addClawHub({ installRef: "@ana/budget", name: "Budget", summary: null, agentIds: ["main"] });
+    expect((await service.list()).shared).toEqual([{ slug: "agent-reach", name: "agent-reach", description: "Read the internet", agents: ["main", "finance"] }]);
   });
 
   it("installs a ClawHub skill for the chosen agents and reads who has it from their workspaces", async () => {

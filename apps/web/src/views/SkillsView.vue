@@ -1,7 +1,7 @@
 <script setup lang="ts">
 // "Навыки и MCP": skills (ClawHub, uploaded, written here) and MCP servers by address, added once
 // and handed out per agent. Each agent's page shows the same lists as checkboxes.
-import type { AgentListItemDto, ClawHubSkillDto, McpServerDto, SkillDto } from "@clawdesk/shared";
+import type { AgentListItemDto, ClawHubSkillDto, McpServerDto, SharedSkillDto, SkillDto } from "@clawdesk/shared";
 import { BookOpen, FileUp, PenLine, Plug, Search, Trash2 } from "@lucide/vue";
 import { NAlert, NButton, NEmpty, NInput, NModal, NPopconfirm, NRadio, NRadioGroup, NSelect, NSkeleton, NSpace, NTabPane, NTabs, NTag, useMessage } from "naive-ui";
 import { computed, onMounted, reactive, ref } from "vue";
@@ -20,6 +20,7 @@ const MAX_UPLOAD_BYTES = 5 * 1024 * 1024;
 const tab = ref<"skills" | "mcp">(route.query.mcp ? "mcp" : "skills");
 const agents = ref<AgentListItemDto[]>([]);
 const skills = ref<SkillDto[] | null>(null);
+const shared = ref<SharedSkillDto[]>([]);
 const servers = ref<McpServerDto[] | null>(null);
 const loadError = ref<string | null>(null);
 const busy = ref<string | null>(null);
@@ -32,7 +33,7 @@ async function load(): Promise<void> {
   try {
     const [list, s, m] = await Promise.all([api.agents(), api.skills.list(), api.mcp.list()]);
     agents.value = list.agents;
-    skills.value = s.skills;
+    setSkills(s);
     servers.value = m.servers;
   } catch (e) {
     loadError.value = errText(e);
@@ -56,7 +57,16 @@ async function run<T>(key: string, fn: () => Promise<T>, done?: (result: T) => v
 
 // --- skills ---
 
-const setSkills = (dto: { skills: SkillDto[] }) => (skills.value = dto.skills);
+function setSkills(dto: { skills: SkillDto[]; shared: SharedSkillDto[] }): void {
+  skills.value = dto.skills;
+  shared.value = dto.shared;
+}
+/** "Все агенты", or the names of the agents that see a skill put there outside the panel. */
+function sharedAgents(skill: SharedSkillDto): string {
+  if (!skill.agents.length) return t("ext.noAgents");
+  if (allAgentIds.value.every((id) => skill.agents.includes(id))) return t("ext.allAgents");
+  return agentOptions.value.filter((o) => skill.agents.includes(o.value)).map((o) => o.label).join(", ");
+}
 
 function setSkillAgents(skill: SkillDto, agentIds: string[]): void {
   void run(`skill-agents:${skill.id}`, () => api.skills.setAgents(skill.id, agentIds), setSkills);
@@ -219,7 +229,7 @@ onMounted(() => {
           </n-button>
         </n-space>
 
-        <n-empty v-if="!skills.length" :description="t('ext.noSkills')" class="empty" />
+        <n-empty v-if="!skills.length && !shared.length" :description="t('ext.noSkills')" class="empty" />
         <section v-for="skill in skills" :key="skill.id" class="card">
           <div class="row">
             <book-open :size="18" class="icon" />
@@ -256,6 +266,25 @@ onMounted(() => {
             />
           </label>
         </section>
+
+        <template v-if="shared.length">
+          <h3 class="section-title">{{ t("ext.sharedTitle") }}</h3>
+          <p class="lead">{{ t("ext.sharedLead") }}</p>
+          <section v-for="skill in shared" :key="skill.slug" class="card">
+            <div class="row">
+              <book-open :size="18" class="icon" />
+              <div class="grow">
+                <div class="name">
+                  {{ skill.name }}
+                  <n-tag size="small" :bordered="false">{{ t("ext.kindShared") }}</n-tag>
+                </div>
+                <p v-if="skill.description" class="desc">{{ skill.description }}</p>
+                <p class="mono muted">{{ skill.slug }}</p>
+                <p class="desc">{{ t("ext.agents") }}: {{ sharedAgents(skill) }}</p>
+              </div>
+            </div>
+          </section>
+        </template>
       </n-tab-pane>
 
       <n-tab-pane name="mcp" :tab="t('ext.tabMcp')">
@@ -439,6 +468,11 @@ onMounted(() => {
 }
 .actions {
   margin-bottom: 16px;
+}
+.section-title {
+  margin: 28px 0 4px;
+  font-size: 15px;
+  font-weight: 600;
 }
 .empty {
   margin: 32px 0;

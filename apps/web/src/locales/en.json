@@ -1510,7 +1510,11 @@
     "manage": "Open “Skills & MCP”",
     "noneYet": "The shared list is empty so far.",
     "skillsShort": "Skills",
-    "mcpShort": "MCP servers"
+    "mcpShort": "MCP servers",
+    "allAgents": "All agents",
+    "kindShared": "Outside the panel",
+    "sharedTitle": "Installed outside the panel",
+    "sharedLead": "Agents already see these skills: the agents themselves or programs (such as Agent Reach) put them in OpenClaw's shared skills folder. They are shown here for reference only; remove or update them with that program's own command, or ask an agent."
   },
   "localMemory": {
     "title": "Local memory search",
