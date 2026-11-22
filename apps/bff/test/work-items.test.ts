@@ -8,7 +8,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { WorkItemsService } from "../src/company/work-items-service.js";
 import { WorkRequestsService } from "../src/company/work-requests-service.js";
 import { openDb, type Db } from "../src/db/client.js";
-import { agents, teams } from "../src/db/schema.js";
+import { agents, teams, workRequestSpool } from "../src/db/schema.js";
 import { registerWorkItemRoutes } from "../src/routes/work-items.js";
 
 // Stage 6, part 2: company tasks. Reports and requests come through the same spool as requests do.
@@ -191,5 +191,16 @@ describe("company tasks", () => {
     expect(items.list().items[0]!.overdue).toBe(false);
     clock = 3_000;
     expect(items.list().items[0]!.overdue).toBe(true);
+  });
+
+  it("history without a recipient never holds back the messages behind it", async () => {
+    // Drafts and handled spool entries leave rows nobody is told about; more than one delivery batch of them.
+    for (let i = 0; i < 60; i++) task(`Черновик ${i}`, "writer", false);
+    for (let i = 0; i < 60; i++) db.insert(workRequestSpool).values({ id: `quiet-${i}`, agentId: "writer", outcome: "stored", notifyText: null, createdAt: clock }).run();
+    db.insert(workRequestSpool).values({ id: "note", agentId: "analyst", outcome: "refused", notifyText: "Ответ панели", createdAt: clock }).run();
+    task("Настоящая", "analyst");
+    await tick();
+    expect(to("analyst").some((message) => message.includes("«Настоящая»"))).toBe(true);
+    expect(to("analyst")).toContain("Ответ панели");
   });
 });

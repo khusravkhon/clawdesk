@@ -1,6 +1,6 @@
 import { randomBytes, randomUUID } from "node:crypto";
 import { normalizeResourceRef, ResourceRef, type GrantResourceRequest, type OwnerRequestAction, type ResourceAccess, type WorkRequestDto, type WorkRequestEventDto, type WorkRequestLevelKind, type WorkRequestsDto } from "@clawdesk/shared";
-import { and, asc, desc, eq, inArray, isNull, lt } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, isNotNull, isNull, lt, or } from "drizzle-orm";
 import type { Db } from "../db/client.js";
 import { fileMessage } from "./access-service.js";
 import { agents, companyAgentAssignments, companyProjects, departmentManagers, departments, teams, workRequestButtons, workRequestEvents, workRequests, workRequestSpool, channelBindings } from "../db/schema.js";
@@ -169,7 +169,8 @@ export class WorkRequestsService {
     const { bridge } = this.deps;
     if (!bridge) return 0;
     const { entries, rejected } = await bridge.requestsSpool();
-    const live = await this.deps.liveAgents?.();
+    // This runs every few seconds and the spool is almost always empty: ask the Gateway only when there is work.
+    const live = entries.length ? await this.deps.liveAgents?.() : undefined;
     const done: string[] = [...rejected];
     for (const entry of entries) {
       const id = typeof entry.id === "string" && /^[a-f0-9]{32}$/.test(entry.id) ? entry.id : null;
@@ -555,7 +556,8 @@ export class WorkRequestsService {
   async deliver(): Promise<number> {
     const { send, db } = this.deps;
     let sent = 0;
-    const pending = db.select().from(workRequestEvents).where(and(isNull(workRequestEvents.deliveredAt), lt(workRequestEvents.attempts, MAX_ATTEMPTS))).orderBy(asc(workRequestEvents.id)).limit(50).all();
+    // Only rows with a recipient: history rows are never marked delivered and would fill the batch for good.
+    const pending = db.select().from(workRequestEvents).where(and(isNull(workRequestEvents.deliveredAt), lt(workRequestEvents.attempts, MAX_ATTEMPTS), or(eq(workRequestEvents.notifyOwner, true), isNotNull(workRequestEvents.notifyAgentId)))).orderBy(asc(workRequestEvents.id)).limit(50).all();
     for (const event of pending.filter((item) => item.notifyOwner)) {
       // No bot or no approved owner: the request stays in the panel, the delivery is marked failed.
       const telegram = this.deps.telegram;
@@ -582,7 +584,7 @@ export class WorkRequestsService {
         sent++;
       } catch { db.update(workRequestEvents).set({ attempts: event.attempts + 1 }).where(eq(workRequestEvents.id, event.id)).run(); }
     }
-    const notes = db.select().from(workRequestSpool).where(and(isNull(workRequestSpool.deliveredAt), lt(workRequestSpool.attempts, MAX_ATTEMPTS))).limit(50).all().filter((note) => note.notifyText && AGENT.test(note.agentId));
+    const notes = db.select().from(workRequestSpool).where(and(isNull(workRequestSpool.deliveredAt), lt(workRequestSpool.attempts, MAX_ATTEMPTS), isNotNull(workRequestSpool.notifyText))).limit(50).all().filter((note) => note.notifyText && AGENT.test(note.agentId));
     for (const note of send ? notes : []) {
       try {
         if (note.outcome.startsWith("share:") && this.deps.bridge?.requestsResultTake) {
