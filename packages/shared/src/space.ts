@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { Locale, SpaceMode } from "./domain.js";
 
-// Screen 2: what this install is for. Chosen once on the first run; changed only by a factory reset.
+// Screen 2: what this install is for. Chosen on the first run; switched later in System (data of both modes is kept).
 
 export const SpaceDto = z.object({
   mode: SpaceMode,
@@ -30,6 +30,9 @@ export const CreateSpaceRequest = z.object({
     }, "unknown time zone"),
 });
 export type CreateSpaceRequest = z.infer<typeof CreateSpaceRequest>;
+
+export const SwitchSpaceModeRequest = z.object({ mode: SpaceMode }).strict();
+export type SwitchSpaceModeRequest = z.infer<typeof SwitchSpaceModeRequest>;
 
 export const UpdateSpaceRequest = CreateSpaceRequest.pick({ name: true, timezone: true }).strict();
 export type UpdateSpaceRequest = z.infer<typeof UpdateSpaceRequest>;

@@ -97,6 +97,22 @@ async function downloadCopy(): Promise<void> {
   }
 }
 
+// --- Mode switch: personal assistant <-> company projects. Nothing is deleted.
+const otherMode = computed(() => (space.mode === "personal" ? "company" : "personal"));
+const switchOpen = ref(false);
+const switching = ref(false);
+async function switchMode(): Promise<void> {
+  switching.value = true;
+  try {
+    await api.space.switchMode(otherMode.value);
+    // A full reload: menus, guards and every cached list follow the new mode.
+    window.location.assign("/");
+  } catch (e) {
+    message.error(errText(e));
+    switching.value = false;
+  }
+}
+
 // --- Factory reset.
 const resetOpen = ref(false);
 const resetWord = computed(() => t("system.resetWord"));
@@ -205,6 +221,12 @@ onUnmounted(() => window.clearInterval(poll));
         </template>
       </n-card>
 
+      <n-card v-if="space.space" :title="t('system.modeTitle')" data-testid="mode-switch">
+        <p>{{ t("system.modeNow", { mode: t(`mode.${space.mode}.title`) }) }}</p>
+        <p class="muted">{{ t("system.modeAbout") }}</p>
+        <n-button secondary @click="switchOpen = true">{{ t("system.modeSwitch", { mode: t(`mode.${otherMode}.title`) }) }}</n-button>
+      </n-card>
+
       <audit-log />
 
       <n-card class="danger">
@@ -239,6 +261,13 @@ onUnmounted(() => window.clearInterval(poll));
         <p class="muted small">{{ pair.problem.value ?? pair.hint.value }}</p>
         <n-button attr-type="submit" type="primary" block :loading="downloading" :disabled="!pair.ok.value">{{ t("system.download") }}</n-button>
       </form>
+    </n-modal>
+
+    <n-modal v-model:show="switchOpen" preset="card" :title="t('system.modeSwitch', { mode: t(`mode.${otherMode}.title`) })" :closable="!switching" :mask-closable="!switching" style="width: min(440px, calc(100vw - 32px))">
+      <n-space vertical>
+        <n-alert type="warning" :bordered="false">{{ t(`system.modeWarn.${otherMode}`) }}</n-alert>
+        <n-button type="primary" block :loading="switching" @click="switchMode">{{ t("system.modeConfirm") }}</n-button>
+      </n-space>
     </n-modal>
 
     <n-modal v-model:show="resetOpen" preset="card" :title="t('system.resetTitle')" style="width: min(440px, calc(100vw - 32px))">

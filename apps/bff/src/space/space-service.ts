@@ -5,7 +5,7 @@ import type { Db } from "../db/client.js";
 import { spaces } from "../db/schema.js";
 
 // Screen 2: one install is one Space — a person (personal) or one trusting team (company).
-// Chosen once; a factory reset wipes the panel database and with it this choice.
+// Chosen on the first run; setMode switches it later. Nothing is deleted: the other mode's data stays in the database.
 
 const ID = "default";
 
@@ -29,6 +29,13 @@ export class SpaceService {
     this.deps.db.insert(spaces).values({ id: ID, ...req }).run();
     this.deps.logger.info({ mode: req.mode }, "space created");
     return this.get()!;
+  }
+
+  /** Null until the first-run choice is made. */
+  setMode(mode: SpaceMode): SpaceDto | null {
+    const row = this.deps.db.update(spaces).set({ mode }).where(eq(spaces.id, ID)).returning().get();
+    if (row) this.deps.logger.info({ mode }, "space mode switched");
+    return row ? this.get() : null;
   }
 
   update(req: UpdateSpaceRequest): SpaceDto | null {

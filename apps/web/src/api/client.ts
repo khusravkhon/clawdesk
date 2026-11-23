@@ -277,6 +277,7 @@ export const api = {
     get: () => request<{ space: SpaceDto | null }>("/api/space"),
     update: (body: UpdateSpaceRequest) => request<SpaceDto>("/api/space", { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify(body) }),
     create: (body: CreateSpaceRequest) => post<SpaceDto>("/api/space", body),
+    switchMode: (mode: SpaceDto["mode"]) => post<SpaceDto>("/api/space/mode", { mode }),
   },
   system: {
     restartGateway: () => post<{ restarted: true }>("/api/system/gateway/restart", { confirm: true }),
