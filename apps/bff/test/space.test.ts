@@ -31,6 +31,13 @@ describe("space (screen 2)", () => {
     expect(() => space.create(CreateSpaceRequest.parse({ mode: "personal", name: "x", locale: "en", timezone: "UTC" }))).toThrow(SpaceExistsError);
   });
 
+  it("switches the mode both ways and keeps the rest", () => {
+    expect(space.setMode("company")).toBeNull();
+    space.create(CreateSpaceRequest.parse({ mode: "personal", name: "Me", locale: "ru", timezone: "Asia/Dushanbe" }));
+    expect(space.setMode("company")).toEqual({ mode: "company", name: "Me", locale: "ru", timezone: "Asia/Dushanbe" });
+    expect(space.setMode("personal")?.mode).toBe("personal");
+  });
+
   it("accepts real time zones only", () => {
     expect(CreateSpaceRequest.safeParse({ mode: "personal", name: "Me", locale: "tg", timezone: "Mars/Olympus" }).success).toBe(false);
   });

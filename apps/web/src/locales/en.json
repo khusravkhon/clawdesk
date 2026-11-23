@@ -1022,6 +1022,15 @@
     }
   },
   "system": {
+    "modeTitle": "Panel mode",
+    "modeNow": "Now: {mode}.",
+    "modeAbout": "You can switch back and forth. Nothing is deleted: the other mode's data stays in the database and comes back when you switch again.",
+    "modeSwitch": "Switch to \"{mode}\"",
+    "modeConfirm": "Switch",
+    "modeWarn": {
+      "company": "While company mode is on, personal reminders, the spending limit for automatic work, Today and Materials do not work. They come back when you switch again. The main assistant gets the company mode instructions.",
+      "personal": "While personal mode is on, departments, projects and teams are hidden and requests between agents are not carried out. They come back when you switch again. The main assistant gets the personal mode instructions."
+    },
     "restoreScope": "Restoring replaces the selected installation's data, including agents, chats, connections, the panel password, and shared files. Backup archives remain.",
     "restoreConfirm": "Check the archive first with the command above. Then select the intended installation and confirm the replacement by typing RESTORE.",
     "title": "System",
@@ -1100,7 +1109,7 @@
   },
   "mode": {
     "title": "What is this panel for?",
-    "lead": "Choose once — it decides the main agent, the agent templates and the menu.",
+    "lead": "It decides the main agent, the agent templates and the menu.",
     "personal": {
       "title": "Personal assistant",
       "text": "Tasks, plans, money, food, training. The main assistant knows you and runs junior helpers.",
@@ -1115,7 +1124,7 @@
     },
     "language": "Language",
     "timezone": "Time zone",
-    "once": "The mode is chosen once. It changes only through System → Reset everything.",
+    "once": "The mode can be changed later: System → Panel mode.",
     "continue": "Next — connect an AI"
   },
   "teams": {
