@@ -1,7 +1,7 @@
 <script setup lang="ts">
 // Sidebar body: brand, sections, theme and language. Shared by the desktop sidebar and the phone drawer.
 import type { Locale } from "@clawdesk/shared";
-import { Activity, Blocks, Bot, ChartColumn, FolderGit2, CalendarClock, CalendarDays, Database, HardDrive, LayoutDashboard, Library, LogOut, MessagesSquare, Settings, ShieldCheck, UserRound, Moon, PanelLeftClose, PanelLeftOpen, Search, Send, Sun, Workflow } from "@lucide/vue";
+import { Activity, Blocks, Bot, ChartColumn, FolderGit2, CalendarClock, CalendarDays, Database, Globe, HardDrive, LayoutDashboard, Library, LogOut, MessagesSquare, Settings, ShieldCheck, UserRound, Moon, PanelLeftClose, PanelLeftOpen, Search, Send, Sun, Workflow } from "@lucide/vue";
 import { NButton, NMenu, NSelect, NTooltip, type MenuOption } from "naive-ui";
 import { computed, h, type Component } from "vue";
 import { useI18n } from "vue-i18n";
@@ -44,6 +44,7 @@ const menu = computed<MenuOption[]>(() => [
     ] : []),
     { key: "/schedules", label: link("/schedules", t("nav.schedules")), icon: icon(CalendarClock) },
     { key: "/sources", label: link("/sources", t("nav.sources")), icon: icon(Database) },
+    { key: "/chrome", label: link("/chrome", t("nav.chrome")), icon: icon(Globe) },
     { key: "/skills", label: link("/skills", t("nav.extensions")), icon: icon(Blocks) },
     { key: "/approvals", label: link("/approvals", t("nav.approvals"), () => approvals.count), icon: icon(ShieldCheck) },
     { key: "/telegram", label: link("/telegram", "Telegram"), icon: icon(Send) },

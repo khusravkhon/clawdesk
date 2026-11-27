@@ -149,6 +149,14 @@ export class BridgeClient {
     return this.#call("POST", "/claude/logout", {}, 40_000);
   }
 
+  /** The person's Chrome through the OpenClaw extension (deploy/clawdesk-chrome.mjs). */
+  chromeStatus(): Promise<{ enabled: boolean; connected: boolean }> {
+    return this.#call("GET", "/chrome/status", undefined, 25_000);
+  }
+  chromePair(gatewayUrl: string): Promise<{ pairingString: string }> {
+    return this.#call("POST", "/chrome/pair", { gatewayUrl }, 25_000);
+  }
+
   localMemoryStatus(): Promise<import("@clawdesk/shared").LocalMemoryStatusDto> {
     return this.#call("GET", "/memory/status", undefined, 5_000);
   }

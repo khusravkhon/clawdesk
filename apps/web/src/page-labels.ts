@@ -15,6 +15,7 @@ const LABELS: Record<string, string> = {
   "/teams": "nav.teams",
   "/schedules": "nav.schedules",
   "/sources": "nav.sources",
+  "/chrome": "nav.chrome",
   "/skills": "nav.extensions",
   "/telegram": "personalSettings.telegram",
   "/usage": "nav.usage",

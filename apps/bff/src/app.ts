@@ -58,6 +58,7 @@ import type { SkillsService } from "./skills/skills-service.js";
 import { registerSystemRoutes } from "./routes/system.js";
 import { registerOpenClawUpdateRoutes } from "./routes/openclaw-update.js";
 import { registerStorageRoutes } from "./routes/storage.js";
+import { registerChromeRoutes } from "./routes/chrome.js";
 import { registerSpaceRoutes } from "./routes/space.js";
 import { registerTeamRoutes } from "./routes/teams.js";
 import { registerWorkRequestRoutes } from "./routes/work-requests.js";
@@ -170,6 +171,7 @@ export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
   registerApprovalRoutes(app, deps);
   registerAssistantRoutes(app, deps);
   registerStorageRoutes(app, deps);
+  registerChromeRoutes(app, deps);
   const personalTimeZone = () => deps.space.mode() === "personal" ? deps.space.get()?.timezone : undefined;
   const budget = deps.budget ?? new BudgetService({ gateway: deps.gateway, db: deps.db, logger: deps.logger.child({ component: "budget" }) });
   registerScheduleRoutes(app, { schedules: new ScheduleService({ ...deps, timeZone: personalTimeZone, checkAutomaticWork: async () => {

@@ -68,6 +68,7 @@ import { ClaudeLogin, ClaudeLoginError } from "./clawdesk-claude.mjs";
 import { removeWorkspaceSkill, SkillRemoveError } from "./clawdesk-skills.mjs";
 import { cancelVideo, downloadVideo, framesOfVideo, studyVideo, videoProgress, VideoError } from "./clawdesk-video.mjs";
 import { LocalMemory, MemoryError } from "./clawdesk-memory.mjs";
+import { ChromeError, chromePair, chromeStatus } from "./clawdesk-chrome.mjs";
 import { StorageManager, StorageError } from "./clawdesk-storage.mjs";
 import { ProjectFolders, ProjectFolderError } from "./clawdesk-project-folders.mjs";
 import { ProjectBuilder } from "./clawdesk-project-builder.mjs";
@@ -564,6 +565,15 @@ async function handle(req) {
     } catch (error) {
       const code = error instanceof StorageError ? error.code : "storage_unavailable";
       return { status: error instanceof StorageError ? error.status : 503, body: { error: code, message: code } };
+    }
+  }
+
+  if (url.pathname === "/chrome/status" && req.method === "GET" || url.pathname === "/chrome/pair" && req.method === "POST") {
+    try {
+      return { status: 200, body: req.method === "GET" ? await chromeStatus(runCli) : await chromePair(runCli, (await readJson(req)).gatewayUrl) };
+    } catch (error) {
+      const code = error instanceof ChromeError ? error.message : "chrome_unavailable";
+      return { status: code === "invalid_address" ? 400 : 503, body: { error: code, message: code } };
     }
   }
 

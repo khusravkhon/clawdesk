@@ -196,3 +196,15 @@ export const SaveNotionPatternRequest = z
   })
   .refine((req) => req.pattern !== "custom" || req.notes.length >= 20, { message: "describe your structure (at least 20 characters)", path: ["notes"] });
 export type SaveNotionPatternRequest = z.infer<typeof SaveNotionPatternRequest>;
+
+/** The person's own Chrome, driven by agents through the OpenClaw extension. */
+export const ChromeStatusDto = z.object({
+  /** false: this install cannot reach the browser tool (no bridge, or the browser plugin is off). */
+  available: z.boolean(),
+  connected: z.boolean(),
+});
+export type ChromeStatusDto = z.infer<typeof ChromeStatusDto>;
+
+/** The string pasted into the extension once; it works as a password to the browser. */
+export const ChromePairingDto = z.object({ pairingString: z.string().min(1) });
+export type ChromePairingDto = z.infer<typeof ChromePairingDto>;
