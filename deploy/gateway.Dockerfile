@@ -41,7 +41,7 @@ COPY --from=gog /usr/local/bin/gog /usr/local/bin/gog
 COPY --from=gh /usr/local/bin/gh /usr/local/bin/gh
 # ClawDesk bridge: OpenClaw CLI steps without an RPC (MCP sign-in), for the panel, on loopback.
 COPY --chmod=0644 clawdesk-bridge.mjs clawdesk-backup.mjs clawdesk-teams.mjs clawdesk-oauth.mjs clawdesk-audio.mjs clawdesk-agent-folders.mjs clawdesk-file-sync.mjs clawdesk-video.mjs clawdesk-claude.mjs clawdesk-skills.mjs /usr/local/lib/
-COPY --chmod=0644 clawdesk-memory.mjs openclaw.supported clawdesk-openclaw-update.mjs /usr/local/lib/
+COPY --chmod=0644 clawdesk-chrome.mjs clawdesk-memory.mjs openclaw.supported clawdesk-openclaw-update.mjs /usr/local/lib/
 COPY --chmod=0644 clawdesk-plugin-repair.mjs /usr/local/lib/
 COPY --chmod=0644 clawdesk-storage.mjs /usr/local/lib/
 COPY --chmod=0644 clawdesk-project-folders.mjs /usr/local/lib/

@@ -273,6 +273,10 @@ export const api = {
     remove: (name: string) => request<McpServersDto>(`/api/mcp/${encodeURIComponent(name)}`, { method: "DELETE" }),
     login: (name: string) => post<StartMcpLoginResultDto>(`/api/mcp/${encodeURIComponent(name)}/login`),
   },
+  chrome: {
+    status: () => request<import("@clawdesk/shared").ChromeStatusDto>("/api/chrome"),
+    pairing: () => post<import("@clawdesk/shared").ChromePairingDto>("/api/chrome/pairing"),
+  },
   space: {
     get: () => request<{ space: SpaceDto | null }>("/api/space"),
     update: (body: UpdateSpaceRequest) => request<SpaceDto>("/api/space", { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify(body) }),

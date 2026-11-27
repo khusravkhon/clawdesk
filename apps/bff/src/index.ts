@@ -37,6 +37,7 @@ import { WorkItemsService } from "./company/work-items-service.js";
 import { AgentCharterService } from "./company/agent-charter-service.js";
 import { ActivityService, RunTracker } from "./company/activity-service.js";
 import { getConfig } from "./gateway/config-patch.js";
+import { relayChromeExtension } from "./gateway/extension-relay.js";
 import { syncRequestTools } from "./company/work-requests-config.js";
 import { mainSessionKey } from "./chat/chat-service.js";
 import { officeWorkers } from "./documents/office-worker-pool.js";
@@ -134,6 +135,7 @@ const requests = new WorkRequestsService({
 
 const app = await buildApp({ logger, gateway, db, aiSetup, signIn, telegram, freeModels, sources, notionPattern, skills, mcp, approvals, assistant, auth, backups, bridge, space, teams, audit, video, videoDir: config.videoDir, library, budget, notes, reminders, requests, access, workItems, charters, activity, onActivity, sandboxEnabled: config.sandboxEnabled, webDist: config.webDist, trustProxy: config.trustProxy });
 
+relayChromeExtension(app.server, config.gateway.url);
 gateway.start();
 await app.listen({ host: config.host, port: config.port });
 backups.startSchedule();

@@ -193,6 +193,7 @@
     "title": "ClawDesk"
   },
   "nav": {
+    "chrome": "My Chrome",
     "materials": "Materials",
     "status": "Status",
     "agents": "Agents",
@@ -1020,6 +1021,24 @@
       "telegram_unavailable": "Could not send the code to Telegram",
       "no_owner": "The owner password is not set yet"
     }
+  },
+  "chrome": {
+    "title": "My Chrome",
+    "subtitle": "Agents open pages in your own browser, where you are already signed in",
+    "connected": "Chrome is connected",
+    "connectedText": "Agents can open pages in your browser while it is open on this computer.",
+    "waiting": "Chrome is not connected",
+    "waitingText": "Go through the three steps below. This page notices the connection by itself.",
+    "unavailable": "The browser for agents is unavailable",
+    "unavailableText": "The panel could not ask OpenClaw about the browser. Check Status and reload the page.",
+    "createFailed": "Could not create the connection string. Try again.",
+    "copyFailed": "The browser refused to copy. Allow clipboard access and try again.",
+    "step1": { "title": "Install the OpenClaw extension", "text": "It installs from the Chrome Web Store into the browser you use every day.", "button": "Open the Chrome Web Store" },
+    "step2": { "title": "Create a connection string", "text": "It links the extension to this panel. You create it here and paste it into the extension once.", "button": "Create the string", "copy": "Copy", "copied": "Copied", "secret": "This string is like a password to your browser. Do not send it to anyone or show it on screen." },
+    "step3": { "title": "Paste the string into the extension", "open": "Click the OpenClaw extension icon and open", "find": "Find the section", "paste": "Paste the string into the field and press", "ignore": "Leave \"Waiting for the local native host\" and the \"Use local OpenClaw\" button alone: they belong to another way of connecting." },
+    "rules": { "title": "How it works", "computer": "It works only while your computer is on and Chrome is open.", "tabs": "The extension settings have a \"Selected tabs\" mode: the agent then sees only the tabs in the OpenClaw group, not all your tabs.", "login": "Sign in to accounts yourself. If a site asks for a password, an SMS code or a captcha, the agent must stop and tell you.", "terms": "Instagram, Facebook and TikTok forbid automated browsing even with your own account and may block it. Do not connect your main account." },
+    "try": "Try asking the assistant:",
+    "tryText": "Open example.com in my Chrome (profile chrome) and tell me its heading"
   },
   "system": {
     "modeTitle": "Panel mode",
